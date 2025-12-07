@@ -1,0 +1,29 @@
+# Node
+*.log
+node_modules/
+npm-debug.log
+yarn-error.log
+lerna-debug.log
+# Env & Config
+.env
+ecosystem.config.js
+*.config.js
+
+# Sessions / Auth
+sessions/
+auth_info*
+session.data.json
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+tmp/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
