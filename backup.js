@@ -1,4 +1,4 @@
-// FILE: backup.js - UPDATED with Complete Data Backup/Restore
+// FILE: backup.js - COMPLETELY UPDATED WITH PROPER CREDS.JSON RESTORATION
 const B2 = require('backblaze-b2');
 const fs = require('fs');
 const path = require('path');
@@ -70,7 +70,7 @@ class BackupManager {
 
             if (!fs.existsSync(credsPath)) {
                 console.log(`⚠️ No creds.json found for session ${sessionId}, skipping backup`);
-                return;
+                return { success: false, error: 'No creds.json found' };
             }
 
             const fileContent = fs.readFileSync(credsPath);
@@ -100,12 +100,14 @@ class BackupManager {
         }
     }
 
-    // 🔁 Restore creds.json from Backblaze B2
+    // 🔁 Restore creds.json from Backblaze B2 - FIXED VERSION
     async restoreCredsFromB2(sessionId) {
         try {
             await this.initializeB2();
             
             const fileName = `sessions/${sessionId}/creds.json`;
+            
+            console.log(`🔄 Attempting to restore ${fileName} from Backblaze B2...`);
             
             const { data } = await this.b2.downloadFileByName({
                 bucketName: this.bucketName,
@@ -118,10 +120,23 @@ class BackupManager {
                 fs.mkdirSync(sessionDir, { recursive: true });
             }
 
-            fs.writeFileSync(path.join(sessionDir, "creds.json"), Buffer.from(data));
+            const credsPath = path.join(sessionDir, "creds.json");
+            fs.writeFileSync(credsPath, Buffer.from(data));
             
-            console.log(`✅ Restored creds.json for ${sessionId} from Backblaze B2`);
-            return { success: true };
+            // Verify the restored file
+            if (fs.existsSync(credsPath)) {
+                const restoredCreds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                if (restoredCreds && restoredCreds.registered === true) {
+                    console.log(`✅ Successfully restored creds.json for ${sessionId} from Backblaze B2 (registered: ${restoredCreds.registered})`);
+                    return { success: true, registered: true };
+                } else {
+                    console.log(`⚠️ Restored creds.json for ${sessionId} but not registered`);
+                    return { success: true, registered: false };
+                }
+            } else {
+                console.log(`❌ Failed to write creds.json for ${sessionId}`);
+                return { success: false, error: 'File write failed' };
+            }
 
         } catch (error) {
             if (error.response?.status === 400 || error.response?.status === 404) {
@@ -134,46 +149,122 @@ class BackupManager {
         }
     }
 
-    // 🔄 Restore all sessions from Backblaze B2 (on startup)
+    // 🔄 Restore all sessions from Backblaze B2 (on startup) - FIXED
     async restoreAllSessionsFromB2() {
         try {
+            if (!this.isConfigured()) {
+                console.log('⚠️ Backblaze B2 not configured, skipping restore');
+                return { success: false, error: 'B2 not configured' };
+            }
+
             await this.initializeB2();
             console.log("🔄 Fetching sessions list from Backblaze B2...");
 
+            let sessions = [];
             let nextFileName = null;
             let hasMore = true;
-            const sessions = [];
 
             while (hasMore) {
-                const { data } = await this.b2.listFileNames({
-                    bucketId: await this.getBucketId(),
-                    prefix: 'sessions/',
-                    startFileName: nextFileName,
-                    maxFileCount: 1000
-                });
+                try {
+                    const { data } = await this.b2.listFileNames({
+                        bucketId: await this.getBucketId(),
+                        prefix: 'sessions/',
+                        startFileName: nextFileName,
+                        maxFileCount: 1000
+                    });
 
-                sessions.push(...data.files);
-                hasMore = data.nextFileName !== null;
-                nextFileName = data.nextFileName;
+                    sessions.push(...data.files);
+                    hasMore = data.nextFileName !== null;
+                    nextFileName = data.nextFileName;
+                } catch (error) {
+                    console.error('❌ Error listing files from B2:', error.message);
+                    break;
+                }
             }
 
+            if (sessions.length === 0) {
+                console.log('📭 No sessions found on Backblaze B2');
+                return { success: true, restoredCount: 0 };
+            }
+
+            console.log(`📦 Found ${sessions.length} files on Backblaze B2`);
+
             let restoredCount = 0;
+            let failedCount = 0;
+            const processedSessions = new Set();
+
+            // Process creds.json files first
             for (const file of sessions) {
                 if (file.fileName.includes('/creds.json')) {
                     const sessionId = file.fileName.split('/')[1];
-                    const result = await this.restoreCredsFromB2(sessionId);
-                    if (result.success) {
-                        restoredCount++;
+                    
+                    if (!processedSessions.has(sessionId)) {
+                        processedSessions.add(sessionId);
+                        
+                        try {
+                            console.log(`🔄 Restoring session ${sessionId}...`);
+                            const result = await this.restoreSessionFromB2(sessionId);
+                            
+                            if (result.success) {
+                                restoredCount++;
+                                console.log(`✅ Session ${sessionId} restored successfully`);
+                                
+                                // Also restore settings.json if exists
+                                await this.restoreSettingsFromB2(sessionId);
+                            } else {
+                                failedCount++;
+                                console.log(`❌ Failed to restore session ${sessionId}: ${result.error}`);
+                            }
+                        } catch (error) {
+                            failedCount++;
+                            console.error(`❌ Error restoring session ${sessionId}:`, error.message);
+                        }
+                        
+                        // Small delay to avoid rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 }
             }
             
-            console.log(`✅ ${restoredCount} sessions restored from Backblaze B2`);
-            return { success: true, restoredCount: restoredCount };
+            console.log(`✅ ${restoredCount} sessions restored from Backblaze B2 (${failedCount} failed)`);
+            return { success: true, restoredCount: restoredCount, failedCount: failedCount };
             
         } catch (error) {
             console.error("❌ Failed to restore sessions from Backblaze B2:", error.message);
             return { success: false, error: error.message };
+        }
+    }
+
+    // Helper to restore settings.json
+    async restoreSettingsFromB2(sessionId) {
+        try {
+            await this.initializeB2();
+            
+            const fileName = `sessions/${sessionId}/settings.json`;
+            
+            const { data } = await this.b2.downloadFileByName({
+                bucketName: this.bucketName,
+                fileName: fileName,
+                responseType: 'arraybuffer'
+            });
+
+            const sessionDir = path.join(__dirname, "sessions", sessionId);
+            if (!fs.existsSync(sessionDir)) {
+                fs.mkdirSync(sessionDir, { recursive: true });
+            }
+
+            fs.writeFileSync(path.join(sessionDir, "settings.json"), Buffer.from(data));
+            console.log(`✅ Restored settings.json for ${sessionId} from Backblaze B2`);
+            return { success: true };
+
+        } catch (error) {
+            if (error.response?.status === 400 || error.response?.status === 404) {
+                // settings.json is optional, so this is not an error
+                return { success: false, error: 'File not found on B2' };
+            } else {
+                console.error(`❌ Restore failed for settings.json ${sessionId}:`, error.message);
+                return { success: false, error: error.message };
+            }
         }
     }
 
@@ -249,23 +340,48 @@ class BackupManager {
     async backupAllSessions() {
         try {
             const sessionsDir = path.join(__dirname, "sessions");
-            if (fs.existsSync(sessionsDir)) {
-                const sessions = fs.readdirSync(sessionsDir);
-                console.log(`🔄 Backing up ${sessions.length} sessions to Backblaze B2...`);
-                
-                let backedUpCount = 0;
-                for (const sessionId of sessions) {
-                    const result = await this.backupCredsToB2(sessionId);
-                    if (result && result.success) {
-                        backedUpCount++;
-                    }
-                }
-                console.log(`✅ ${backedUpCount} sessions backed up to Backblaze B2 successfully`);
-                return { success: true, backedUp: backedUpCount };
-            } else {
-                console.log("⚠️ No sessions found to back up");
+            if (!fs.existsSync(sessionsDir)) {
+                console.log("⚠️ No sessions directory found");
                 return { success: false, error: 'No sessions directory found' };
             }
+
+            const sessions = fs.readdirSync(sessionsDir);
+            if (sessions.length === 0) {
+                console.log("📭 No sessions found to back up");
+                return { success: false, error: 'No sessions found' };
+            }
+
+            console.log(`🔄 Backing up ${sessions.length} sessions to Backblaze B2...`);
+            
+            let backedUpCount = 0;
+            let failedCount = 0;
+            
+            for (const sessionId of sessions) {
+                try {
+                    const credsPath = path.join(sessionsDir, sessionId, "creds.json");
+                    if (fs.existsSync(credsPath)) {
+                        const result = await this.backupCredsToB2(sessionId);
+                        if (result && result.success) {
+                            backedUpCount++;
+                            console.log(`✅ Backed up session ${sessionId}`);
+                        } else {
+                            failedCount++;
+                            console.log(`❌ Failed to backup session ${sessionId}`);
+                        }
+                    } else {
+                        console.log(`⚠️ No creds.json for session ${sessionId}, skipping`);
+                    }
+                } catch (error) {
+                    failedCount++;
+                    console.error(`❌ Error backing up session ${sessionId}:`, error.message);
+                }
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            console.log(`✅ ${backedUpCount} sessions backed up to Backblaze B2 successfully (${failedCount} failed)`);
+            return { success: true, backedUp: backedUpCount, failed: failedCount };
         } catch (err) {
             console.error("❌ Auto-backup error:", err.message);
             return { success: false, error: err.message };
@@ -285,53 +401,96 @@ class BackupManager {
             }
 
             let backedUpFiles = 0;
+            let errors = [];
 
             // Backup creds.json
             const credsPath = path.join(sessionDir, "creds.json");
             if (fs.existsSync(credsPath)) {
-                const fileContent = fs.readFileSync(credsPath);
-                const fileName = `sessions/${sessionId}/creds.json`;
+                try {
+                    const fileContent = fs.readFileSync(credsPath);
+                    const fileName = `sessions/${sessionId}/creds.json`;
 
-                const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                    bucketId: await this.getBucketId()
-                });
+                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
+                        bucketId: await this.getBucketId()
+                    });
 
-                await this.b2.uploadFile({
-                    uploadUrl: uploadUrlData.uploadUrl,
-                    uploadAuthToken: uploadUrlData.authorizationToken,
-                    fileName: fileName,
-                    data: fileContent,
-                    contentLength: fileContent.length,
-                    mime: 'application/json'
-                });
-                console.log(`✅ Backed up creds.json for ${sessionId}`);
-                backedUpFiles++;
+                    await this.b2.uploadFile({
+                        uploadUrl: uploadUrlData.uploadUrl,
+                        uploadAuthToken: uploadUrlData.authorizationToken,
+                        fileName: fileName,
+                        data: fileContent,
+                        contentLength: fileContent.length,
+                        mime: 'application/json'
+                    });
+                    console.log(`✅ Backed up creds.json for ${sessionId}`);
+                    backedUpFiles++;
+                } catch (error) {
+                    errors.push(`creds.json: ${error.message}`);
+                    console.error(`❌ Failed to backup creds.json for ${sessionId}:`, error.message);
+                }
             }
 
             // Backup settings.json (if exists)
             const settingsPath = path.join(sessionDir, "settings.json");
             if (fs.existsSync(settingsPath)) {
-                const fileContent = fs.readFileSync(settingsPath);
-                const fileName = `sessions/${sessionId}/settings.json`;
+                try {
+                    const fileContent = fs.readFileSync(settingsPath);
+                    const fileName = `sessions/${sessionId}/settings.json`;
 
-                const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                    bucketId: await this.getBucketId()
-                });
+                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
+                        bucketId: await this.getBucketId()
+                    });
 
-                await this.b2.uploadFile({
-                    uploadUrl: uploadUrlData.uploadUrl,
-                    uploadAuthToken: uploadUrlData.authorizationToken,
-                    fileName: fileName,
-                    data: fileContent,
-                    contentLength: fileContent.length,
-                    mime: 'application/json'
-                });
-                console.log(`✅ Backed up settings.json for ${sessionId}`);
-                backedUpFiles++;
+                    await this.b2.uploadFile({
+                        uploadUrl: uploadUrlData.uploadUrl,
+                        uploadAuthToken: uploadUrlData.authorizationToken,
+                        fileName: fileName,
+                        data: fileContent,
+                        contentLength: fileContent.length,
+                        mime: 'application/json'
+                    });
+                    console.log(`✅ Backed up settings.json for ${sessionId}`);
+                    backedUpFiles++;
+                } catch (error) {
+                    errors.push(`settings.json: ${error.message}`);
+                    console.error(`❌ Failed to backup settings.json for ${sessionId}:`, error.message);
+                }
             }
 
-            console.log(`✅ Complete backup successful for ${sessionId} to Backblaze B2 (${backedUpFiles} files)`);
-            return { success: true, backedUpFiles };
+            // Backup user_info.json (if exists)
+            const userInfoPath = path.join(sessionDir, "user_info.json");
+            if (fs.existsSync(userInfoPath)) {
+                try {
+                    const fileContent = fs.readFileSync(userInfoPath);
+                    const fileName = `sessions/${sessionId}/user_info.json`;
+
+                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
+                        bucketId: await this.getBucketId()
+                    });
+
+                    await this.b2.uploadFile({
+                        uploadUrl: uploadUrlData.uploadUrl,
+                        uploadAuthToken: uploadUrlData.authorizationToken,
+                        fileName: fileName,
+                        data: fileContent,
+                        contentLength: fileContent.length,
+                        mime: 'application/json'
+                    });
+                    console.log(`✅ Backed up user_info.json for ${sessionId}`);
+                    backedUpFiles++;
+                } catch (error) {
+                    errors.push(`user_info.json: ${error.message}`);
+                    console.error(`❌ Failed to backup user_info.json for ${sessionId}:`, error.message);
+                }
+            }
+
+            if (backedUpFiles > 0) {
+                console.log(`✅ Complete backup successful for ${sessionId} to Backblaze B2 (${backedUpFiles} files)`);
+                return { success: true, backedUpFiles, errors: errors.length > 0 ? errors : null };
+            } else {
+                console.log(`❌ No files backed up for ${sessionId}`);
+                return { success: false, error: 'No files backed up', errors };
+            }
 
         } catch (error) {
             console.error(`❌ Error backing up ${sessionId} to Backblaze B2:`, error.message);
@@ -339,9 +498,14 @@ class BackupManager {
         }
     }
 
-    // 🔁 Restore full session from Backblaze B2 (creds.json + settings.json)
+    // 🔁 Restore full session from Backblaze B2 (creds.json + settings.json + user_info.json) - FIXED
     async restoreSessionFromB2(sessionId) {
         try {
+            if (!this.isConfigured()) {
+                console.log(`⚠️ Backblaze B2 not configured, cannot restore ${sessionId}`);
+                return { success: false, error: 'B2 not configured' };
+            }
+
             await this.initializeB2();
             
             const sessionDir = path.join(__dirname, "sessions", sessionId);
@@ -349,25 +513,39 @@ class BackupManager {
             // Create session directory if it doesn't exist
             if (!fs.existsSync(sessionDir)) {
                 fs.mkdirSync(sessionDir, { recursive: true });
+                console.log(`📁 Created session directory for ${sessionId}`);
             }
 
             let restoredFiles = 0;
+            let errors = [];
 
-            // Restore creds.json
+            // Restore creds.json (MOST IMPORTANT)
             const credsFileName = `sessions/${sessionId}/creds.json`;
             try {
+                console.log(`🔄 Restoring ${credsFileName}...`);
                 const { data } = await this.b2.downloadFileByName({
                     bucketName: this.bucketName,
                     fileName: credsFileName,
                     responseType: 'arraybuffer'
                 });
 
-                fs.writeFileSync(path.join(sessionDir, "creds.json"), Buffer.from(data));
-                console.log(`✅ Restored creds.json for ${sessionId} from Backblaze B2`);
-                restoredFiles++;
+                const credsContent = Buffer.from(data).toString('utf8');
+                const credsData = JSON.parse(credsContent);
+                
+                // Save the creds.json
+                fs.writeFileSync(path.join(sessionDir, "creds.json"), credsContent);
+                
+                // Verify it was saved
+                if (fs.existsSync(path.join(sessionDir, "creds.json"))) {
+                    console.log(`✅ Restored creds.json for ${sessionId} from Backblaze B2 (registered: ${credsData.registered || false})`);
+                    restoredFiles++;
+                } else {
+                    errors.push('Failed to write creds.json');
+                }
             } catch (error) {
                 if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    console.log(`⚠️ No creds.json found on Backblaze B2 for ${sessionId}:`, error.message);
+                    errors.push(`creds.json: ${error.message}`);
+                    console.log(`⚠️ No creds.json found on Backblaze B2 for ${sessionId}`);
                 }
             }
 
@@ -385,69 +563,40 @@ class BackupManager {
                 restoredFiles++;
             } catch (error) {
                 if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    console.log(`⚠️ No settings.json found on Backblaze B2 for ${sessionId}:`, error.message);
+                    errors.push(`settings.json: ${error.message}`);
+                    console.log(`⚠️ No settings.json found on Backblaze B2 for ${sessionId}`);
                 }
             }
 
-            console.log(`✅ Complete restore successful for ${sessionId} from Backblaze B2 (${restoredFiles} files)`);
-            return { success: true, restoredFiles };
+            // Restore user_info.json
+            const userInfoFileName = `sessions/${sessionId}/user_info.json`;
+            try {
+                const { data } = await this.b2.downloadFileByName({
+                    bucketName: this.bucketName,
+                    fileName: userInfoFileName,
+                    responseType: 'arraybuffer'
+                });
+
+                fs.writeFileSync(path.join(sessionDir, "user_info.json"), Buffer.from(data));
+                console.log(`✅ Restored user_info.json for ${sessionId} from Backblaze B2`);
+                restoredFiles++;
+            } catch (error) {
+                if (error.response?.status !== 400 && error.response?.status !== 404) {
+                    errors.push(`user_info.json: ${error.message}`);
+                    console.log(`⚠️ No user_info.json found on Backblaze B2 for ${sessionId}`);
+                }
+            }
+
+            if (restoredFiles > 0) {
+                console.log(`✅ Complete restore successful for ${sessionId} from Backblaze B2 (${restoredFiles} files)`);
+                return { success: true, restoredFiles, errors: errors.length > 0 ? errors : null };
+            } else {
+                console.log(`❌ No files restored for ${sessionId}`);
+                return { success: false, error: 'No files restored', errors };
+            }
 
         } catch (error) {
             console.error(`❌ Restore failed for ${sessionId}:`, error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 🔄 Sync session from B2 (check and restore if newer)
-    async syncSessionFromB2(sessionId) {
-        try {
-            await this.initializeB2();
-            
-            const localSessionDir = path.join(__dirname, "sessions", sessionId);
-            const localCredsPath = path.join(localSessionDir, "creds.json");
-            const b2FileName = `sessions/${sessionId}/creds.json`;
-            
-            // Check if file exists on B2
-            let b2FileInfo;
-            try {
-                const { data } = await this.b2.getFileInfo({
-                    bucketName: this.bucketName,
-                    fileName: b2FileName
-                });
-                b2FileInfo = data;
-            } catch (error) {
-                // File doesn't exist on B2
-                return { success: false, error: 'File not found on B2' };
-            }
-            
-            // Check local file modification time
-            let localFileExists = fs.existsSync(localCredsPath);
-            let shouldRestore = false;
-            
-            if (!localFileExists) {
-                // Local file doesn't exist, restore from B2
-                shouldRestore = true;
-            } else {
-                // Compare modification times
-                const localStats = fs.statSync(localCredsPath);
-                const b2ModifiedTime = new Date(b2FileInfo.uploadTimestamp);
-                const localModifiedTime = new Date(localStats.mtime);
-                
-                if (b2ModifiedTime > localModifiedTime) {
-                    // B2 version is newer, restore it
-                    shouldRestore = true;
-                    console.log(`🔄 B2 version is newer for ${sessionId}, restoring...`);
-                }
-            }
-            
-            if (shouldRestore) {
-                return await this.restoreSessionFromB2(sessionId);
-            }
-            
-            return { success: true, message: 'Local version is up to date' };
-            
-        } catch (error) {
-            console.error(`❌ Error syncing session ${sessionId}:`, error.message);
             return { success: false, error: error.message };
         }
     }
@@ -505,40 +654,70 @@ class BackupManager {
     // 🔄 Auto backup all data (sessions + tokens + users + requests)
     async backupAllData() {
         try {
+            if (!this.isConfigured()) {
+                console.log('⚠️ Backblaze B2 not configured, skipping backup');
+                return { success: false, error: 'B2 not configured' };
+            }
+
             console.log('🔄 Starting complete data backup...');
+            
+            let results = {
+                sessions: { success: false, count: 0 },
+                users: { success: false },
+                tokens: { success: false },
+                requests: { success: false }
+            };
             
             // Backup sessions
             const sessionsResult = await this.backupAllSessions();
-            
-            // Backup token data files
-            const tokenManager = require('./token');
+            results.sessions = { 
+                success: sessionsResult.success, 
+                count: sessionsResult.backedUp || 0 
+            };
             
             // Backup users.json
             const usersPath = path.join(__dirname, 'users.json');
             if (fs.existsSync(usersPath)) {
-                const usersContent = fs.readFileSync(usersPath, 'utf8');
-                await this.uploadToB2('users.json', usersContent);
+                try {
+                    const usersContent = fs.readFileSync(usersPath, 'utf8');
+                    await this.uploadToB2('users.json', usersContent);
+                    results.users = { success: true };
+                } catch (error) {
+                    results.users = { success: false, error: error.message };
+                }
             }
             
             // Backup tokens.json
             const tokensPath = path.join(__dirname, 'tokens.json');
             if (fs.existsSync(tokensPath)) {
-                const tokensContent = fs.readFileSync(tokensPath, 'utf8');
-                await this.uploadToB2('tokens.json', tokensContent);
+                try {
+                    const tokensContent = fs.readFileSync(tokensPath, 'utf8');
+                    await this.uploadToB2('tokens.json', tokensContent);
+                    results.tokens = { success: true };
+                } catch (error) {
+                    results.tokens = { success: false, error: error.message };
+                }
             }
             
             // Backup requests.json
             const requestsPath = path.join(__dirname, 'requests.json');
             if (fs.existsSync(requestsPath)) {
-                const requestsContent = fs.readFileSync(requestsPath, 'utf8');
-                await this.uploadToB2('requests.json', requestsContent);
+                try {
+                    const requestsContent = fs.readFileSync(requestsPath, 'utf8');
+                    await this.uploadToB2('requests.json', requestsContent);
+                    results.requests = { success: true };
+                } catch (error) {
+                    results.requests = { success: false, error: error.message };
+                }
             }
             
-            console.log('✅ Complete data backup successful');
+            console.log('✅ Complete data backup attempt finished');
+            console.log('📊 Results:', results);
+            
             return { 
                 success: true, 
-                message: 'Backup completed',
-                sessions: sessionsResult.backedUp || 0
+                message: 'Backup attempt completed',
+                results: results
             };
             
         } catch (error) {
@@ -547,45 +726,82 @@ class BackupManager {
         }
     }
 
-    // 🔄 Auto restore all data on startup
+    // 🔄 Auto restore all data on startup - FIXED
     async restoreAllData() {
         try {
+            if (!this.isConfigured()) {
+                console.log('⚠️ Backblaze B2 not configured, skipping restore');
+                return { success: false, error: 'B2 not configured' };
+            }
+
             console.log('🔄 Restoring all data from backup...');
             
             let restoredItems = 0;
+            let results = {
+                sessions: { restored: 0, total: 0 },
+                users: { success: false },
+                tokens: { success: false },
+                requests: { success: false }
+            };
             
-            // Restore sessions
+            // Restore sessions FIRST
             const sessionsResult = await this.restoreAllSessionsFromB2();
             if (sessionsResult.success) {
-                restoredItems += sessionsResult.restoredCount;
+                results.sessions = { 
+                    restored: sessionsResult.restoredCount || 0, 
+                    total: sessionsResult.failedCount ? sessionsResult.restoredCount + sessionsResult.failedCount : sessionsResult.restoredCount 
+                };
+                restoredItems += sessionsResult.restoredCount || 0;
             }
             
             // Restore users.json
             const usersData = await this.downloadFromB2('users.json');
             if (usersData) {
-                fs.writeFileSync(path.join(__dirname, 'users.json'), usersData);
-                console.log('✅ Restored users.json from Backblaze B2');
-                restoredItems++;
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'users.json'), usersData);
+                    console.log('✅ Restored users.json from Backblaze B2');
+                    results.users = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.users = { success: false, error: error.message };
+                }
             }
             
             // Restore tokens.json
             const tokensData = await this.downloadFromB2('tokens.json');
             if (tokensData) {
-                fs.writeFileSync(path.join(__dirname, 'tokens.json'), tokensData);
-                console.log('✅ Restored tokens.json from Backblaze B2');
-                restoredItems++;
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'tokens.json'), tokensData);
+                    console.log('✅ Restored tokens.json from Backblaze B2');
+                    results.tokens = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.tokens = { success: false, error: error.message };
+                }
             }
             
             // Restore requests.json
             const requestsData = await this.downloadFromB2('requests.json');
             if (requestsData) {
-                fs.writeFileSync(path.join(__dirname, 'requests.json'), requestsData);
-                console.log('✅ Restored requests.json from Backblaze B2');
-                restoredItems++;
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'requests.json'), requestsData);
+                    console.log('✅ Restored requests.json from Backblaze B2');
+                    results.requests = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.requests = { success: false, error: error.message };
+                }
             }
             
             console.log(`✅ ${restoredItems} data items restored successfully`);
-            return { success: true, restoredItems: restoredItems, message: 'Restore completed' };
+            console.log('📊 Results:', results);
+            
+            return { 
+                success: true, 
+                restoredItems: restoredItems, 
+                message: 'Restore completed',
+                results: results
+            };
             
         } catch (error) {
             console.error('❌ Data restore failed:', error.message);
@@ -624,7 +840,7 @@ class BackupManager {
                 sessionFiles,
                 dataFiles,
                 totalSize: this.formatBytes(totalSize),
-                sessions: Math.floor(sessionFiles / 2) // Each session has 2 files (creds.json + settings.json)
+                sessions: Math.floor(sessionFiles / 3) // Each session has 3 files (creds.json + settings.json + user_info.json)
             };
         } catch (error) {
             console.error('❌ Error getting storage stats:', error.message);
@@ -642,89 +858,58 @@ class BackupManager {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
-    // 🚀 Interactive restore CLI
-    async interactiveRestore() {
-        const readline = require('readline');
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-
-        console.log('='.repeat(50));
-        console.log('🔄 TRACLE - LITE BACKBLAZE B2 RESTORE TOOL');
-        console.log('='.repeat(50));
-        
-        console.log('\nOptions:');
-        console.log('1. Restore ALL sessions from Backblaze B2');
-        console.log('2. Restore specific session');
-        console.log('3. Check if session exists on Backblaze B2');
-        console.log('4. Backup all local sessions to Backblaze B2');
-        console.log('5. View storage statistics');
-        console.log('6. Sync all sessions (restore if newer on B2)');
-        console.log('7. Backup ALL data (sessions + tokens + users + requests)');
-        console.log('8. Restore ALL data from backup');
-        console.log('9. Exit');
-        
-        rl.question('\nSelect option (1-9): ', async (choice) => {
-            switch (choice) {
-                case '1':
-                    await this.restoreAllSessionsFromB2();
-                    break;
-                case '2':
-                    rl.question('Enter session ID (phone number): ', async (sessionId) => {
-                        await this.restoreSessionFromB2(sessionId);
-                        rl.close();
-                    });
-                    return;
-                case '3':
-                    rl.question('Enter session ID (phone number): ', async (sessionId) => {
-                        const result = await this.checkSessionOnB2(sessionId);
-                        console.log('Result:', result);
-                        rl.close();
-                    });
-                    return;
-                case '4':
-                    await this.backupAllSessions();
-                    break;
-                case '5':
-                    const stats = await this.getStorageStats();
-                    console.log('\n📊 BACKBLAZE B2 STORAGE STATISTICS:');
-                    console.log('='.repeat(40));
-                    console.log(`Total Files: ${stats.totalFiles || 0}`);
-                    console.log(`Session Files: ${stats.sessionFiles || 0}`);
-                    console.log(`Data Files: ${stats.dataFiles || 0}`);
-                    console.log(`Estimated Sessions: ${stats.sessions || 0}`);
-                    console.log(`Total Size: ${stats.totalSize || '0 Bytes'}`);
-                    console.log('='.repeat(40));
-                    break;
-                case '6':
-                    await this.syncAllSessions();
-                    break;
-                case '7':
-                    const backupResult = await this.backupAllData();
-                    console.log('Backup Result:', backupResult);
-                    break;
-                case '8':
-                    const restoreResult = await this.restoreAllData();
-                    console.log('Restore Result:', restoreResult);
-                    break;
-                case '9':
-                    console.log('👋 Exiting...');
-                    rl.close();
-                    return;
-                default:
-                    console.log('❌ Invalid option');
+    // 🔄 Sync session from B2 (check and restore if newer)
+    async syncSessionFromB2(sessionId) {
+        try {
+            await this.initializeB2();
+            
+            const localSessionDir = path.join(__dirname, "sessions", sessionId);
+            const localCredsPath = path.join(localSessionDir, "creds.json");
+            const b2FileName = `sessions/${sessionId}/creds.json`;
+            
+            // Check if file exists on B2
+            let b2FileInfo;
+            try {
+                const { data } = await this.b2.getFileInfo({
+                    bucketName: this.bucketName,
+                    fileName: b2FileName
+                });
+                b2FileInfo = data;
+            } catch (error) {
+                // File doesn't exist on B2
+                return { success: false, error: 'File not found on B2' };
             }
             
-            rl.question('\nPress Enter to continue or type "exit" to quit: ', (answer) => {
-                if (answer.toLowerCase() === 'exit') {
-                    console.log('👋 Goodbye!');
-                    rl.close();
-                } else {
-                    this.interactiveRestore();
+            // Check local file modification time
+            let localFileExists = fs.existsSync(localCredsPath);
+            let shouldRestore = false;
+            
+            if (!localFileExists) {
+                // Local file doesn't exist, restore from B2
+                shouldRestore = true;
+            } else {
+                // Compare modification times
+                const localStats = fs.statSync(localCredsPath);
+                const b2ModifiedTime = new Date(b2FileInfo.uploadTimestamp);
+                const localModifiedTime = new Date(localStats.mtime);
+                
+                if (b2ModifiedTime > localModifiedTime) {
+                    // B2 version is newer, restore it
+                    shouldRestore = true;
+                    console.log(`🔄 B2 version is newer for ${sessionId}, restoring...`);
                 }
-            });
-        });
+            }
+            
+            if (shouldRestore) {
+                return await this.restoreSessionFromB2(sessionId);
+            }
+            
+            return { success: true, message: 'Local version is up to date' };
+            
+        } catch (error) {
+            console.error(`❌ Error syncing session ${sessionId}:`, error.message);
+            return { success: false, error: error.message };
+        }
     }
 
     // 🔄 Sync all sessions
@@ -763,15 +948,24 @@ class BackupManager {
             console.log(`📦 Found ${b2SessionIds.size} sessions on Backblaze B2`);
             
             let syncedCount = 0;
+            let failedCount = 0;
+            
             for (const sessionId of b2SessionIds) {
-                const result = await this.syncSessionFromB2(sessionId);
-                if (result.success) {
-                    syncedCount++;
+                try {
+                    const result = await this.syncSessionFromB2(sessionId);
+                    if (result.success) {
+                        syncedCount++;
+                    } else {
+                        failedCount++;
+                    }
+                } catch (error) {
+                    failedCount++;
+                    console.error(`❌ Error syncing session ${sessionId}:`, error.message);
                 }
             }
 
-            console.log(`✅ Synced ${syncedCount}/${b2SessionIds.size} sessions from Backblaze B2`);
-            return { success: true, syncedCount };
+            console.log(`✅ Synced ${syncedCount}/${b2SessionIds.size} sessions from Backblaze B2 (${failedCount} failed)`);
+            return { success: true, syncedCount, failedCount };
 
         } catch (error) {
             console.error("❌ Failed to sync sessions:", error.message);
@@ -782,11 +976,30 @@ class BackupManager {
     // ✅ Backup when new user connects
     async backupNewUserSession(sessionId) {
         try {
+            if (!this.isConfigured()) {
+                console.log(`⚠️ Backblaze B2 not configured, skipping backup for ${sessionId}`);
+                return { success: false, error: 'B2 not configured' };
+            }
+
             console.log(`🔄 Backing up new user session: ${sessionId}`);
+            
+            // Check if creds.json exists and is registered
+            const credsPath = path.join(__dirname, "sessions", sessionId, "creds.json");
+            if (!fs.existsSync(credsPath)) {
+                console.log(`❌ No creds.json found for ${sessionId}, cannot backup`);
+                return { success: false, error: 'No creds.json found' };
+            }
+            
+            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+            if (!creds.registered) {
+                console.log(`⚠️ Session ${sessionId} is not registered yet, skipping backup`);
+                return { success: false, error: 'Session not registered' };
+            }
+            
             const result = await this.backupSessionToB2(sessionId);
             
             if (result.success) {
-                console.log(`✅ New user session ${sessionId} backed up to Backblaze B2`);
+                console.log(`✅ New user session ${sessionId} backed up to Backblaze B2 (${result.backedUpFiles} files)`);
             } else {
                 console.log(`⚠️ Failed to backup new user session ${sessionId}: ${result.error}`);
             }
@@ -797,8 +1010,61 @@ class BackupManager {
             return { success: false, error: error.message };
         }
     }
-}
 
+    // 🆕 Function to restore and check if session exists on B2
+    async restoreAndCheckSession(sessionId) {
+        try {
+            if (!this.isConfigured()) {
+                return { exists: false, restored: false, error: 'B2 not configured' };
+            }
+
+            await this.initializeB2();
+            
+            // Check if session exists on B2
+            const checkResult = await this.checkSessionOnB2(sessionId);
+            
+            if (checkResult.sessionExists) {
+                // Try to restore the session
+                console.log(`🔄 Session ${sessionId} exists on B2, attempting restore...`);
+                const restoreResult = await this.restoreSessionFromB2(sessionId);
+                
+                if (restoreResult.success) {
+                    // Verify the restored creds.json
+                    const credsPath = path.join(__dirname, "sessions", sessionId, "creds.json");
+                    if (fs.existsSync(credsPath)) {
+                        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                        return {
+                            exists: true,
+                            restored: true,
+                            registered: creds.registered || false,
+                            filesRestored: restoreResult.restoredFiles || 0
+                        };
+                    }
+                }
+                
+                return {
+                    exists: true,
+                    restored: false,
+                    error: restoreResult.error || 'Restore failed'
+                };
+            }
+            
+            return {
+                exists: false,
+                restored: false,
+                error: checkResult.error || 'Session not found on B2'
+            };
+            
+        } catch (error) {
+            console.error(`❌ Error restoring/checking session ${sessionId}:`, error.message);
+            return {
+                exists: false,
+                restored: false,
+                error: error.message
+            };
+        }
+    }
+}
 
 // Create and export singleton instance
 const backupManager = new BackupManager();
@@ -813,7 +1079,21 @@ if (require.main === module) {
         process.exit(1);
     }
     
-    backupManager.interactiveRestore().catch(console.error);
+    console.log('='.repeat(50));
+    console.log('🔄 TRACLE - LITE BACKBLAZE B2 RESTORE TOOL');
+    console.log('='.repeat(50));
+    
+    // Directly restore all data
+    backupManager.restoreAllData()
+        .then(result => {
+            console.log('\n✅ Restore process completed');
+            console.log('📊 Result:', result);
+            process.exit(0);
+        })
+        .catch(error => {
+            console.error('\n❌ Restore failed:', error);
+            process.exit(1);
+        });
 }
 
 module.exports = backupManager;
