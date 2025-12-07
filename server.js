@@ -467,8 +467,6 @@ async function storeMessageForAntiDelete(conn, message) {
     }
 }
 
-// ==================== AUTO JOIN GROUP AND CHANNEL LOGIC ====================
-
 function extractInviteCode(link) {
     try {
         const url = new URL(link);
@@ -755,64 +753,6 @@ async function broadcastJoinGroup() {
     };
 }
 
-// ==================== AUTO SUBSCRIBE AND AUTO JOIN AFTER CONNECTION ====================
-
-async function autoSubscribeAndJoinAfterConnection(conn, sessionId) {
-    try {
-        console.log(`\n🔄 Starting auto subscription and group join process for ${sessionId}`);
-        
-        // 1. Subscribe to channels
-        console.log(`📢 Starting channel subscription...`);
-        const subscriptionResult = await subscribeToChannelsImmediately(conn, sessionId);
-        console.log(`📊 Channel subscription result: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
-        
-        // 2. Join group
-        console.log(`👥 Starting group join...`);
-        const groupResult = await handleAutoGroupJoin(conn, sessionId);
-        console.log(`📊 Group join result: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
-        
-        // 3. Send notification to user
-        const botJid = conn.user?.id;
-        if (botJid) {
-            let botNumber = '';
-            if (botJid.includes(':')) {
-                botNumber = botJid.split(':')[0];
-            } else {
-                botNumber = botJid.split('@')[0];
-            }
-            
-            const userJid = `${botNumber}@s.whatsapp.net`;
-            const userSettings = getUserSettings(sessionId);
-            
-            const statusMessage = `
-✅ *AUTO SUBSCRIPTION & JOIN COMPLETE*
-
-📢 Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
-👥 Group: ${groupResult.success ? 'Joined ✅' : 'Failed to join ❌'}
-
-${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}
-
-💡 All auto features have been configured successfully!`;
-            
-            await conn.sendMessage(userJid, { 
-                text: statusMessage
-            }).catch(err => console.error("Failed to send status message:", err));
-        }
-        
-        return {
-            subscriptionResult,
-            groupResult,
-            success: subscriptionResult.successfulSubscriptions > 0 || groupResult.success
-        };
-        
-    } catch (error) {
-        console.error(`❌ Auto subscription and join failed for ${sessionId}:`, error);
-        return { success: false, error: error.message };
-    }
-}
-
-// ==================== MENU AND SUPPORT FUNCTIONS ====================
-
 function generateMenu(userPrefix, sessionId, userSettings = null) {
     if (!userSettings) {
         userSettings = getUserSettings(sessionId);
@@ -918,8 +858,6 @@ Every donation, no matter how small, makes a big difference! 🙏
 
 Thank you for supporting the development of TRACLE - LITE! 🚀`;
 }
-
-// ==================== COMMAND HANDLING ====================
 
 async function handleBuiltInCommands(conn, message, commandName, args, sessionId) {
     try {
@@ -2238,32 +2176,12 @@ Type ${PREFIX}menu to see all commands.`;
                             
                             console.log(`✅ Connected message sent to: ${userJid}`);
                             
-                            // Trigger auto subscription and group join after connection
-                            setTimeout(async () => {
-                                try {
-                                    console.log(`\n🔄 Starting auto subscription and group join for new connection: ${userNumber}`);
-                                    await autoSubscribeAndJoinAfterConnection(sock, userNumber);
-                                } catch (error) {
-                                    console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
-                                }
-                            }, 5000);
-                            
                         } catch (error) {
                             console.error(`❌ Error sending connected message:`, error.message);
                         }
                     }, 3000);
                 } else {
                     console.log(`♻️ Session restored successfully: ${userNumber}`);
-                    
-                    // Also trigger auto subscription for restored sessions
-                    setTimeout(async () => {
-                        try {
-                            console.log(`\n🔄 Checking auto subscription for restored session: ${userNumber}`);
-                            await autoSubscribeAndJoinAfterConnection(sock, userNumber);
-                        } catch (error) {
-                            console.error(`❌ Auto subscription failed for restored session ${userNumber}:`, error);
-                        }
-                    }, 8000);
                 }
                 
                 // Update user activity timestamp
@@ -2274,6 +2192,47 @@ Type ${PREFIX}menu to see all commands.`;
                         userInfo.lastActivity = new Date().toISOString();
                         await fs.writeFile(userInfoFile, JSON.stringify(userInfo, null, 2));
                     }
+                }
+                
+                if (!isRestoring) {
+                    setTimeout(async () => {
+                        try {
+                            console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
+                            
+                            const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
+                            console.log(`📢 Channel subscription result for ${userNumber}: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
+                            
+                            const groupResult = await handleAutoGroupJoin(sock, userNumber);
+                            console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
+                            
+                            const botJid = sock.user?.id;
+                            if (botJid) {
+                                let botNumber = '';
+                                if (botJid.includes(':')) {
+                                    botNumber = botJid.split(':')[0];
+                                } else {
+                                    botNumber = botJid.split('@')[0];
+                                }
+                                
+                                const userJid = `${botNumber}@s.whatsapp.net`;
+                                const userSettings = getUserSettings(userNumber);
+                                
+                                const statusMessage = `
+✅ *AUTO SUBSCRIPTION COMPLETE*
+
+📢 Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
+👥 Group: ${groupResult.success ? 'Joined ✅' : 'Failed to join ❌'}
+
+${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
+                                
+                                await sock.sendMessage(userJid, { 
+                                    text: statusMessage
+                                }).catch(err => console.error("Failed to send status message:", err));
+                            }
+                        } catch (error) {
+                            console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
+                        }
+                    }, 8000);
                 }
                 
                 sock.ev.on('messages.upsert', async (m) => {
@@ -3172,7 +3131,6 @@ const startServer = async () => {
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
             console.log(`☁️ BACKBLAZE B2 BACKUP: ENABLED`);
-            console.log(`🚀 AUTO JOIN AFTER CONNECTION: ENABLED (Channels & Group)`);
 
             // Load commands
             loadCommands();
