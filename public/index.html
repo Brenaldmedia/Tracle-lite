@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracle-Lite Pro - Advanced WhatsApp Bot</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="dark-theme">
+
+    <!-- Custom Modal -->
+    <div class="custom-modal hidden" id="customModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Confirmation</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <p>Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn secondary" onclick="closeModal()">Cancel</button>
+                <button class="modal-btn primary" id="modalConfirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Overlay -->
+    <nav class="nav-overlay" id="navOverlay">
+        <div class="nav-header">
+            <div class="nav-brand">
+                <i class="fas fa-robot"></i>
+                <h3>TRACLE-LITE</h3>
+            </div>
+            <button class="nav-close" id="closeNav">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="nav-user">
+            <div class="user-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="user-info">
+                <span class="user-email" id="userEmail">Welcome to Tracle-Lite</span>
+                <span class="user-status" id="userStatus">Get token to access all features</span>
+            </div>
+        </div>
+
+        <div class="nav-menu">
+            <div class="nav-item active" data-section="home">
+                <i class="fas fa-home"></i>
+                <span>Dashboard</span>
+            </div>
+
+            <div class="nav-item" data-section="token">
+                <i class="fas fa-key"></i>
+                <span>Get Token</span>
+            </div>
+
+            <div class="nav-item" data-section="quiz">
+                <i class="fas fa-brain"></i>
+                <span>Security Quiz</span>
+            </div>
+
+            <div class="nav-item" data-section="features">
+                <i class="fas fa-star"></i>
+                <span>Features</span>
+            </div>
+
+        
+            <div class="nav-item" data-section="sessions">
+                <i class="fas fa-link"></i>
+                <span>My Sessions</span>
+            </div>
+
+            <div class="nav-item" onclick="window.open('admin.html', '_blank')">
+                <i class="fas fa-lock"></i>
+                <span>Admin Login</span>
+            </div>
+
+            <div class="nav-item" onclick="toggleTheme()">
+                <i class="fas fa-moon"></i>
+                <span>Toggle Theme</span>
+            </div>
+        </div>
+
+        <div class="nav-footer">
+            <div class="active-users">
+                <i class="fas fa-users"></i>
+                <span>Active Users: <strong id="activeUsersCount">0</strong></span>
+            </div>
+            <div class="version">v2.0.1</div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+
+    <main class="main-content">
+        <header class="main-header">
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="header-title">
+                <h1>Dashboard</h1>
+                <p>Welcome to Tracle-Lite Pro</p>
+            </div>
+            <div class="header-stats">
+                <div class="stat-card">
+                    <i class="fas fa-users"></i>
+                    <div>
+                        <span class="stat-value" id="liveUsers">0</span>
+                        <span class="stat-label">Live Users</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="content-wrapper">
+            <!-- HOME SECTION -->
+            <section class="content-section active" id="homeSection">
+
+                <!-- Welcome box -->
+                <div class="welcome-card gradient-card">
+                    <div class="welcome-text">
+                        <h2><i class="fas fa-rocket"></i> Welcome to Tracle-Lite Pro</h2>
+                        <p>Advanced WhatsApp automation with premium features.</p>
+                    </div>
+                    <div class="welcome-actions">
+                        <button class="action-btn primary-btn" data-section="token">
+                            <i class="fas fa-key"></i> Get Token
+                        </button>
+                        <button class="action-btn secondary-btn" data-section="features">
+                            <i class="fas fa-eye"></i> View Features
+                        </button>
+                        <button class="action-btn secondary-btn" onclick="window.open('admin.html', '_blank')">
+                      <i class="fas fa-hand-paper"></i> Hello
+
+
+
+
+                        </button>
+                    </div>
+                </div>
+  <!-- THE ONLY GET CODE SECTION -->
+                <div class="get-bot-code-section" id="codeSection">
+                    <h4><i class="fas fa-code"></i> Get Pairing Code</h4>
+                    <p>Enter your email, token and number to get the bot code after quiz</p>
+
+                    <div class="code-input-section">
+                        <div class="input-group">
+                            <div class="input-icon"><i class="fas fa-envelope"></i></div>
+                            <input type="email" id="codeEmail" placeholder="your@gmail.com" required>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-icon"><i class="fas fa-key"></i></div>
+                            <input type="text" id="codeTokenInput" placeholder="Tracle_xxxxxxxxx" required>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-icon"><i class="fas fa-phone"></i></div>
+                            <input type="tel" id="codeNumber" placeholder="234xxx (without +)" required>
+                        </div>
+
+                        <button class="primary-btn" onclick="verifyTokenAndStartQuiz()">
+                            <i class="fas fa-play"></i> Start Process
+                        </button>
+                    </div>
+
+                    <div id="tokenValidationResult" class="validation-result"></div>
+                </div>
+
+                <!-- Pairing section -->
+                <div class="pairing-section hidden" id="pairingSection">
+                    <div class="pairing-card">
+                        <div class="pairing-header">
+                            <h4><i class="fas fa-code"></i> Pairing Code</h4>
+                            <span class="pairing-timer" id="countdown">120s</span>
+                        </div>
+
+                        <div class="pairing-code-display" id="codeDisplay"></div>
+
+                        <div class="pairing-instructions">
+                            <p><i class="fas fa-mobile-alt"></i> Open WhatsApp → Linked Devices → Link a Device</p>
+                            <p><i class="fas fa-keyboard"></i> Enter the code above</p>
+                        </div>
+
+                        <button class="secondary-btn small-btn" onclick="createSession()">
+                            <i class="fas fa-sync-alt"></i> New Code
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Connected Status -->
+                <div class="connected-section hidden" id="statusSection">
+                    <div class="success-card">
+                        <div class="success-icon"><i class="fas fa-check-circle"></i></div>
+                        <div class="success-content">
+                            <h4>Successfully Connected!</h4>
+                            <p>WhatsApp is now connected.</p>
+                            <div class="connected-info">
+                                <i class="fas fa-check"></i>
+                                <span>Connected to: <strong id="connectedNumber"></strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="secondary-btn" onclick="createSession()">
+                        <i class="fas fa-plus"></i> Connect Another Device
+                    </button>
+                </div>
+            </section>
+                <!-- Quick Stats -->
+                <div class="quick-stats">
+                    <div class="stat-box">
+                        <div class="stat-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Security First</h3>
+                            <p>Token-based access with anti-spam protection</p>
+                        </div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Auto Features</h3>
+                            <p>Auto-view, auto-like, anti-delete & more</p>
+                        </div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Cloud Backup</h3>
+                            <p>Sessions preserved through restarts</p>
+                        </div>
+                    </div>
+                </div>
+
+              
+
+            <!-- TOKEN SECTION -->
+            <section class="content-section" id="tokenSection">
+                <div class="section-header">
+                    <h2><i class="fas fa-key"></i> Get Your Token</h2>
+                    <p>Request a token using your email.</p>
+                </div>
+
+                <div class="token-card">
+                    <div class="token-form">
+                        <div class="input-group">
+                            <div class="input-icon"><i class="fas fa-envelope"></i></div>
+                            <input type="email" id="emailInput" placeholder="yourname@gmail.com" required>
+                        </div>
+
+                        <button class="primary-btn" onclick="requestToken()">
+                            <i class="fas fa-paper-plane"></i> Request Token
+                        </button>
+                    </div>
+
+                    <div class="token-info">
+                        <div class="info-box">
+                            <i class="fas fa-info-circle"></i>
+                            <p>Tokens start with "Tracle_"</p>
+                        </div>
+                        <div class="info-box">
+                            <i class="fas fa-shield-alt"></i>
+                            <p>Admin approves requests</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- QUIZ SECTION -->
+            <section class="content-section" id="quizSection">
+                <div class="section-header">
+                    <h2><i class="fas fa-brain"></i> Security Quiz</h2>
+                    <p>Verify you're human</p>
+                </div>
+
+                <div class="quiz-card">
+                    <div id="quizContainer">
+                        <div class="quiz-question" id="quizQuestion"></div>
+                        <div class="quiz-options" id="quizOptions"></div>
+                        <div id="quizResult"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FEATURES SECTION -->
+            <section class="content-section" id="featuresSection">
+                <div class="section-header">
+                    <h2><i class="fas fa-star"></i> Premium Features</h2>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card"><i class="fas fa-eye"></i><h3>Auto View</h3></div>
+                    <div class="feature-card"><i class="fas fa-heart"></i><h3>Auto Like</h3></div>
+                    <div class="feature-card"><i class="fas fa-trash-restore"></i><h3>Anti Delete</h3></div>
+                    <div class="feature-card"><i class="fas fa-rss"></i><h3>Auto Subscription</h3></div>
+                    <div class="feature-card"><i class="fas fa-cloud-upload-alt"></i><h3>Cloud Backup</h3></div>
+                    <div class="feature-card"><i class="fas fa-code"></i><h3>Custom Commands</h3></div>
+                </div>
+            </section>
+
+            <!-- SESSIONS SECTION -->
+            <section class="content-section" id="sessionsSection">
+                <div class="section-header">
+                    <h2><i class="fas fa-link"></i> My Sessions</h2>
+                </div>
+
+                <div class="sessions-card">
+                    <div class="sessions-list" id="sessionsList">
+                        <div class="loading-sessions">
+                            <i class="fas fa-spinner fa-spin"></i> Loading...
+                        </div>
+                    </div>
+
+                    <button class="primary-btn" onclick="loadUserSessions()">
+                        <i class="fas fa-sync-alt"></i> Refresh Sessions
+                    </button>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <div id="toastContainer"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+
+    <!-- FIXED SCRIPT FOR GET CODE BUTTON -->
+    <script>
+        function showCodeSection() {
+            document.querySelectorAll('.content-section').forEach(sec => {
+                sec.classList.remove("active");
+                sec.style.display = "none";
+            });
+
+            const codeSection = document.getElementById("codeSection");
+            if (codeSection) {
+                codeSection.style.display = "block";
+                codeSection.classList.add("active");
+                codeSection.scrollIntoView({ behavior: "smooth" });
+            }
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "watch": [
+    "server.js",
+    "commands/**/*.js"
+  ],
+  "ignore": [
+    "sessions/**",
+    "node_modules/**",
+    "public/**",
+    "*.log",
+    ".env",
+    "backup/**"
+  ],
+  "ext": "js,json",
+  "delay": 2000,
+  "exec": "node server.js"
+}

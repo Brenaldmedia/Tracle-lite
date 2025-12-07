@@ -1,0 +1,21 @@
+{
+  "brenaldmedia2@gmail.com": {
+    "email": "brenaldmedia2@gmail.com",
+    "firstRequest": "2025-12-06T20:47:21.627Z",
+    "lastRequest": "2025-12-06T23:11:13.896Z",
+    "totalRequests": 2,
+    "ipAddresses": [
+      "::1"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+    ],
+    "location": "Unknown, Unknown",
+    "status": "approved",
+    "paid": true,
+    "token": "Tracle_b0czU3RTO3F",
+    "tokenGenerated": "2025-12-06T20:50:15.439Z",
+    "paymentUpdated": "2025-12-06T20:50:15.437Z",
+    "lastTokenActivity": "2025-12-07T01:41:15.771Z"
+  }
+}

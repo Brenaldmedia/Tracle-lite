@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracle-Lite Admin Dashboard</title>
+    <link rel="stylesheet" href="admin.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="theme-purple">
+ <!-- Login Modal -->
+<div class="login-modal" id="loginModal">
+    <div class="login-container">
+        <div class="login-header">
+            <i class="fas fa-lock"></i>
+            <h2>Admin Login</h2>
+            <p>Enter your admin credentials to access the dashboard</p>
+        </div>
+        
+        <div class="login-form">
+            <div class="input-group">
+                <label for="adminEmail"><i class="fas fa-envelope"></i> Admin Email</label>
+                <input type="email" id="adminEmail" placeholder="brenaldmedia@gmail.com" value="brenaldmedia@gmail.com">
+            </div>
+            
+            <div class="input-group">
+                <label for="adminPassword"><i class="fas fa-key"></i> Password</label>
+                <input type="password" id="adminPassword" placeholder="Enter your password">
+              
+            </div>
+            
+            <button class="login-btn" id="loginBtn">
+                <i class="fas fa-sign-in-alt"></i> Login to Dashboard
+            </button>
+            
+            <button class="request-code-btn" id="remindMeBtn">
+                <i class="fas fa-key"></i> Remind Me
+            </button>
+            
+            <div id="loginMessage" class="login-message"></div>
+        </div>
+        
+        <div class="login-footer">
+            <p><i class="fas fa-shield-alt"></i> Secure Admin Access Only</p>
+            <p style="font-size: 12px; margin-top: 10px;">Admin Email: brenaldmedia@gmail.com</p>
+        </div>
+    </div>
+</div>
+
+    <!-- Admin Dashboard -->
+    <div class="admin-dashboard hidden" id="adminDashboard">
+        <!-- Mobile Header with Hamburger -->
+        <div class="mobile-header">
+            <button class="hamburger-menu" id="hamburgerMenu">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="mobile-title">
+                <h2>Tracle-Lite Admin</h2>
+            </div>
+            <button class="mobile-logout" id="mobileLogout">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="admin-avatar">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <div class="admin-info">
+                    <h3>Brenaldmedia</h3>
+                    <p>Super Admin</p>
+                </div>
+                <button class="logout-btn" id="logoutBtn">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+                <button class="sidebar-close" id="sidebarClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <div class="menu-item active" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </div>
+                <div class="menu-item" data-tab="users">
+                    <i class="fas fa-users"></i>
+                    <span>Users</span>
+                    <span class="badge" id="pendingCount">0</span>
+                </div>
+                <div class="menu-item" data-tab="tokens">
+                    <i class="fas fa-key"></i>
+                    <span>Tokens</span>
+                </div>
+                <div class="menu-item" data-tab="requests">
+                    <i class="fas fa-list"></i>
+                    <span>Requests</span>
+                </div>
+                <div class="menu-item" data-tab="reports">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
+                </div>
+                <div class="menu-item" data-tab="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="server-status">
+                    <i class="fas fa-circle online"></i>
+                    <span>Server Online</span>
+                </div>
+                <div class="version">v2.0.1</div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <h1 id="pageTitle">Dashboard</h1>
+                    <p id="pageSubtitle">Admin Control Panel</p>
+                </div>
+                
+                <div class="header-right">
+                    <div class="header-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-user-clock"></i>
+                            <div>
+                                <span class="stat-value" id="pendingApprovals">0</span>
+                                <span class="stat-label">Pending</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <div>
+                                <span class="stat-value" id="totalRevenue">₦0</span>
+                                <span class="stat-label">Revenue</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-users"></i>
+                            <div>
+                                <span class="stat-value" id="totalUsers">0</span>
+                                <span class="stat-label">Users</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Tabs -->
+            <div class="content-tabs">
+                <!-- Dashboard Tab -->
+                <div class="tab-content active" id="dashboardTab">
+                    <div class="dashboard-grid">
+                        <!-- Quick Stats -->
+                        <div class="card wide">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-line"></i> Quick Stats</h3>
+                                <button class="refresh-btn" id="refreshStats">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="stats-grid">
+                                    <div class="stat-card">
+                                        <div class="stat-icon success">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                        <div class="stat-info">
+                                            <h4>Approved Users</h4>
+                                            <p id="approvedCount">0</p>
+                                        </div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-icon warning">
+                                            <i class="fas fa-clock"></i>
+                                        </div>
+                                        <div class="stat-info">
+                                            <h4>Pending Users</h4>
+                                            <p id="pendingUsersCount">0</p>
+                                        </div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-icon danger">
+                                            <i class="fas fa-times-circle"></i>
+                                        </div>
+                                        <div class="stat-info">
+                                            <h4>Terminated</h4>
+                                            <p id="terminatedCount">0</p>
+                                        </div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-icon info">
+                                            <i class="fas fa-key"></i>
+                                        </div>
+                                        <div class="stat-info">
+                                            <h4>Active Tokens</h4>
+                                            <p id="activeTokens">0</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Requests -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-history"></i> Recent Requests</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table id="recentRequestsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Email</th>
+                                                <th>Time</th>
+                                                <th>Status</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr><td colspan="4" style="text-align: center; padding: 20px;">Loading requests...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="actions-grid">
+                                    <button class="action-btn" data-action="generateToken">
+                                        <i class="fas fa-plus-circle"></i>
+                                        <span>Generate Token</span>
+                                    </button>
+                                    <button class="action-btn" data-action="sendBulkEmail">
+                                        <i class="fas fa-envelope"></i>
+                                        <span>Send Email</span>
+                                    </button>
+                                    <button class="action-btn" data-action="backupData">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <span>Backup Data</span>
+                                    </button>
+                                    <button class="action-btn" data-action="viewReports">
+                                        <i class="fas fa-file-alt"></i>
+                                        <span>Reports</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users Tab -->
+                <div class="tab-content" id="usersTab">
+                    <div class="users-header">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="userSearch" placeholder="Search users by email...">
+                        </div>
+                        <div class="filter-buttons">
+                            <button class="filter-btn active" data-filter="all">All</button>
+                            <button class="filter-btn" data-filter="pending">Pending</button>
+                            <button class="filter-btn" data-filter="approved">Approved</button>
+                            <button class="filter-btn" data-filter="paid">Paid</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Payment</th>
+                                    <th>Requests</th>
+                                    <th>Last Active</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading users...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tokens Tab -->
+                <div class="tab-content" id="tokensTab">
+                    <div class="tokens-header">
+                        <h3>Token Management</h3>
+                        <button class="btn-primary" id="generateTokenBtn">
+                            <i class="fas fa-plus"></i> Generate New Token
+                        </button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="tokensTable">
+                            <thead>
+                                <tr>
+                                    <th>Token</th>
+                                    <th>Email</th>
+                                    <th>Created</th>
+                                    <th>Used</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading tokens...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Requests Tab -->
+                <div class="tab-content" id="requestsTab">
+                    <div class="requests-header">
+                        <h3>Token Requests</h3>
+                        <div class="export-buttons">
+                            <button class="btn-secondary">
+                                <i class="fas fa-download"></i> Export CSV
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="requestsTable">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>IP Address</th>
+                                    <th>Location</th>
+                                    <th>Device</th>
+                                    <th>Time</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading requests...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Reports Tab -->
+                <div class="tab-content" id="reportsTab">
+                    <div class="reports-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-pie"></i> User Distribution</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="userDistributionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-calendar-alt"></i> Daily Activity</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="dailyActivityChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card wide">
+                            <div class="card-header">
+                                <h3><i class="fas fa-money-bill"></i> Revenue Report</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="revenue-stats">
+                                    <div class="revenue-item">
+                                        <span class="revenue-label">Today</span>
+                                        <span class="revenue-value" id="revenueToday">₦0</span>
+                                    </div>
+                                    <div class="revenue-item">
+                                        <span class="revenue-label">This Week</span>
+                                        <span class="revenue-value" id="revenueWeek">₦0</span>
+                                    </div>
+                                    <div class="revenue-item">
+                                        <span class="revenue-label">This Month</span>
+                                        <span class="revenue-value" id="revenueMonth">₦0</span>
+                                    </div>
+                                    <div class="revenue-item">
+                                        <span class="revenue-label">Total</span>
+                                        <span class="revenue-value" id="revenueTotal">₦0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div class="tab-content" id="settingsTab">
+                    <div class="settings-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-envelope"></i> Email Settings</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>Admin Email</label>
+                                    <input type="email" value="brenaldmedia@gmail.com" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label>Email Template</label>
+                                    <select>
+                                        <option>Default Template</option>
+                                        <option>Premium Template</option>
+                                    </select>
+                                </div>
+                                <button class="btn-primary">
+                                    <i class="fas fa-save"></i> Save Settings
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-database"></i> Backup Settings</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>Auto Backup</label>
+                                    <select>
+                                        <option>Daily</option>
+                                        <option>Weekly</option>
+                                        <option>Monthly</option>
+                                        <option>Disabled</option>
+                                    </select>
+                                </div>
+                                <div class="backup-actions">
+                                    <button class="btn-secondary" id="backupNowBtn">
+                                        <i class="fas fa-cloud-upload-alt"></i> Backup Now
+                                    </button>
+                                    <button class="btn-secondary" id="restoreBackupBtn">
+                                        <i class="fas fa-cloud-download-alt"></i> Restore
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-shield-alt"></i> Security</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>Admin Password</label>
+                                    <input type="password" value="isiboremmanuel0911" readonly style="font-family: monospace;">
+                                </div>
+                                <button class="btn-secondary">
+                                    <i class="fas fa-history"></i> View Login History
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal" id="userDetailsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>User Details</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="userDetailsContent">
+                <!-- User details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="generateTokenModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Generate Token</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>User Email</label>
+                    <input type="email" id="tokenEmail" placeholder="user@gmail.com">
+                </div>
+                <div class="form-group">
+                    <label>Mark as Paid</label>
+                    <select id="tokenPaymentStatus">
+                        <option value="true">Yes - User has paid</option>
+                        <option value="false">No - Free token</option>
+                    </select>
+                </div>
+                <button class="btn-primary" id="generateTokenConfirm">Generate Token</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>
