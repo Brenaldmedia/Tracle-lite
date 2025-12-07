@@ -10,50 +10,29 @@ let codeCountdownInterval = null;
 
 // ===== DOM ELEMENTS =====
 const elements = {
-    // Navigation
     navOverlay: document.getElementById('navOverlay'),
     menuToggle: document.getElementById('menuToggle'),
     closeNav: document.getElementById('closeNav'),
-    
-    // User info
     userEmail: document.getElementById('userEmail'),
     userStatus: document.getElementById('userStatus'),
-    
-    // Active users
     activeUsersCount: document.getElementById('activeUsersCount'),
     liveUsers: document.getElementById('liveUsers'),
-    
-    // Sections
     navItems: document.querySelectorAll('.nav-item'),
     contentSections: document.querySelectorAll('.content-section'),
-    
-    // Connection
     pairingSection: document.getElementById('pairingSection'),
     statusSection: document.getElementById('statusSection'),
     codeDisplay: document.getElementById('codeDisplay'),
     countdown: document.getElementById('countdown'),
     connectedNumber: document.getElementById('connectedNumber'),
-    
-    // Token Request Section
     emailInput: document.getElementById('emailInput'),
-    requestTokenBtn: document.getElementById('requestTokenBtn'),
-    tokenResult: document.getElementById('tokenResult'),
-    
-    // Quiz
     quizQuestion: document.getElementById('quizQuestion'),
     quizOptions: document.getElementById('quizOptions'),
     quizResult: document.getElementById('quizResult'),
-    
-    // Code Section (for getting bot code)
     codeEmail: document.getElementById('codeEmail'),
     codeTokenInput: document.getElementById('codeTokenInput'),
     codeNumber: document.getElementById('codeNumber'),
     tokenValidationResult: document.getElementById('tokenValidationResult'),
-    
-    // Sessions
     sessionsList: document.getElementById('sessionsList'),
-    
-    // Modal
     customModal: document.getElementById('customModal'),
     modalTitle: document.getElementById('modalTitle'),
     modalBody: document.getElementById('modalBody'),
@@ -65,22 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initSocket();
     initEventListeners();
-    
-    // Load initial quiz if needed
     loadQuiz();
-    
-    // Check for saved token
     checkSavedToken();
-    
-    // Check theme preference
     checkThemePreference();
-    
-    // Check admin access on page load
     checkAdminAccess();
 });
 
-// Also add this function to refresh admin status periodically
-setInterval(checkAdminAccess, 5 * 60 * 1000); // Check every 5 minutes
+setInterval(checkAdminAccess, 5 * 60 * 1000);
 
 // ===== THEME FUNCTIONS =====
 function checkThemePreference() {
@@ -93,7 +63,6 @@ function checkThemePreference() {
 }
 
 function toggleTheme() {
-    // Toggle between light/dark mode only
     if (document.body.classList.contains('dark-theme')) {
         document.body.classList.remove('dark-theme');
         localStorage.setItem('theme', 'light');
@@ -111,7 +80,6 @@ function showModal(title, message, confirmText = 'Confirm', confirmCallback = nu
     elements.modalBody.innerHTML = message;
     elements.modalConfirm.textContent = confirmText;
     
-    // Store callback
     if (confirmCallback) {
         const originalOnclick = elements.modalConfirm.onclick;
         elements.modalConfirm.onclick = function() {
@@ -125,7 +93,6 @@ function showModal(title, message, confirmText = 'Confirm', confirmCallback = nu
 
 function closeModal() {
     elements.customModal.classList.add('hidden');
-    // Clear callback
     elements.modalConfirm.onclick = null;
 }
 
@@ -139,10 +106,8 @@ function initNavigation() {
         elements.navOverlay.classList.remove('active');
     });
     
-    // Navigation item clicks
     elements.navItems.forEach(item => {
         item.addEventListener('click', (e) => {
-            // Skip if it's the admin link (handled by onclick)
             if (item.querySelector('span')?.textContent === 'Admin Login') {
                 return;
             }
@@ -154,23 +119,17 @@ function initNavigation() {
             
             const section = item.dataset.section;
             
-            // Remove active class from all items
             elements.navItems.forEach(nav => nav.classList.remove('active'));
-            
-            // Add active class to clicked item
             item.classList.add('active');
             
-            // Show corresponding section
             showSection(section);
             
-            // Close menu on mobile
             if (window.innerWidth <= 768) {
                 elements.navOverlay.classList.remove('active');
             }
         });
     });
     
-    // Action buttons
     document.querySelectorAll('.action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -183,20 +142,16 @@ function initNavigation() {
 }
 
 function showSection(section) {
-    // Hide all sections
     elements.contentSections.forEach(sec => {
         sec.classList.remove('active');
     });
     
-    // Show selected section
     const targetSection = document.getElementById(`${section}Section`);
     if (targetSection) {
         targetSection.classList.add('active');
-        // Scroll to top of the section
         targetSection.scrollIntoView({ behavior: 'smooth' });
     }
     
-    // Update header title
     const headerTitle = document.querySelector('.header-title h1');
     const headerSubtitle = document.querySelector('.header-title p');
     
@@ -216,10 +171,6 @@ function showSection(section) {
         case 'features':
             headerTitle.textContent = 'Features';
             headerSubtitle.textContent = 'Explore premium features';
-            break;
-        case 'code':
-            headerTitle.textContent = 'Get Code';
-            headerSubtitle.textContent = 'Get WhatsApp pairing code';
             break;
         case 'sessions':
             headerTitle.textContent = 'My Sessions';
@@ -246,22 +197,36 @@ function initSocket() {
     });
     
     socket.on('pairing-code', (data) => {
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            console.log('Ignoring pairing code for different user');
+            return;
+        }
+        
         currentUserNumber = data.userNumber;
         const code = data.pairingCode;
-        
-        // Show pairing code in home section
         showPairingCode(code);
     });
     
     socket.on('connected', (data) => {
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            console.log('Ignoring connection for different user');
+            return;
+        }
+        
         showConnected(data.userNumber);
     });
     
-    socket.on('disconnected', () => {
+    socket.on('disconnected', (data) => {
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            return;
+        }
         showToast('WhatsApp session disconnected', 'warning');
     });
     
     socket.on('error', (data) => {
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            return;
+        }
         showToast('Error: ' + data.error, 'error');
     });
 }
@@ -275,12 +240,9 @@ function checkSavedToken() {
         currentUserToken = savedToken;
         currentUserEmail = savedEmail;
         
-        // Update UI
         elements.userEmail.textContent = savedEmail;
         elements.userStatus.textContent = 'Token: ' + savedToken.substring(0, 12) + '...';
         elements.userStatus.style.color = 'var(--accent-success)';
-        
-        // Pre-fill token inputs
         elements.codeTokenInput.value = savedToken;
         
         showToast('✅ Welcome back! Your token is loaded.', 'success');
@@ -295,12 +257,9 @@ function saveUserToken(token, email) {
     currentUserToken = token;
     currentUserEmail = email;
     
-    // Update UI
     elements.userEmail.textContent = email;
     elements.userStatus.textContent = 'Token: ' + token.substring(0, 12) + '...';
     elements.userStatus.style.color = 'var(--accent-success)';
-    
-    // Update token input fields
     elements.codeTokenInput.value = token;
     
     showToast('✅ Token saved for this session', 'success');
@@ -343,7 +302,6 @@ async function validateTokenForUser(email, token) {
 
 // ===== PAIRING CODE FUNCTIONS =====
 function createSession() {
-    // Get number from home section
     let number = elements.codeNumber?.value?.trim() || currentUserNumber;
     
     if (!number) {
@@ -357,7 +315,11 @@ function createSession() {
         return;
     }
     
-    // Show loading state in home section
+    if (!currentUserEmail || !currentUserToken) {
+        showModal('Authentication Required', 'Please enter your email and token first.', 'OK');
+        return;
+    }
+    
     if (elements.pairingSection && !elements.pairingSection.classList.contains('hidden')) {
         elements.pairingSection.classList.remove('hidden');
         elements.codeDisplay.innerHTML = `
@@ -368,12 +330,12 @@ function createSession() {
         `;
     }
     
-    // Emit socket event to generate pairing code
     socket.emit('create-session', {
-        userNumber: validatedNumber
+        userNumber: validatedNumber,
+        email: currentUserEmail,
+        token: currentUserToken
     });
     
-    // Start countdown
     startCountdown(120);
 }
 
@@ -404,7 +366,6 @@ function validateWhatsAppNumber(number) {
 }
 
 function showPairingCode(code) {
-    // For home section
     elements.pairingSection.classList.remove('hidden');
     elements.statusSection.classList.add('hidden');
     
@@ -420,7 +381,6 @@ function showPairingCode(code) {
 }
 
 function showConnected(userNumber) {
-    // For home section
     stopCountdown();
     elements.pairingSection.classList.add('hidden');
     elements.statusSection.classList.remove('hidden');
@@ -464,7 +424,6 @@ async function verifyTokenAndStartQuiz() {
     const token = elements.codeTokenInput.value.trim();
     const number = elements.codeNumber.value.trim();
     
-    // Validation
     if (!email || !token || !number) {
         showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
         return;
@@ -481,26 +440,21 @@ async function verifyTokenAndStartQuiz() {
         return;
     }
     
-    // Show loading state
     const startBtn = document.querySelector('.primary-btn[onclick*="verifyTokenAndStartQuiz"]');
     const originalHtml = startBtn.innerHTML;
     startBtn.disabled = true;
     startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
     
     try {
-        // Validate token with email
         const validationResult = await validateTokenForUser(email, token);
         
         if (validationResult.valid) {
-            // Save token for this session
             saveUserToken(token, email);
             
-            // Token is valid for this email, now show quiz
             await showQuizAfterTokenValidation();
             showToast('✅ Token verified successfully! Answer the quiz to get pairing code.', 'success');
             
         } else {
-            // Show error
             showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
         }
     } catch (error) {
@@ -513,10 +467,8 @@ async function verifyTokenAndStartQuiz() {
 }
 
 async function showQuizAfterTokenValidation() {
-    // Get the get-bot-code-section
     const getBotCodeSection = document.querySelector('.get-bot-code-section');
     
-    // Create quiz HTML
     const quizHTML = `
         <div class="quiz-card" id="homeQuizContainer" style="margin-top: 20px;">
             <div class="quiz-header">
@@ -531,10 +483,7 @@ async function showQuizAfterTokenValidation() {
         </div>
     `;
     
-    // Insert quiz after the get-bot-code-section
     getBotCodeSection.insertAdjacentHTML('afterend', quizHTML);
-    
-    // Load quiz question
     await loadHomeQuizQuestion();
 }
 
@@ -587,7 +536,6 @@ async function submitHomeQuizAnswer(answer) {
         
         if (data.success) {
             if (data.correct) {
-                // Show success message
                 document.getElementById('homeQuizResult').innerHTML = `
                     <div class="success-message">
                         <i class="fas fa-check-circle"></i>
@@ -597,10 +545,15 @@ async function submitHomeQuizAnswer(answer) {
                 `;
                 document.getElementById('homeQuizResult').style.display = 'block';
                 
-                // Hide quiz, generate pairing code
                 setTimeout(() => {
                     document.getElementById('homeQuizContainer').remove();
                     createSession();
+                    
+                    // Auto scroll to code section
+                    const codeSection = document.getElementById('codeSection');
+                    if (codeSection) {
+                        codeSection.scrollIntoView({ behavior: 'smooth' });
+                    }
                 }, 1500);
                 
             } else {
@@ -613,7 +566,6 @@ async function submitHomeQuizAnswer(answer) {
                 `;
                 document.getElementById('homeQuizResult').style.display = 'block';
                 
-                // Reload new question
                 setTimeout(loadHomeQuizQuestion, 2000);
             }
         }
@@ -632,7 +584,6 @@ async function requestToken() {
         return;
     }
     
-    // Validate email format
     const emailRegex = /^[a-zA-Z0-9._%+-]+@(gmail\.com|outlook\.com)$/;
     if (!emailRegex.test(email)) {
         showModal('Invalid Email', 'Only @gmail.com or @outlook.com emails are allowed.', 'OK');
@@ -754,7 +705,6 @@ async function submitAnswer(answer) {
                 elements.quizResult.style.display = 'block';
                 showToast('Incorrect answer. Try again.', 'error');
                 
-                // Reload new question
                 setTimeout(loadQuiz, 2000);
             }
         }
@@ -764,9 +714,23 @@ async function submitAnswer(answer) {
     }
 }
 
-// ===== SESSIONS MANAGEMENT =====
+// ===== SESSIONS MANAGEMENT (USER-ISOLATED) =====
 async function loadUserSessions() {
     try {
+        if (!currentUserEmail || !currentUserToken) {
+            elements.sessionsList.innerHTML = `
+                <div class="no-sessions">
+                    <i class="fas fa-key"></i>
+                    <h4>Authentication Required</h4>
+                    <p>Please enter your email and token first.</p>
+                    <button class="primary-btn" onclick="showSection('home')">
+                        <i class="fas fa-home"></i> Go to Dashboard
+                    </button>
+                </div>
+            `;
+            return;
+        }
+        
         elements.sessionsList.innerHTML = `
             <div class="loading-sessions">
                 <i class="fas fa-spinner fa-spin"></i>
@@ -774,10 +738,24 @@ async function loadUserSessions() {
             </div>
         `;
         
-        const response = await fetch('/api/sessions');
+        const response = await fetch('/api/user-sessions', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                email: currentUserEmail,
+                token: currentUserToken
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load sessions');
+        }
+        
         const data = await response.json();
         
-        if (data.sessions && data.sessions.length > 0) {
+        if (data.success && data.sessions && data.sessions.length > 0) {
             let sessionsHTML = '<div class="sessions-grid">';
             
             data.sessions.forEach(session => {
@@ -793,8 +771,9 @@ async function loadUserSessions() {
                         <div class="session-body">
                             <p><strong>Registered:</strong> ${session.registered ? 'Yes' : 'No'}</p>
                             <p><strong>Mode:</strong> ${session.settings?.botMode || 'public'}</p>
+                            <p><strong>Last Active:</strong> ${session.lastActivity ? new Date(session.lastActivity).toLocaleString() : 'Never'}</p>
                             <div class="session-actions">
-                                <button class="btn-secondary small" onclick="deleteSession('${session.userNumber}')">
+                                <button class="btn-secondary small" onclick="deleteUserSession('${session.userNumber}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </div>
@@ -812,6 +791,9 @@ async function loadUserSessions() {
                     <h4>No Active Sessions</h4>
                     <p>You haven't connected any WhatsApp devices yet.</p>
                     <p>Use the pairing feature to connect your WhatsApp.</p>
+                    <button class="primary-btn" onclick="showSection('home')">
+                        <i class="fas fa-plus"></i> Connect Device
+                    </button>
                 </div>
             `;
         }
@@ -827,31 +809,44 @@ async function loadUserSessions() {
     }
 }
 
-// ===== DELETE SESSION FUNCTION =====
-async function deleteSession(userNumber) {
+// ===== DELETE SESSION FUNCTION (USER-ISOLATED) =====
+async function deleteUserSession(userNumber) {
+    if (!currentUserEmail || !currentUserToken) {
+        showToast('Authentication required', 'error');
+        return;
+    }
+    
     try {
         showModal('Delete Session', 
             `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data.`,
             'Delete',
             async () => {
                 try {
-                    // Show loading
                     showToast('Deleting session...', 'info');
                     
-                    // Call API to delete session
-                    const response = await fetch(`/api/session/${userNumber}`, {
-                        method: 'DELETE'
+                    const response = await fetch(`/api/delete-user-session`, {
+                        method: 'DELETE',
+                        headers: { 
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: currentUserEmail,
+                            token: currentUserToken,
+                            userNumber: userNumber
+                        })
                     });
                     
                     if (response.ok) {
                         const data = await response.json();
                         showToast('✅ Session deleted successfully', 'success');
                         
-                        // Reload sessions list
                         loadUserSessions();
                         
-                        // Emit socket event to disconnect
-                        socket.emit('disconnect-session', userNumber);
+                        socket.emit('disconnect-session', {
+                            userNumber: userNumber,
+                            email: currentUserEmail,
+                            token: currentUserToken
+                        });
                     } else {
                         throw new Error('Failed to delete session');
                     }
@@ -878,7 +873,6 @@ function checkAdminAccess() {
         const hours24 = 24 * 60 * 60 * 1000;
         
         if (tokenAge < hours24) {
-            // Token is valid for 24 hours, show admin link
             const adminNavItem = document.querySelector('.nav-item[onclick*="admin.html"]');
             if (adminNavItem) {
                 adminNavItem.innerHTML = `
@@ -890,7 +884,6 @@ function checkAdminAccess() {
             }
             console.log('Admin access active (valid for next', Math.round((hours24 - tokenAge) / (60 * 60 * 1000)), 'hours)');
         } else {
-            // Token expired, clear it
             localStorage.removeItem('admin_token');
             localStorage.removeItem('admin_token_time');
             console.log('Admin token expired');
@@ -930,7 +923,6 @@ function showToast(message, type = 'info') {
     
     toastContainer.appendChild(toast);
     
-    // Auto-remove toast after 5 seconds
     setTimeout(() => {
         if (toast.parentElement) {
             toast.remove();
@@ -948,7 +940,6 @@ function getToastIcon(type) {
 }
 
 function initEventListeners() {
-    // Input enter key support
     elements.emailInput?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') requestToken();
     });
@@ -957,12 +948,10 @@ function initEventListeners() {
         if (e.key === 'Enter') verifyTokenAndStartQuiz();
     });
     
-    // Auto-format phone input
     elements.codeNumber?.addEventListener('input', (e) => {
         e.target.value = e.target.value.replace(/\D/g, '');
     });
     
-    // Token input validation
     elements.codeTokenInput?.addEventListener('input', (e) => {
         const token = e.target.value;
         if (token.startsWith('Tracle_') && token.length === 18) {
@@ -983,7 +972,11 @@ document.addEventListener('visibilitychange', () => {
 // Clean up on page unload
 window.addEventListener('beforeunload', () => {
     if (currentUserNumber) {
-        socket.emit('disconnect-session', currentUserNumber);
+        socket.emit('disconnect-session', {
+            userNumber: currentUserNumber,
+            email: currentUserEmail,
+            token: currentUserToken
+        });
     }
 });
 
@@ -1008,7 +1001,7 @@ window.copyToClipboard = copyToClipboard;
 window.submitAnswer = submitAnswer;
 window.loadQuiz = loadQuiz;
 window.loadUserSessions = loadUserSessions;
-window.deleteSession = deleteSession;
+window.deleteSession = deleteUserSession;
 window.toggleTheme = toggleTheme;
 window.closeModal = closeModal;
 window.showModal = showModal;

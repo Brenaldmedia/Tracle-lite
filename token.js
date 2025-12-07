@@ -1235,6 +1235,53 @@ class TokenManager {
             return { success: false, message: error.message };
         }
     }
+
+    // Add to TokenManager class: Get user sessions
+    async getUserSessions(email, token) {
+        try {
+            // First validate token
+            const validation = await this.validateTokenWithEmail(email, token);
+            if (!validation.valid) {
+                return { success: false, message: 'Invalid token for this email' };
+            }
+
+            const sessionsPath = path.join(__dirname, '..', 'sessions');
+            if (!fs.existsSync(sessionsPath)) {
+                return { success: true, sessions: [] };
+            }
+
+            const userSessions = [];
+            const folders = fs.readdirSync(sessionsPath);
+            
+            for (const userNumber of folders) {
+                const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
+                if (fs.existsSync(userInfoPath)) {
+                    try {
+                        const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                        if (userInfo.email === email && userInfo.token === token) {
+                            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
+                            if (fs.existsSync(credsPath)) {
+                                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                                userSessions.push({
+                                    userNumber,
+                                    registered: creds.registered || false,
+                                    lastActivity: userInfo.lastActivity || null,
+                                    createdAt: userInfo.createdAt || null
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error reading session ${userNumber}:`, error);
+                    }
+                }
+            }
+
+            return { success: true, sessions: userSessions };
+        } catch (error) {
+            console.error('Error getting user sessions:', error);
+            return { success: false, message: error.message };
+        }
+    }
 }
 
 // Create singleton instance

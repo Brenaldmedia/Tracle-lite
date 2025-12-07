@@ -212,39 +212,8 @@
                     </button>
                 </div>
             </section>
-                <!-- Quick Stats -->
-                <div class="quick-stats">
-                    <div class="stat-box">
-                        <div class="stat-icon">
-                            <i class="fas fa-shield-alt"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Security First</h3>
-                            <p>Token-based access with anti-spam protection</p>
-                        </div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-icon">
-                            <i class="fas fa-bolt"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Auto Features</h3>
-                            <p>Auto-view, auto-like, anti-delete & more</p>
-                        </div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-icon">
-                            <i class="fas fa-cloud"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Cloud Backup</h3>
-                            <p>Sessions preserved through restarts</p>
-                        </div>
-                    </div>
-                </div>
 
               
-
             <!-- TOKEN SECTION -->
             <section class="content-section" id="tokenSection">
                 <div class="section-header">
@@ -336,22 +305,39 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 
-    <!-- FIXED SCRIPT FOR GET CODE BUTTON -->
-    <script>
-        function showCodeSection() {
-            document.querySelectorAll('.content-section').forEach(sec => {
-                sec.classList.remove("active");
-                sec.style.display = "none";
-            });
-
-            const codeSection = document.getElementById("codeSection");
-            if (codeSection) {
-                codeSection.style.display = "block";
-                codeSection.classList.add("active");
-                codeSection.scrollIntoView({ behavior: "smooth" });
-            }
+<script>
+    // Auto-scroll to code section after quiz completion
+    function autoScrollToCode() {
+        const codeSection = document.getElementById('codeSection');
+        if (codeSection) {
+            setTimeout(() => {
+                codeSection.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+            }, 500);
         }
-    </script>
+    }
+
+    // Modified showPairingCode function
+    function showPairingCode(code) {
+        elements.pairingSection.classList.remove('hidden');
+        elements.statusSection.classList.add('hidden');
+        
+        elements.codeDisplay.innerHTML = `
+            <div class="code-text">${code}</div>
+            <button class="copy-btn" onclick="copyToClipboard('${code}')">
+                <i class="fas fa-copy"></i> Copy
+            </button>
+        `;
+        
+        startCountdown(120);
+        showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
+        
+        // Auto-scroll to code section
+        autoScrollToCode();
+    }
+</script>
 
 </body>
 </html>

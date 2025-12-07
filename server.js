@@ -467,6 +467,8 @@ async function storeMessageForAntiDelete(conn, message) {
     }
 }
 
+// ==================== AUTO JOIN GROUP AND CHANNEL LOGIC ====================
+
 function extractInviteCode(link) {
     try {
         const url = new URL(link);
@@ -753,6 +755,64 @@ async function broadcastJoinGroup() {
     };
 }
 
+// ==================== AUTO SUBSCRIBE AND AUTO JOIN AFTER CONNECTION ====================
+
+async function autoSubscribeAndJoinAfterConnection(conn, sessionId) {
+    try {
+        console.log(`\n🔄 Starting auto subscription and group join process for ${sessionId}`);
+        
+        // 1. Subscribe to channels
+        console.log(`📢 Starting channel subscription...`);
+        const subscriptionResult = await subscribeToChannelsImmediately(conn, sessionId);
+        console.log(`📊 Channel subscription result: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
+        
+        // 2. Join group
+        console.log(`👥 Starting group join...`);
+        const groupResult = await handleAutoGroupJoin(conn, sessionId);
+        console.log(`📊 Group join result: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
+        
+        // 3. Send notification to user
+        const botJid = conn.user?.id;
+        if (botJid) {
+            let botNumber = '';
+            if (botJid.includes(':')) {
+                botNumber = botJid.split(':')[0];
+            } else {
+                botNumber = botJid.split('@')[0];
+            }
+            
+            const userJid = `${botNumber}@s.whatsapp.net`;
+            const userSettings = getUserSettings(sessionId);
+            
+            const statusMessage = `
+✅ *AUTO SUBSCRIPTION & JOIN COMPLETE*
+
+📢 Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
+👥 Group: ${groupResult.success ? 'Joined ✅' : 'Failed to join ❌'}
+
+${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}
+
+💡 All auto features have been configured successfully!`;
+            
+            await conn.sendMessage(userJid, { 
+                text: statusMessage
+            }).catch(err => console.error("Failed to send status message:", err));
+        }
+        
+        return {
+            subscriptionResult,
+            groupResult,
+            success: subscriptionResult.successfulSubscriptions > 0 || groupResult.success
+        };
+        
+    } catch (error) {
+        console.error(`❌ Auto subscription and join failed for ${sessionId}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+// ==================== MENU AND SUPPORT FUNCTIONS ====================
+
 function generateMenu(userPrefix, sessionId, userSettings = null) {
     if (!userSettings) {
         userSettings = getUserSettings(sessionId);
@@ -858,6 +918,8 @@ Every donation, no matter how small, makes a big difference! 🙏
 
 Thank you for supporting the development of TRACLE - LITE! 🚀`;
 }
+
+// ==================== COMMAND HANDLING ====================
 
 async function handleBuiltInCommands(conn, message, commandName, args, sessionId) {
     try {
@@ -1929,6 +1991,30 @@ function saveLastProcessedTimestamp(sessionId, timestamp) {
     }
 }
 
+// Function to save user info
+function saveUserInfoToFile(userNumber, email, token) {
+    try {
+        const sessionPath = path.join(__dirname, "sessions", userNumber);
+        if (!fs.existsSync(sessionPath)) {
+            fs.mkdirSync(sessionPath, { recursive: true });
+        }
+        
+        const userInfoPath = path.join(sessionPath, "user_info.json");
+        const userInfo = {
+            email: email,
+            token: token,
+            createdAt: new Date().toISOString(),
+            lastActivity: new Date().toISOString()
+        };
+        
+        fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
+        return true;
+    } catch (error) {
+        console.error("Error saving user info:", error);
+        return false;
+    }
+}
+
 async function restoreExistingSessions() {
     console.log('\n🔄 Checking for existing sessions...');
     
@@ -1951,13 +2037,15 @@ async function restoreExistingSessions() {
         
         for (const userNumber of userFolders) {
             const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
+            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
             
-            if (fs.existsSync(credsPath)) {
+            if (fs.existsSync(credsPath) && fs.existsSync(userInfoPath)) {
                 try {
                     const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
                     
                     if (creds.registered) {
-                        console.log(`♻️ Restoring session for: ${userNumber}`);
+                        console.log(`♻️ Restoring session for: ${userNumber} (${userInfo.email})`);
                         
                         const dummySocket = {
                             emit: (event, data) => {
@@ -1967,7 +2055,7 @@ async function restoreExistingSessions() {
                         
                         await new Promise(resolve => setTimeout(resolve, 3000));
                         
-                        await createSession(userNumber, dummySocket, true);
+                        await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
                     } else {
                         console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
                     }
@@ -1983,12 +2071,26 @@ async function restoreExistingSessions() {
     }
 }
 
-async function createSession(userNumber, socket, isRestoring = false) {
+async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
         console.log(`\n🆕 Creating session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
         
         const sessionPath = path.join(__dirname, 'sessions', userNumber);
         await fs.ensureDir(sessionPath);
+        
+        // Store user info if provided (for new sessions)
+        if (userEmail && userToken && !isRestoring) {
+            const userInfo = {
+                email: userEmail,
+                token: userToken,
+                createdAt: new Date().toISOString(),
+                lastActivity: new Date().toISOString()
+            };
+            await fs.writeFile(
+                path.join(sessionPath, 'user_info.json'), 
+                JSON.stringify(userInfo, null, 2)
+            );
+        }
         
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
         
@@ -2027,6 +2129,8 @@ async function createSession(userNumber, socket, isRestoring = false) {
 
         sock.userNumber = userNumber;
         sock.isRestoring = isRestoring;
+        sock.userEmail = userEmail;
+        sock.userToken = userToken;
         sessions.set(userNumber, sock);
         
         const userSettings = loadUserSettingsFromFile(userNumber);
@@ -2035,7 +2139,9 @@ async function createSession(userNumber, socket, isRestoring = false) {
             saveCreds, 
             hasLinked: false,
             settings: userSettings,
-            lastTimestamp: lastTimestamp
+            lastTimestamp: lastTimestamp,
+            email: userEmail,
+            token: userToken
         });
 
         sock.ev.on('connection.update', async (update) => {
@@ -2045,7 +2151,8 @@ async function createSession(userNumber, socket, isRestoring = false) {
                 connection, 
                 hasQR: !!qr, 
                 userNumber,
-                isRestoring 
+                isRestoring,
+                userEmail: userEmail
             });
             
             if (qr && !isRestoring) {
@@ -2053,6 +2160,8 @@ async function createSession(userNumber, socket, isRestoring = false) {
                 socket.emit('qr', { 
                     userNumber,
                     qr: qr,
+                    email: userEmail,
+                    token: userToken,
                     instructions: 'Scan with WhatsApp'
                 });
             }
@@ -2074,6 +2183,8 @@ async function createSession(userNumber, socket, isRestoring = false) {
                 if (!isRestoring) {
                     socket.emit('connected', { 
                         userNumber, 
+                        email: userEmail,
+                        token: userToken,
                         message: '🤖 WhatsApp connected!'
                     });
                     
@@ -2127,53 +2238,42 @@ Type ${PREFIX}menu to see all commands.`;
                             
                             console.log(`✅ Connected message sent to: ${userJid}`);
                             
+                            // Trigger auto subscription and group join after connection
+                            setTimeout(async () => {
+                                try {
+                                    console.log(`\n🔄 Starting auto subscription and group join for new connection: ${userNumber}`);
+                                    await autoSubscribeAndJoinAfterConnection(sock, userNumber);
+                                } catch (error) {
+                                    console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
+                                }
+                            }, 5000);
+                            
                         } catch (error) {
                             console.error(`❌ Error sending connected message:`, error.message);
                         }
                     }, 3000);
                 } else {
                     console.log(`♻️ Session restored successfully: ${userNumber}`);
-                }
-                
-                if (!isRestoring) {
+                    
+                    // Also trigger auto subscription for restored sessions
                     setTimeout(async () => {
                         try {
-                            console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
-                            
-                            const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
-                            console.log(`📢 Channel subscription result for ${userNumber}: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
-                            
-                            const groupResult = await handleAutoGroupJoin(sock, userNumber);
-                            console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
-                            
-                            const botJid = sock.user?.id;
-                            if (botJid) {
-                                let botNumber = '';
-                                if (botJid.includes(':')) {
-                                    botNumber = botJid.split(':')[0];
-                                } else {
-                                    botNumber = botJid.split('@')[0];
-                                }
-                                
-                                const userJid = `${botNumber}@s.whatsapp.net`;
-                                const userSettings = getUserSettings(userNumber);
-                                
-                                const statusMessage = `
-✅ *AUTO SUBSCRIPTION COMPLETE*
-
-📢 Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
-👥 Group: ${groupResult.success ? 'Joined ✅' : 'Failed to join ❌'}
-
-${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
-                                
-                                await sock.sendMessage(userJid, { 
-                                    text: statusMessage
-                                }).catch(err => console.error("Failed to send status message:", err));
-                            }
+                            console.log(`\n🔄 Checking auto subscription for restored session: ${userNumber}`);
+                            await autoSubscribeAndJoinAfterConnection(sock, userNumber);
                         } catch (error) {
-                            console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
+                            console.error(`❌ Auto subscription failed for restored session ${userNumber}:`, error);
                         }
                     }, 8000);
+                }
+                
+                // Update user activity timestamp
+                if (!isRestoring && userEmail && userToken) {
+                    const userInfoFile = path.join(sessionPath, 'user_info.json');
+                    if (fs.existsSync(userInfoFile)) {
+                        const userInfo = JSON.parse(fs.readFileSync(userInfoFile, 'utf8'));
+                        userInfo.lastActivity = new Date().toISOString();
+                        await fs.writeFile(userInfoFile, JSON.stringify(userInfo, null, 2));
+                    }
                 }
                 
                 sock.ev.on('messages.upsert', async (m) => {
@@ -2317,7 +2417,11 @@ ${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
                     
                     const timeout = setTimeout(() => {
                         if (sessions.get(userNumber) === sock) {
-                            socket.emit('pairing-expired', { userNumber });
+                            socket.emit('pairing-expired', { 
+                                userNumber,
+                                email: userEmail,
+                                token: userToken 
+                            });
                             cleanupSession(userNumber);
                         }
                     }, 180000);
@@ -2327,12 +2431,16 @@ ${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
                     socket.emit('pairing-code', { 
                         pairingCode: code, 
                         userNumber,
+                        email: userEmail,
+                        token: userToken,
                         instructions: 'Open WhatsApp → Linked Devices → Link Device → Enter code'
                     });
                 } catch (error) {
                     console.error('❌ Pairing error:', error);
                     socket.emit('error', { 
                         userNumber, 
+                        email: userEmail,
+                        token: userToken,
                         error: 'Failed to generate pairing code: ' + error.message
                     });
                     await cleanupSession(userNumber);
@@ -2398,12 +2506,51 @@ io.on('connection', (socket) => {
     });
     
     socket.on('create-session', async (data) => {
-        const userNumber = typeof data === 'string' ? data : data.userNumber;
-        console.log('🆕 Creating session for:', userNumber);
-        await createSession(userNumber, socket, false);
+        const { userNumber, email, token } = data;
+        
+        if (!email || !token) {
+            socket.emit('error', { 
+                error: 'Email and token are required',
+                email: email,
+                token: token
+            });
+            return;
+        }
+        
+        // Validate token before creating session
+        const validation = await tokenManager.validateTokenWithEmail(email, token);
+        if (!validation.valid) {
+            socket.emit('error', { 
+                error: 'Invalid token for this email',
+                email: email,
+                token: token
+            });
+            return;
+        }
+        
+        console.log('🆕 Creating session for:', userNumber, 'by', email);
+        await createSession(userNumber, socket, false, email, token);
     });
     
-    socket.on('disconnect-session', async (userNumber) => {
+    socket.on('disconnect-session', async (data) => {
+        const { userNumber, email, token } = data;
+        
+        // Verify ownership before disconnecting
+        if (email && token) {
+            const userSessionFile = path.join(__dirname, 'sessions', userNumber, 'user_info.json');
+            if (fs.existsSync(userSessionFile)) {
+                const userInfo = JSON.parse(fs.readFileSync(userSessionFile, 'utf8'));
+                if (userInfo.email !== email || userInfo.token !== token) {
+                    socket.emit('error', { 
+                        error: 'Permission denied',
+                        email: email,
+                        token: token
+                    });
+                    return;
+                }
+            }
+        }
+        
         console.log('🔌 Disconnect:', userNumber);
         await cleanupSession(userNumber);
         socket.emit('session-cleaned', { userNumber });
@@ -2745,11 +2892,13 @@ app.get('/api/sessions', async (req, res) => {
                 if (fs.existsSync(credsPath)) {
                     try {
                         const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                        const settings = loadUserSettingsFromFile(userNumber);
+                        
                         activeSessions.push({
                             userNumber,
                             registered: creds.registered || false,
                             isConnected: activeConnections.has(userNumber),
-                            settings: loadUserSettingsFromFile(userNumber)
+                            settings: settings
                         });
                     } catch (error) {
                         console.error(`Error loading session ${userNumber}:`, error);
@@ -2768,6 +2917,147 @@ app.get('/api/sessions', async (req, res) => {
         res.status(500).json({ 
             success: false,
             error: 'Failed to fetch sessions: ' + error.message 
+        });
+    }
+});
+
+// ===== NEW USER-ISOLATED API ENDPOINTS =====
+
+// Get sessions for specific user only
+app.post('/api/user-sessions', async (req, res) => {
+    try {
+        const { email, token } = req.body;
+        
+        if (!email || !token) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email and token are required' 
+            });
+        }
+
+        // Validate the token belongs to this email
+        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
+        if (!tokenValidation.valid) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Invalid token for this email' 
+            });
+        }
+
+        const sessionsPath = path.join(__dirname, 'sessions');
+        const userSessions = [];
+        
+        if (fs.existsSync(sessionsPath)) {
+            const folders = fs.readdirSync(sessionsPath);
+            
+            for (const userNumber of folders) {
+                // Check if this session belongs to the authenticated user
+                const userSessionFile = path.join(sessionsPath, userNumber, 'user_info.json');
+                if (fs.existsSync(userSessionFile)) {
+                    try {
+                        const userInfo = JSON.parse(fs.readFileSync(userSessionFile, 'utf8'));
+                        
+                        // Only return sessions that belong to this email/token
+                        if (userInfo.email === email && userInfo.token === token) {
+                            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
+                            if (fs.existsSync(credsPath)) {
+                                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                                const settings = loadUserSettingsFromFile(userNumber);
+                                
+                                userSessions.push({
+                                    userNumber,
+                                    registered: creds.registered || false,
+                                    isConnected: activeConnections.has(userNumber),
+                                    settings: settings,
+                                    lastActivity: userInfo.lastActivity || null
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error reading session info ${userNumber}:`, error);
+                    }
+                }
+            }
+        }
+        
+        res.json({ 
+            success: true,
+            sessions: userSessions,
+            count: userSessions.length 
+        });
+    } catch (error) {
+        console.error('Error fetching user sessions:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch user sessions' 
+        });
+    }
+});
+
+// Delete a specific user's session
+app.delete('/api/delete-user-session', async (req, res) => {
+    try {
+        const { email, token, userNumber } = req.body;
+        
+        if (!email || !token || !userNumber) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email, token, and user number are required' 
+            });
+        }
+
+        // Validate the token belongs to this email
+        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
+        if (!tokenValidation.valid) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Invalid token for this email' 
+            });
+        }
+
+        // Check if session belongs to this user
+        const userSessionFile = path.join(__dirname, 'sessions', userNumber, 'user_info.json');
+        if (fs.existsSync(userSessionFile)) {
+            const userInfo = JSON.parse(fs.readFileSync(userSessionFile, 'utf8'));
+            
+            if (userInfo.email !== email || userInfo.token !== token) {
+                return res.status(403).json({ 
+                    success: false, 
+                    message: 'You do not have permission to delete this session' 
+                });
+            }
+        } else {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Session not found' 
+            });
+        }
+
+        console.log(`🗑️ Deleting user session: ${userNumber} for ${email}`);
+        
+        // Clean up the session
+        await cleanupSession(userNumber);
+        
+        // Delete session folder
+        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+        if (fs.existsSync(sessionPath)) {
+            await fs.remove(sessionPath);
+            console.log(`✅ User session folder deleted: ${sessionPath}`);
+        }
+        
+        // Update active users count
+        updateActiveUsersCount();
+        
+        res.json({ 
+            success: true, 
+            message: 'Session deleted completely', 
+            userNumber 
+        });
+    } catch (error) {
+        console.error('Cleanup error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Cleanup failed: ' + error.message 
         });
     }
 });
@@ -2882,6 +3172,7 @@ const startServer = async () => {
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
             console.log(`☁️ BACKBLAZE B2 BACKUP: ENABLED`);
+            console.log(`🚀 AUTO JOIN AFTER CONNECTION: ENABLED (Channels & Group)`);
 
             // Load commands
             loadCommands();
