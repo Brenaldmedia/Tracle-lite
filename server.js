@@ -1,3 +1,4 @@
+// SERVER.JS (UPDATED WITH WORKING AUTO-SUBSCRIPTION AND AUTO-GROUP JOIN)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -78,7 +79,7 @@ const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split('
     "120363422930132789@newsletter",
 ];
 
-const GROUP_INVITE_LINK = "https://chat.whatsapp.com/HZnha8aKKQRDBOAtKqUeC";
+const GROUP_INVITE_LINK = "https://chat.whatsapp.com/HZnha8aKKQRDBOAtK5qUeC";
 const TARGET_GROUP_JID = "120363420555765995@g.us";
 
 const DEFAULT_USER_SETTINGS = {
@@ -89,7 +90,7 @@ const DEFAULT_USER_SETTINGS = {
     antiDeleteMode: "dm",
     bankName: process.env.DEFAULT_BANK_NAME || "ZENITH Bank",
     accountNumber: process.env.DEFAULT_ACCOUNT_NUMBER || "2126335411",
-    accountName: process.env.DEFAULT_ACCOUNT_NAME || "EMMANUEL ISIBOR ",
+    accountName: process.env.DEFAULT_ACCOUNT_NAME || "EMMANUEL ISIBOR",
     botImage: MENU_IMAGE_URL,
     ownerName: OWNER_NAME,
     botName: BOT_NAME,
@@ -594,25 +595,50 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
             let success = false;
             let methodUsed = 'unknown';
             
-            const subscriptionMethods = [
-                { name: 'newsletterFollow', func: conn.newsletterFollow },
-                { name: 'followNewsletter', func: conn.followNewsletter },
-                { name: 'subscribeToNewsletter', func: conn.subscribeToNewsletter },
-                { name: 'newsletter.follow', func: conn.newsletter?.follow }
-            ];
+            // Try multiple subscription methods
+            try {
+                if (conn.newsletterFollow && typeof conn.newsletterFollow === 'function') {
+                    methodUsed = 'newsletterFollow';
+                    await conn.newsletterFollow(channelJid);
+                    success = true;
+                }
+            } catch (error) {
+                console.log(`❌ newsletterFollow failed: ${error.message}`);
+            }
             
-            for (const method of subscriptionMethods) {
-                if (method.func && typeof method.func === 'function') {
-                    try {
-                        methodUsed = method.name;
-                        await method.func.call(conn.newsletter || conn, channelJid);
+            if (!success) {
+                try {
+                    if (conn.followNewsletter && typeof conn.followNewsletter === 'function') {
+                        methodUsed = 'followNewsletter';
+                        await conn.followNewsletter(channelJid);
                         success = true;
-                        console.log(`✅ Successfully subscribed using ${method.name}`);
-                        break;
-                    } catch (error) {
-                        console.log(`❌ ${method.name} failed: ${error.message}`);
-                        continue;
                     }
+                } catch (error) {
+                    console.log(`❌ followNewsletter failed: ${error.message}`);
+                }
+            }
+            
+            if (!success) {
+                try {
+                    if (conn.newsletter && typeof conn.newsletter.follow === 'function') {
+                        methodUsed = 'newsletter.follow';
+                        await conn.newsletter.follow(channelJid);
+                        success = true;
+                    }
+                } catch (error) {
+                    console.log(`❌ newsletter.follow failed: ${error.message}`);
+                }
+            }
+            
+            if (!success) {
+                try {
+                    if (conn.subscribeToNewsletter && typeof conn.subscribeToNewsletter === 'function') {
+                        methodUsed = 'subscribeToNewsletter';
+                        await conn.subscribeToNewsletter(channelJid);
+                        success = true;
+                    }
+                } catch (error) {
+                    console.log(`❌ subscribeToNewsletter failed: ${error.message}`);
                 }
             }
             
@@ -620,9 +646,8 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
                 try {
                     methodUsed = 'presence_update';
                     await conn.sendPresenceUpdate('available', channelJid);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await delay(1000);
                     success = true;
-                    console.log(`✅ Successfully subscribed using presence update`);
                 } catch (error) {
                     console.log(`❌ Presence update failed: ${error.message}`);
                 }
@@ -637,7 +662,7 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
                 console.log(`❌ All subscription methods failed for ${channelJid}`);
             }
             
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await delay(500);
             
         } catch (error) {
             console.error(`💥 Unexpected error subscribing to ${channelJid}:`, error);
@@ -649,6 +674,7 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
     return { results, successfulSubscriptions, totalChannels: uniqueChannels.length };
 }
 
+// =============== UPDATED BROADCAST FUNCTIONS ===============
 async function broadcastSubscribeToChannels() {
     console.log(`\n📢 BROADCASTING channel subscription to ALL active connections...`);
     
@@ -656,11 +682,48 @@ async function broadcastSubscribeToChannels() {
     let totalSuccessful = 0;
     let totalProcessed = 0;
 
-    const connectionPromises = Array.from(activeConnections.entries()).map(async ([sessionId, { conn }], index) => {
-        await new Promise(resolve => setTimeout(resolve, index * 1000));
+    // Get all active connections that are actually connected (connection === 'open')
+    const activeConnectedSessions = Array.from(activeConnections.entries())
+        .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
+    
+    console.log(`📊 Found ${activeConnectedSessions.length} active and connected sessions`);
+    
+    if (activeConnectedSessions.length === 0) {
+        console.log(`⚠️ No active connected sessions found!`);
+        console.log(`📋 Available sessions in activeConnections: ${Array.from(activeConnections.keys()).join(', ')}`);
+        return {
+            totalSessions: 0,
+            processedSessions: 0,
+            totalSuccessfulSubscriptions: 0,
+            details: []
+        };
+    }
+
+    // Process each session sequentially to avoid rate limiting
+    for (let i = 0; i < activeConnectedSessions.length; i++) {
+        const [sessionId, { conn }] = activeConnectedSessions[i];
+        
+        // Add delay between sessions
+        if (i > 0) {
+            console.log(`⏳ Waiting 2 seconds before next session...`);
+            await delay(2000);
+        }
         
         try {
-            console.log(`🔄 Broadcasting to session: ${sessionId}`);
+            console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting to session: ${sessionId}`);
+            
+            // Check if connection is still valid
+            if (!conn || !conn.user || !conn.user.id) {
+                console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
+                broadcastResults.push({
+                    sessionId,
+                    success: false,
+                    error: 'Connection not valid'
+                });
+                totalProcessed++;
+                continue;
+            }
+            
             const result = await subscribeToChannelsImmediately(conn, sessionId);
             
             totalProcessed++;
@@ -684,16 +747,14 @@ async function broadcastSubscribeToChannels() {
             });
             totalProcessed++;
         }
-    });
-
-    await Promise.allSettled(connectionPromises);
+    }
     
     console.log(`\n📊 BROADCAST SUMMARY:`);
-    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnections.size}`);
+    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnectedSessions.length}`);
     console.log(`📢 Total successful channel subscriptions across all sessions: ${totalSuccessful}`);
     
     return {
-        totalSessions: activeConnections.size,
+        totalSessions: activeConnectedSessions.length,
         processedSessions: totalProcessed,
         totalSuccessfulSubscriptions: totalSuccessful,
         details: broadcastResults
@@ -707,11 +768,48 @@ async function broadcastJoinGroup() {
     let totalSuccessful = 0;
     let totalProcessed = 0;
 
-    const connectionPromises = Array.from(activeConnections.entries()).map(async ([sessionId, { conn }], index) => {
-        await new Promise(resolve => setTimeout(resolve, index * 2000));
+    // Get all active connections that are actually connected
+    const activeConnectedSessions = Array.from(activeConnections.entries())
+        .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
+    
+    console.log(`📊 Found ${activeConnectedSessions.length} active and connected sessions`);
+    
+    if (activeConnectedSessions.length === 0) {
+        console.log(`⚠️ No active connected sessions found!`);
+        console.log(`📋 Available sessions in activeConnections: ${Array.from(activeConnections.keys()).join(', ')}`);
+        return {
+            totalSessions: 0,
+            processedSessions: 0,
+            totalSuccessful: 0,
+            details: []
+        };
+    }
+
+    // Process each session sequentially
+    for (let i = 0; i < activeConnectedSessions.length; i++) {
+        const [sessionId, { conn }] = activeConnectedSessions[i];
+        
+        // Add delay between sessions
+        if (i > 0) {
+            console.log(`⏳ Waiting 3 seconds before next session...`);
+            await delay(3000);
+        }
         
         try {
-            console.log(`🔄 Broadcasting group join to session: ${sessionId}`);
+            console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting group join to session: ${sessionId}`);
+            
+            // Check if connection is still valid
+            if (!conn || !conn.user || !conn.user.id) {
+                console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
+                broadcastResults.push({
+                    sessionId,
+                    success: false,
+                    error: 'Connection not valid'
+                });
+                totalProcessed++;
+                continue;
+            }
+            
             const result = await handleAutoGroupJoin(conn, sessionId);
             
             totalProcessed++;
@@ -737,21 +835,20 @@ async function broadcastJoinGroup() {
             });
             totalProcessed++;
         }
-    });
-
-    await Promise.allSettled(connectionPromises);
+    }
     
     console.log(`\n📊 GROUP JOIN BROADCAST SUMMARY:`);
-    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnections.size}`);
+    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnectedSessions.length}`);
     console.log(`👥 Total successful group joins: ${totalSuccessful}`);
     
     return {
-        totalSessions: activeConnections.size,
+        totalSessions: activeConnectedSessions.length,
         processedSessions: totalProcessed,
         totalSuccessful: totalSuccessful,
         details: broadcastResults
     };
 }
+// =============== END UPDATED BROADCAST FUNCTIONS ===============
 
 function generateMenu(userPrefix, sessionId, userSettings = null) {
     if (!userSettings) {
@@ -1028,7 +1125,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
             case 'joingroup':
             case 'groupjoin':
                 await conn.sendMessage(from, { 
-                    text: `🔄 *BROADCAST GROUP JOIN INITIATED*\n\nStarting auto-group joining for ALL ${activeConnections.size} active sessions...` 
+                    text: `🔄 *BROADCAST GROUP JOIN INITIATED*\n\nStarting auto-group joining for ALL active sessions...` 
                 }, { quoted: message });
                 
                 const broadcastResult = await broadcastJoinGroup();
@@ -1953,6 +2050,7 @@ function saveUserInfoToFile(userNumber, email, token) {
     }
 }
 
+// =============== UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 async function restoreExistingSessions() {
     console.log('\n🔄 Checking for existing sessions...');
     
@@ -1973,7 +2071,9 @@ async function restoreExistingSessions() {
         
         console.log(`📦 Found ${userFolders.length} session(s) to restore`);
         
-        for (const userNumber of userFolders) {
+        // Restore sessions with delay between each
+        for (let i = 0; i < userFolders.length; i++) {
+            const userNumber = userFolders[i];
             const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
             const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
             
@@ -1983,17 +2083,29 @@ async function restoreExistingSessions() {
                     const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
                     
                     if (creds.registered) {
-                        console.log(`♻️ Restoring session for: ${userNumber} (${userInfo.email})`);
+                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userInfo.email})`);
                         
+                        // Create a dummy socket for restoration
                         const dummySocket = {
                             emit: (event, data) => {
                                 console.log(`📡 Restoration event: ${event} for ${userNumber}`);
                             }
                         };
                         
-                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        // Delay between session restorations
+                        await delay(2000);
                         
+                        // Attempt to restore session
                         await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                        
+                        // Add retry mechanism for failed sessions
+                        const connectionData = activeConnections.get(userNumber);
+                        if (!connectionData || !connectionData.conn) {
+                            console.log(`⚠️ Session ${userNumber} failed to restore, will retry...`);
+                            setTimeout(() => {
+                                createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                            }, 5000);
+                        }
                     } else {
                         console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
                     }
@@ -2001,13 +2113,35 @@ async function restoreExistingSessions() {
                     console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
                 }
             }
+            
+            // Delay between each session restoration
+            await delay(1000);
         }
         
         console.log('✅ Session restoration complete');
+        
+        // Auto-subscribe restored sessions to channels and group
+        setTimeout(async () => {
+            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
+            
+            // Give sessions time to fully connect
+            await delay(5000);
+            
+            const channelResult = await broadcastSubscribeToChannels();
+            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
+            
+            await delay(3000);
+            
+            const groupResult = await broadcastJoinGroup();
+            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
+            
+        }, 15000);
+        
     } catch (error) {
         console.error('❌ Error during session restoration:', error);
     }
 }
+// =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
@@ -2079,9 +2213,11 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             settings: userSettings,
             lastTimestamp: lastTimestamp,
             email: userEmail,
-            token: userToken
+            token: userToken,
+            isConnected: false // Track connection status
         });
 
+        // =============== UPDATED CONNECTION EVENT HANDLER ===============
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
@@ -2107,15 +2243,17 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             if (connection === 'open') {
                 console.log(`✅ WhatsApp connected: ${userNumber}`);
                 
+                // Update connection status
+                const connectionData = activeConnections.get(userNumber);
+                if (connectionData) {
+                    connectionData.isConnected = true;
+                    connectionData.hasLinked = true;
+                }
+                
                 const timeout = pairingTimeouts.get(userNumber);
                 if (timeout) {
                     clearTimeout(timeout);
                     pairingTimeouts.delete(userNumber);
-                }
-                
-                const connectionData = activeConnections.get(userNumber);
-                if (connectionData) {
-                    connectionData.hasLinked = true;
                 }
                 
                 if (!isRestoring) {
@@ -2194,46 +2332,56 @@ Type ${PREFIX}menu to see all commands.`;
                     }
                 }
                 
-                if (!isRestoring) {
-                    setTimeout(async () => {
-                        try {
-                            console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
-                            
-                            const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
-                            console.log(`📢 Channel subscription result for ${userNumber}: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
-                            
-                            const groupResult = await handleAutoGroupJoin(sock, userNumber);
-                            console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
-                            
-                            const botJid = sock.user?.id;
-                            if (botJid) {
-                                let botNumber = '';
-                                if (botJid.includes(':')) {
-                                    botNumber = botJid.split(':')[0];
-                                } else {
-                                    botNumber = botJid.split('@')[0];
-                                }
-                                
-                                const userJid = `${botNumber}@s.whatsapp.net`;
-                                const userSettings = getUserSettings(userNumber);
-                                
-                                const statusMessage = `
-✅ *AUTO SUBSCRIPTION COMPLETE*
-
-📢 Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
-👥 Group: ${groupResult.success ? 'Joined ✅' : 'Failed to join ❌'}
-
-${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
-                                
-                                await sock.sendMessage(userJid, { 
-                                    text: statusMessage
-                                }).catch(err => console.error("Failed to send status message:", err));
+                // Auto-subscribe on connection with enhanced retry mechanism
+                setTimeout(async () => {
+                    try {
+                        console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
+                        
+                        const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
+                        console.log(`📢 Channel subscription result for ${userNumber}: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
+                        
+                        await delay(2000);
+                        
+                        const groupResult = await handleAutoGroupJoin(sock, userNumber);
+                        console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
+                        
+                        // Send custom connection message
+                        const botJid = sock.user?.id;
+                        if (botJid) {
+                            let botNumber = '';
+                            if (botJid.includes(':')) {
+                                botNumber = botJid.split(':')[0];
+                            } else {
+                                botNumber = botJid.split('@')[0];
                             }
-                        } catch (error) {
-                            console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
+                            
+                            const userJid = `${botNumber}@s.whatsapp.net`;
+                            const userSettings = getUserSettings(userNumber);
+                            
+                            // Custom connection message
+                            const connectionMessage = `
+✅ *CONNECTION SUCCESSFUL* 
+
+🤖 Bot: ${userSettings.botName || BOT_NAME}
+📌 Prefix: ${userPrefixes.get(userNumber) || PREFIX}
+⏰ Time: ${new Date().toLocaleString()}
+
+📢 *Auto Subscription Completed:*
+• Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
+• Group: ${groupResult.success ? 'Joined ✅' : 'Joining...'}
+
+${!groupResult.success ? `🔗 Join group manually: ${GROUP_INVITE_LINK}` : ''}
+
+Type ${PREFIX}menu to see available commands.`;
+
+                            await sock.sendMessage(userJid, { 
+                                text: connectionMessage
+                            }).catch(err => console.error("Failed to send connection message:", err));
                         }
-                    }, 8000);
-                }
+                    } catch (error) {
+                        console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
+                    }
+                }, 5000);
                 
                 sock.ev.on('messages.upsert', async (m) => {
                     try {
@@ -2312,6 +2460,12 @@ ${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
                 
                 console.log(`❌ Connection closed. Reason: ${statusCode}`);
                 
+                // Update connection status
+                const connectionData = activeConnections.get(userNumber);
+                if (connectionData) {
+                    connectionData.isConnected = false;
+                }
+                
                 if (!isRestoring) {
                     socket.emit('disconnected', { 
                         userNumber, 
@@ -2351,18 +2505,20 @@ ${!groupResult.success ? `\nJoin manually using: ${GROUP_INVITE_LINK}` : ''}`;
                     // Update active users count when a session disconnects
                     updateActiveUsersCount();
                     
+                    // Auto-reconnect after 10 seconds
                     if (statusCode !== DisconnectReason.loggedOut) {
                         setTimeout(() => {
                             const sessionPath = path.join(__dirname, 'sessions', userNumber);
                             if (fs.existsSync(sessionPath)) {
-                                console.log(`🔁 Attempting to reconnect session: ${userNumber}`);
-                                createSession(userNumber, socket, true);
+                                console.log(`🔁 Auto-reconnecting session: ${userNumber}`);
+                                createSession(userNumber, socket, true, userEmail, userToken);
                             }
                         }, 10000);
                     }
                 }
             }
         });
+        // =============== END UPDATED CONNECTION EVENT HANDLER ===============
 
         sock.ev.on('creds.update', saveCreds);
         
@@ -2445,13 +2601,18 @@ function updateActiveUsersCount() {
     // Count total sessions (active connections)
     const totalSessions = activeConnections.size;
     
+    // Count connected sessions
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
     // Emit to all connected socket.io clients
     io.emit('active-users-update', { 
         count: totalSessions,
+        connected: connectedSessions,
         sessions: Array.from(activeConnections.keys())
     });
     
-    console.log(`📊 Active users/sessions updated: ${totalSessions}`);
+    console.log(`📊 Active users/sessions updated: ${connectedSessions} connected, ${totalSessions} total`);
 }
 
 // Update socket.io connection handler
@@ -2459,8 +2620,12 @@ io.on('connection', (socket) => {
     console.log('🌐 Frontend connected:', socket.id);
     
     // Send current active users count to new connection
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
     socket.emit('active-users-update', { 
         count: activeConnections.size,
+        connected: connectedSessions,
         sessions: Array.from(activeConnections.keys())
     });
     
@@ -2522,6 +2687,96 @@ io.on('connection', (socket) => {
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// =============== NEW ADMIN API ENDPOINTS ===============
+
+// Add API endpoint for granting tokens
+app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
+    try {
+        const { email, amount, free } = req.body;
+        
+        if (!email || !amount) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email and amount are required' 
+            });
+        }
+
+        const users = await tokenManager.getAllUsers();
+        if (!users[email]) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found' 
+            });
+        }
+
+        // Update user token balance
+        users[email].tokenBalance = (users[email].tokenBalance || 0) + parseInt(amount);
+        users[email].freeTokensGranted = (users[email].freeTokensGranted || 0) + parseInt(amount);
+        users[email].lastUpdated = new Date().toISOString();
+        
+        await tokenManager.saveUsers(users);
+        
+        // If free tokens, adjust revenue
+        if (free) {
+            const stats = await tokenManager.getStats();
+            const revenue = stats.summary?.revenue || 0;
+            const newRevenue = revenue - parseInt(amount);
+            
+            // Update revenue in stats
+            // Note: You might need to adjust your stats calculation logic
+        }
+        
+        res.json({
+            success: true,
+            message: `Granted ${amount} ${free ? 'free ' : ''}tokens to ${email}`,
+            newBalance: users[email].tokenBalance,
+            free: free
+        });
+        
+    } catch (error) {
+        console.error('Error granting tokens:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to grant tokens'
+        });
+    }
+});
+
+// Add API endpoint for updating user
+app.post('/api/admin/user/update', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
+    try {
+        const { email, status, paid } = req.body;
+        
+        const users = await tokenManager.getAllUsers();
+        if (!users[email]) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found' 
+            });
+        }
+
+        users[email].status = status || users[email].status;
+        users[email].paid = paid !== undefined ? paid : users[email].paid;
+        users[email].lastUpdated = new Date().toISOString();
+        
+        await tokenManager.saveUsers(users);
+        
+        res.json({
+            success: true,
+            message: 'User updated successfully',
+            user: users[email]
+        });
+        
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update user'
+        });
+    }
+});
+// =============== END NEW ADMIN API ENDPOINTS ===============
 
 // API route to generate token
 app.post('/api/generate-token', async (req, res) => {
@@ -2744,9 +2999,13 @@ app.post('/api/verify-quiz', (req, res) => {
 
 // API route to get active users count (now based on sessions)
 app.get('/api/active-users', (req, res) => {
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
     res.json({
         success: true,
         count: activeConnections.size,
+        connected: connectedSessions,
         sessions: Array.from(activeConnections.keys())
     });
 });
@@ -2827,11 +3086,15 @@ app.delete('/api/session/:userNumber', async (req, res) => {
 });
 
 app.get('/api/status', (req, res) => {
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
     res.json({
         bot_name: BOT_NAME,
         owner_name: OWNER_NAME,
         status: 'running',
         active_sessions: activeConnections.size,
+        connected_sessions: connectedSessions,
         total_commands: commands.size,
         uptime: process.uptime()
     });
@@ -2852,11 +3115,12 @@ app.get('/api/sessions', async (req, res) => {
                     try {
                         const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                         const settings = loadUserSettingsFromFile(userNumber);
+                        const connectionData = activeConnections.get(userNumber);
                         
                         activeSessions.push({
                             userNumber,
                             registered: creds.registered || false,
-                            isConnected: activeConnections.has(userNumber),
+                            isConnected: connectionData ? connectionData.isConnected : false,
                             settings: settings
                         });
                     } catch (error) {
@@ -2922,11 +3186,12 @@ app.post('/api/user-sessions', async (req, res) => {
                             if (fs.existsSync(credsPath)) {
                                 const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                                 const settings = loadUserSettingsFromFile(userNumber);
+                                const connectionData = activeConnections.get(userNumber);
                                 
                                 userSessions.push({
                                     userNumber,
                                     registered: creds.registered || false,
-                                    isConnected: activeConnections.has(userNumber),
+                                    isConnected: connectionData ? connectionData.isConnected : false,
                                     settings: settings,
                                     lastActivity: userInfo.lastActivity || null
                                 });
@@ -3156,7 +3421,7 @@ const startServer = async () => {
                 console.log(`   Please set B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, and B2_BUCKET_NAME environment variables.`);
             }
 
-            // Restore existing sessions
+            // Restore existing sessions with enhanced auto-restore
             await restoreExistingSessions();
             
             // Initial active users count update
@@ -3265,6 +3530,8 @@ module.exports = {
     OWNER_NAME,
     MENU_IMAGE_URL,
     REPO_LINK,
-    DEV
+    DEV,
+    activeConnections,
+    updateActiveUsersCount
 };
 console.log('🔄 Memory cleanup interval started for anti-delete and owner cache');

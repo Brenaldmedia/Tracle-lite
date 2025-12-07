@@ -193,6 +193,261 @@ class AdminDashboard {
         }
     }
 
+    async searchUsers(query) {
+        const rows = document.querySelectorAll('#usersTable tbody tr');
+        let foundCount = 0;
+        
+        rows.forEach(row => {
+            const email = row.cells[0]?.textContent?.toLowerCase() || '';
+            if (email.includes(query.toLowerCase())) {
+                row.style.display = '';
+                foundCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Show message if no results
+        const tableBody = document.querySelector('#usersTable tbody');
+        if (foundCount === 0 && query.length > 0) {
+            if (!tableBody.querySelector('.no-results-row')) {
+                const noResultsRow = document.createElement('tr');
+                noResultsRow.className = 'no-results-row';
+                noResultsRow.innerHTML = `
+                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--gray-color);">
+                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; display: block; color: var(--gray-light);"></i>
+                        <h4>No users found</h4>
+                        <p>No users match "${query}"</p>
+                    </td>
+                `;
+                tableBody.appendChild(noResultsRow);
+            }
+        } else {
+            const noResultsRow = tableBody.querySelector('.no-results-row');
+            if (noResultsRow) {
+                noResultsRow.remove();
+            }
+        }
+    }
+
+    async filterUsers(filter) {
+        // Update active filter button
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`.filter-btn[data-filter="${filter}"]`)?.classList.add('active');
+        
+        const rows = document.querySelectorAll('#usersTable tbody tr');
+        rows.forEach(row => {
+            if (row.classList.contains('no-results-row')) {
+                row.style.display = 'none';
+                return;
+            }
+            
+            const status = row.cells[1]?.textContent?.toLowerCase() || '';
+            const paid = row.cells[2]?.textContent?.toLowerCase() || '';
+            
+            let show = false;
+            switch(filter) {
+                case 'all':
+                    show = true;
+                    break;
+                case 'pending':
+                    show = status === 'pending';
+                    break;
+                case 'approved':
+                    show = status === 'approved';
+                    break;
+                case 'paid':
+                    show = paid === 'paid';
+                    break;
+            }
+            
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    // Add token grant functionality
+    async grantFreeTokens(email, amount) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const response = await fetch('/api/admin/user/grant-tokens', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    email: email,
+                    amount: parseInt(amount),
+                    free: true
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification(`✅ Granted ${amount} free tokens to ${email}`, 'success');
+                this.loadStats();
+            } else {
+                this.showNotification(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error granting tokens:', error);
+            this.showNotification('Failed to grant tokens', 'error');
+        }
+    }
+
+    async editUser(email) {
+        this.showCustomModal(
+            'Edit User',
+            `<div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="editUserEmail" value="${email}" readonly style="background: #f5f5f5;">
+            </div>
+            <div class="form-group">
+                <label>Status:</label>
+                <select id="editUserStatus">
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="terminated">Terminated</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Payment Status:</label>
+                <select id="editUserPaid">
+                    <option value="false">Not Paid</option>
+                    <option value="true">Paid</option>
+                </select>
+            </div>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    const newStatus = document.getElementById('editUserStatus').value;
+                    const newPaid = document.getElementById('editUserPaid').value === 'true';
+                    
+                    const response = await fetch('/api/admin/user/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            email: email,
+                            status: newStatus,
+                            paid: newPaid
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification('User updated successfully!', 'success');
+                        this.loadUsers();
+                        this.closeModal(document.getElementById('userDetailsModal'));
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error updating user:', error);
+                    this.showNotification('Failed to update user', 'error');
+                }
+            },
+            'Save Changes'
+        );
+    }
+
+    // Update user details modal to include token controls
+    showUserDetailsModal(userDetails) {
+        const modal = document.getElementById('userDetailsModal');
+        const content = document.getElementById('userDetailsContent');
+        
+        if (!userDetails || !userDetails.user) {
+            content.innerHTML = '<p>Error loading user details</p>';
+            modal.classList.add('active');
+            return;
+        }
+        
+        const user = userDetails.user;
+        content.innerHTML = `
+            <div class="user-details">
+                <div class="detail-item">
+                    <label>Email:</label>
+                    <span class="text-truncate" title="${user.email}">${user.email}</span>
+                </div>
+                <div class="detail-item">
+                    <label>Status:</label>
+                    <span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span>
+                </div>
+                <div class="detail-item">
+                    <label>Payment Status:</label>
+                    <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span>
+                </div>
+                <div class="detail-item">
+                    <label>Token Balance:</label>
+                    <span>${user.tokenBalance || 0} tokens</span>
+                </div>
+                <div class="detail-item">
+                    <label>First Request:</label>
+                    <span>${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
+                </div>
+                <div class="detail-item">
+                    <label>Total Requests:</label>
+                    <span>${userDetails.totalRequests || 0}</span>
+                </div>
+                <div class="detail-item">
+                    <label>Location:</label>
+                    <span>${user.location || 'Unknown'}</span>
+                </div>
+                
+                <div class="token-controls" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Token Management</h4>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="number" id="grantTokenAmount" placeholder="Amount" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" min="1">
+                        <button class="btn-primary small" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
+                            <i class="fas fa-gift"></i> Grant Free Tokens
+                        </button>
+                    </div>
+                    <small style="color: #666;">Tokens granted as free won't affect revenue</small>
+                </div>
+                
+                <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 20px;">
+                    <button class="btn-primary" onclick="admin.togglePaymentStatus('${user.email}', ${!user.paid})">
+                        <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
+                        ${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}
+                    </button>
+                    ${user.token ? `
+                        <button class="btn-secondary" onclick="admin.copyToken('${user.token}')">
+                            <i class="fas fa-copy"></i> Copy Token
+                        </button>
+                    ` : ''}
+                    <button class="btn-secondary" onclick="admin.editUser('${user.email}')">
+                        <i class="fas fa-edit"></i> Edit User
+                    </button>
+                    <button class="btn-secondary danger" onclick="admin.deleteUser('${user.email}')">
+                        <i class="fas fa-trash"></i> Delete User
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modal.classList.add('active');
+    }
+
     async remindPassword() {
         try {
             const btn = document.getElementById('remindMeBtn');
@@ -1017,74 +1272,6 @@ class AdminDashboard {
         }
     }
 
-    showUserDetailsModal(userDetails) {
-        const modal = document.getElementById('userDetailsModal');
-        const content = document.getElementById('userDetailsContent');
-        
-        if (!userDetails || !userDetails.user) {
-            content.innerHTML = '<p>Error loading user details</p>';
-            modal.classList.add('active');
-            return;
-        }
-        
-        const user = userDetails.user;
-        content.innerHTML = `
-            <div class="user-details">
-                <div class="detail-item">
-                    <label>Email:</label>
-                    <span class="text-truncate" title="${user.email}">${user.email}</span>
-                </div>
-                <div class="detail-item">
-                    <label>Status:</label>
-                    <span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span>
-                </div>
-                <div class="detail-item">
-                    <label>Payment Status:</label>
-                    <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span>
-                </div>
-                <div class="detail-item">
-                    <label>First Request:</label>
-                    <span>${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
-                </div>
-                <div class="detail-item">
-                    <label>Total Requests:</label>
-                    <span>${userDetails.totalRequests || 0}</span>
-                </div>
-                <div class="detail-item">
-                    <label>Location:</label>
-                    <span>${user.location || 'Unknown'}</span>
-                </div>
-                <div class="detail-item">
-                    <label>IP Addresses:</label>
-                    <div class="ip-list">
-                        ${user.ipAddresses?.map(ip => `<code>${ip}</code>`).join(', ') || 'None'}
-                    </div>
-                </div>
-                <div class="detail-item">
-                    <label>Token:</label>
-                    <code class="text-truncate" style="display: block; max-width: 100%;" title="${user.token || 'No token'}">${user.token || 'No token'}</code>
-                </div>
-                
-                <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 20px;">
-                    <button class="btn-primary" onclick="admin.togglePaymentStatus('${user.email}', ${!user.paid})">
-                        <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
-                        ${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}
-                    </button>
-                    ${user.token ? `
-                        <button class="btn-secondary" onclick="admin.copyToken('${user.token}')">
-                            <i class="fas fa-copy"></i> Copy Token
-                        </button>
-                    ` : ''}
-                    <button class="btn-secondary danger" onclick="admin.deleteUser('${user.email}')">
-                        <i class="fas fa-trash"></i> Delete User
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        modal.classList.add('active');
-    }
-
     async togglePaymentStatus(email, paid) {
         this.showCustomModal(
             'Update Payment Status',
@@ -1359,50 +1546,6 @@ class AdminDashboard {
             },
             'Restore Backup'
         );
-    }
-
-    searchUsers(query) {
-        const rows = document.querySelectorAll('#usersTable tbody tr');
-        rows.forEach(row => {
-            const email = row.cells[0]?.textContent?.toLowerCase() || '';
-            if (email.includes(query.toLowerCase())) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    }
-
-    filterUsers(filter) {
-        // Update active filter button
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        event.target.classList.add('active');
-        
-        const rows = document.querySelectorAll('#usersTable tbody tr');
-        rows.forEach(row => {
-            const status = row.cells[1]?.textContent?.toLowerCase() || '';
-            const paid = row.cells[2]?.textContent?.toLowerCase() || '';
-            
-            let show = false;
-            switch(filter) {
-                case 'all':
-                    show = true;
-                    break;
-                case 'pending':
-                    show = status === 'pending';
-                    break;
-                case 'approved':
-                    show = status === 'approved';
-                    break;
-                case 'paid':
-                    show = paid === 'paid';
-                    break;
-            }
-            
-            row.style.display = show ? '' : 'none';
-        });
     }
 
     handleQuickAction(action) {

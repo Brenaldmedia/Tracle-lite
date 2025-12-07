@@ -532,7 +532,26 @@ class TokenManager {
     async getAllUsers() {
         try {
             const data = await fs.readFile(this.usersFile, 'utf8');
-            return JSON.parse(data);
+            const users = JSON.parse(data);
+            
+            // Ensure all users have tokenBalance field
+            let needsUpdate = false;
+            for (const email in users) {
+                if (users[email].tokenBalance === undefined) {
+                    users[email].tokenBalance = 0;
+                    needsUpdate = true;
+                }
+                if (users[email].freeTokensGranted === undefined) {
+                    users[email].freeTokensGranted = 0;
+                    needsUpdate = true;
+                }
+            }
+            
+            if (needsUpdate) {
+                await this.saveUsers(users);
+            }
+            
+            return users;
         } catch (error) {
             return {};
         }
@@ -766,14 +785,27 @@ class TokenManager {
             
             return {
                 found: true,
-                user: user,
+                user: {
+                    email: user.email,
+                    status: user.status || 'pending',
+                    paid: user.paid || false,
+                    tokenBalance: user.tokenBalance || 0,
+                    freeTokensGranted: user.freeTokensGranted || 0,
+                    token: user.token,
+                    firstRequest: user.firstRequest,
+                    lastRequest: user.lastRequest,
+                    totalRequests: user.totalRequests || 0,
+                    location: user.location,
+                    ipAddresses: user.ipAddresses || [],
+                    userAgents: user.userAgents || [],
+                    createdAt: user.createdAt,
+                    lastUpdated: user.lastUpdated
+                },
                 tokens: userTokens,
                 requests: userRequests,
                 totalRequests: userRequests.length,
                 hasToken: user.token !== null,
-                isPaid: user.paid || false,
-                lastActivity: user.lastTokenActivity || user.lastRequest,
-                daysSinceCreated: user.createdAt ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (24 * 60 * 60 * 1000)) : 0
+                isPaid: user.paid || false
             };
         } catch (error) {
             console.error('Error getting user details:', error);

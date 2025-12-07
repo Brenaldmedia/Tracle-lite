@@ -1,4 +1,4 @@
-// FILE: admin.js
+// FILE: admin.js - UPDATED WITH NEW ENDPOINTS
 const crypto = require('crypto');
 const tokenManager = require('./token');
 
@@ -254,6 +254,120 @@ class AdminManager {
                 res.status(500).json({
                     success: false,
                     message: 'Failed to update payment status'
+                });
+            }
+        });
+
+        // ===== NEW ENDPOINTS =====
+        
+        // Update user details (status, paid, etc.)
+        app.post('/api/admin/user/update', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email, status, paid } = req.body;
+                
+                if (!email) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email is required'
+                    });
+                }
+
+                const users = await tokenManager.getAllUsers();
+                
+                if (!users[email]) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'User not found'
+                    });
+                }
+
+                // Update user data
+                if (status !== undefined) {
+                    users[email].status = status;
+                }
+                
+                if (paid !== undefined) {
+                    users[email].paid = paid;
+                    
+                    // If marking as paid, ensure status is approved
+                    if (paid && users[email].status === 'pending') {
+                        users[email].status = 'approved';
+                    }
+                }
+                
+                users[email].lastUpdated = new Date().toISOString();
+                
+                await tokenManager.saveUsers(users);
+                
+                res.json({
+                    success: true,
+                    message: 'User updated successfully',
+                    user: users[email]
+                });
+                
+            } catch (error) {
+                console.error('Error updating user:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to update user'
+                });
+            }
+        });
+
+        // Grant free tokens to user
+        app.post('/api/admin/user/grant-tokens', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email, amount, free } = req.body;
+                
+                if (!email || !amount) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email and amount are required'
+                    });
+                }
+
+                const users = await tokenManager.getAllUsers();
+                
+                if (!users[email]) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'User not found'
+                    });
+                }
+
+                // Initialize token balance if not exists
+                if (!users[email].tokenBalance) {
+                    users[email].tokenBalance = 0;
+                }
+                
+                if (!users[email].freeTokensGranted) {
+                    users[email].freeTokensGranted = 0;
+                }
+
+                // Add tokens
+                const tokenAmount = parseInt(amount);
+                users[email].tokenBalance += tokenAmount;
+                
+                if (free) {
+                    users[email].freeTokensGranted += tokenAmount;
+                }
+                
+                users[email].lastUpdated = new Date().toISOString();
+                
+                await tokenManager.saveUsers(users);
+                
+                res.json({
+                    success: true,
+                    message: `Granted ${amount} ${free ? 'free ' : ''}tokens to ${email}`,
+                    newBalance: users[email].tokenBalance,
+                    free: free
+                });
+                
+            } catch (error) {
+                console.error('Error granting tokens:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to grant tokens'
                 });
             }
         });

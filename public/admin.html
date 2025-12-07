@@ -267,13 +267,13 @@
                     <div class="users-header">
                         <div class="search-box">
                             <i class="fas fa-search"></i>
-                            <input type="text" id="userSearch" placeholder="Search users by email...">
+                            <input type="text" id="userSearch" placeholder="Search users by email..." onkeyup="admin.searchUsers(this.value)">
                         </div>
                         <div class="filter-buttons">
-                            <button class="filter-btn active" data-filter="all">All</button>
-                            <button class="filter-btn" data-filter="pending">Pending</button>
-                            <button class="filter-btn" data-filter="approved">Approved</button>
-                            <button class="filter-btn" data-filter="paid">Paid</button>
+                            <button class="filter-btn active" data-filter="all" onclick="admin.filterUsers('all')">All</button>
+                            <button class="filter-btn" data-filter="pending" onclick="admin.filterUsers('pending')">Pending</button>
+                            <button class="filter-btn" data-filter="approved" onclick="admin.filterUsers('approved')">Approved</button>
+                            <button class="filter-btn" data-filter="paid" onclick="admin.filterUsers('paid')">Paid</button>
                         </div>
                     </div>
                     
@@ -507,6 +507,11 @@
                         <option value="true">Yes - User has paid</option>
                         <option value="false">No - Free token</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Add Free Tokens</label>
+                    <input type="number" id="freeTokensAmount" placeholder="0" min="0">
+                    <small>Add free tokens without affecting revenue</small>
                 </div>
                 <button class="btn-primary" id="generateTokenConfirm">Generate Token</button>
             </div>
