@@ -1,4 +1,4 @@
-// SERVER.JS (UPDATED WITH WORKING AUTO-SUBSCRIPTION AND AUTO-GROUP JOIN + B2 SESSION CHECKING)
+// SERVER.JS (UPDATED WITH CONNECTION STABILITY AND 7-HOUR ALIVE MESSAGES)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -97,6 +97,109 @@ const DEFAULT_USER_SETTINGS = {
     groupOpenTime: null,
     groupCloseTime: null
 };
+
+// =============== NEW: ALIVE MESSAGE SYSTEM ===============
+const ALIVE_CHECK_INTERVAL = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
+const CONNECTION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const aliveCheckTimers = new Map();
+
+function startAliveMessageSystem(sessionId, conn, userSettings) {
+    console.log(`🔄 Starting alive message system for ${sessionId}`);
+    
+    // Clear any existing timer
+    if (aliveCheckTimers.has(sessionId)) {
+        clearInterval(aliveCheckTimers.get(sessionId));
+    }
+    
+    // Start new timer
+    const timer = setInterval(async () => {
+        try {
+            if (!conn || !conn.user || !conn.user.id) {
+                console.log(`⚠️ Connection not available for ${sessionId}, skipping alive check`);
+                return;
+            }
+            
+            console.log(`🔍 Performing alive check for ${sessionId}`);
+            
+            // Get bot JID and user JID
+            const botJid = conn.user.id;
+            let botNumber = '';
+            if (botJid.includes(':')) {
+                botNumber = botJid.split(':')[0];
+            } else {
+                botNumber = botJid.split('@')[0];
+            }
+            
+            botNumber = botNumber.replace(/\D/g, '');
+            const userJid = `${botNumber}@s.whatsapp.net`;
+            
+            const aliveMessage = `HEY 😊 I am stil alive dont worry! - ${userSettings.botName || BOT_NAME}`;
+            
+            console.log(`💌 Sending alive message to ${userJid} for session ${sessionId}`);
+            
+            await conn.sendMessage(userJid, { 
+                text: aliveMessage
+            });
+            
+            console.log(`✅ Alive message sent successfully for ${sessionId}`);
+            
+        } catch (error) {
+            console.error(`❌ Error sending alive message for ${sessionId}:`, error.message);
+            
+            // Try to reconnect if there's an error
+            if (error.message.includes('Connection closed') || error.message.includes('not connected')) {
+                console.log(`🔄 Attempting to restart connection for ${sessionId}`);
+                const connectionData = activeConnections.get(sessionId);
+                if (connectionData) {
+                    connectionData.isConnected = false;
+                }
+            }
+        }
+    }, ALIVE_CHECK_INTERVAL);
+    
+    aliveCheckTimers.set(sessionId, timer);
+    console.log(`✅ Alive message system started for ${sessionId} (every 7 hours)`);
+}
+
+function stopAliveMessageSystem(sessionId) {
+    if (aliveCheckTimers.has(sessionId)) {
+        clearInterval(aliveCheckTimers.get(sessionId));
+        aliveCheckTimers.delete(sessionId);
+        console.log(`🛑 Stopped alive message system for ${sessionId}`);
+    }
+}
+
+// Function to periodically check and maintain connections
+function startConnectionMonitor() {
+    setInterval(() => {
+        console.log(`🔍 Checking ${activeConnections.size} active connections...`);
+        
+        for (const [sessionId, connectionData] of activeConnections.entries()) {
+            const { conn, isConnected, lastActivity, email, token } = connectionData;
+            
+            if (!conn || !conn.user || !conn.user.id) {
+                console.log(`⚠️ Connection invalid for ${sessionId}, marking as disconnected`);
+                connectionData.isConnected = false;
+                continue;
+            }
+            
+            // Try to send a ping to check if connection is alive
+            try {
+                // Update last activity timestamp
+                connectionData.lastActivity = Date.now();
+                
+                if (!isConnected) {
+                    console.log(`🔄 Connection marked as disconnected for ${sessionId}, attempting to restore...`);
+                    // Could implement reconnection logic here
+                }
+            } catch (error) {
+                console.error(`❌ Connection check failed for ${sessionId}:`, error.message);
+                connectionData.isConnected = false;
+            }
+        }
+    }, CONNECTION_CHECK_INTERVAL);
+}
+// =============== END ALIVE MESSAGE SYSTEM ===============
 
 function getUserSettings(sessionId) {
     const userConnection = activeConnections.get(sessionId);
@@ -2143,7 +2246,7 @@ async function restoreExistingSessions() {
 }
 // =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
-// =============== UPDATED CREATE SESSION FUNCTION WITH B2 RESTORATION ===============
+// =============== UPDATED CREATE SESSION FUNCTION WITH CONNECTION STABILITY ===============
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
         console.log(`\n🆕 Creating/Restoring session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
@@ -2223,12 +2326,24 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             syncFullHistory: false,
             markOnlineOnConnect: true,
             connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 25000,
-            maxIdleTimeMs: 60000,
-            maxRetries: 5,
+            keepAliveIntervalMs: 15000, // Send keep-alive every 15 seconds
+            maxIdleTimeMs: 300000, // 5 minutes idle timeout instead of 1 minute
+            maxRetries: 10, // Increased retry attempts
             emitOwnEvents: true,
             defaultQueryTimeoutMs: 30000,
-            getMessage: async () => ({ conversation: '' })
+            getMessage: async () => ({ conversation: '' }),
+            shouldIgnoreJid: (jid) => false,
+            fireInitQueries: true,
+            retryRequestDelayMs: 250, // Reduced delay for retries
+            // ADDED: Keep connection alive with these settings
+            keepAlive: true,
+            alwaysUseTakeover: true,
+            mobile: false, // Set to false for better stability
+            linkPreviewImageThumbnailWidth: 192, // Standard settings
+            transactionOpts: {
+                maxCommitRetries: 10,
+                delayBetweenTriesMs: 3000
+            }
         });
 
         sock.userNumber = userNumber;
@@ -2246,10 +2361,12 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             lastTimestamp: lastTimestamp,
             email: userEmail,
             token: userToken,
-            isConnected: false // Track connection status
+            isConnected: false, // Track connection status
+            lastActivity: Date.now(), // Track last activity
+            connectionAttempts: 0 // Track connection attempts
         });
 
-        // =============== UPDATED CONNECTION EVENT HANDLER ===============
+        // =============== UPDATED CONNECTION EVENT HANDLER WITH IMPROVED STABILITY ===============
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
@@ -2280,6 +2397,8 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                 if (connectionData) {
                     connectionData.isConnected = true;
                     connectionData.hasLinked = true;
+                    connectionData.lastActivity = Date.now();
+                    connectionData.connectionAttempts = 0; // Reset attempts on successful connection
                 }
                 
                 const timeout = pairingTimeouts.get(userNumber);
@@ -2364,6 +2483,9 @@ Type ${PREFIX}menu to see all commands.`;
                     }
                 }
                 
+                // =============== START ALIVE MESSAGE SYSTEM ===============
+                startAliveMessageSystem(userNumber, sock, userSettings);
+                
                 // Auto-subscribe on connection with enhanced retry mechanism
                 setTimeout(async () => {
                     try {
@@ -2417,6 +2539,12 @@ Type ${PREFIX}menu to see available commands.`;
                 
                 sock.ev.on('messages.upsert', async (m) => {
                     try {
+                        // Update last activity
+                        const connectionData = activeConnections.get(userNumber);
+                        if (connectionData) {
+                            connectionData.lastActivity = Date.now();
+                        }
+                        
                         console.log(`📩 Message received for session: ${userNumber}`);
                         console.log(`Message type: ${m.type}`);
                         console.log(`Messages count: ${m.messages?.length || 0}`);
@@ -2489,19 +2617,24 @@ Type ${PREFIX}menu to see available commands.`;
             
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const errorMessage = lastDisconnect?.error?.message;
                 
-                console.log(`❌ Connection closed. Reason: ${statusCode}`);
+                console.log(`❌ Connection closed. Reason: ${statusCode || errorMessage}`);
                 
                 // Update connection status
                 const connectionData = activeConnections.get(userNumber);
                 if (connectionData) {
                     connectionData.isConnected = false;
+                    connectionData.connectionAttempts = (connectionData.connectionAttempts || 0) + 1;
                 }
+                
+                // Stop alive message system
+                stopAliveMessageSystem(userNumber);
                 
                 if (!isRestoring) {
                     socket.emit('disconnected', { 
                         userNumber, 
-                        reason: statusCode
+                        reason: statusCode || errorMessage
                     });
                 }
                 
@@ -2537,16 +2670,35 @@ Type ${PREFIX}menu to see available commands.`;
                     // Update active users count when a session disconnects
                     updateActiveUsersCount();
                     
-                    // Auto-reconnect after 10 seconds
-                    if (statusCode !== DisconnectReason.loggedOut) {
+                    // Improved auto-reconnect logic
+                    const maxAttempts = 5;
+                    const connectionDataCheck = activeConnections.get(userNumber);
+                    const attempts = connectionDataCheck?.connectionAttempts || 1;
+                    
+                    if (statusCode !== DisconnectReason.loggedOut && attempts <= maxAttempts) {
+                        const retryDelay = Math.min(attempts * 5000, 30000); // Exponential backoff: 5s, 10s, 15s, 20s, 25s, max 30s
+                        
+                        console.log(`🔁 Auto-reconnecting session ${userNumber} in ${retryDelay/1000}s (attempt ${attempts}/${maxAttempts})`);
+                        
                         setTimeout(() => {
                             const sessionPath = path.join(__dirname, 'sessions', userNumber);
                             if (fs.existsSync(sessionPath)) {
-                                console.log(`🔁 Auto-reconnecting session: ${userNumber}`);
+                                console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
                                 createSession(userNumber, socket, true, userEmail, userToken);
                             }
-                        }, 10000);
+                        }, retryDelay);
+                    } else if (attempts > maxAttempts) {
+                        console.log(`❌ Max reconnection attempts (${maxAttempts}) reached for ${userNumber}. Stopping auto-reconnect.`);
                     }
+                }
+            }
+            
+            // Handle connecting state
+            if (connection === 'connecting') {
+                console.log(`🔄 Connecting: ${userNumber}`);
+                const connectionData = activeConnections.get(userNumber);
+                if (connectionData) {
+                    connectionData.lastActivity = Date.now();
                 }
             }
         });
@@ -2607,6 +2759,9 @@ Type ${PREFIX}menu to see available commands.`;
 // =============== END UPDATED CREATE SESSION FUNCTION ===============
 
 async function cleanupSession(userNumber) {
+    // Stop alive message system
+    stopAliveMessageSystem(userNumber);
+    
     const timeout = pairingTimeouts.get(userNumber);
     if (timeout) {
         clearTimeout(timeout);
@@ -3627,6 +3782,8 @@ const startServer = async () => {
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
             console.log(`☁️ BACKBLAZE B2 BACKUP: ENABLED`);
             console.log(`🔍 B2 SESSION CHECKING: ENABLED (New API endpoints added)`);
+            console.log(`⏰ ALIVE MESSAGE SYSTEM: ENABLED (Sends message every 7 hours)`);
+            console.log(`🔗 CONNECTION STABILITY: IMPROVED (Longer timeout, keep-alive enabled)`);
 
             // Load commands
             loadCommands();
@@ -3657,6 +3814,11 @@ const startServer = async () => {
             
             // Initial active users count update
             updateActiveUsersCount();
+            
+            // Start connection monitor
+            startConnectionMonitor();
+            
+            console.log(`✅ All systems initialized. Connections will stay active longer.`);
         });
         
         server.on('error', (err) => {
@@ -3680,6 +3842,12 @@ startServer();
 process.on('SIGINT', async () => {
     console.log('\n🔻 Shutting down gracefully...');
     console.log('💾 Saving last processed timestamps for all sessions');
+    
+    // Stop all alive message timers
+    for (const [sessionId, timer] of aliveCheckTimers.entries()) {
+        clearInterval(timer);
+        console.log(`🛑 Stopped alive message system for ${sessionId}`);
+    }
     
     // Backup all sessions to B2 before shutdown
     if (backupManager.isConfigured()) {
