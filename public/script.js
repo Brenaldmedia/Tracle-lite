@@ -2,11 +2,8 @@
 const socket = io();
 let countdownInterval;
 let currentUserNumber = null;
-let currentQuestionId = null;
 let currentUserToken = null;
 let currentUserEmail = null;
-let currentCodeCountdown = null;
-let codeCountdownInterval = null;
 
 // ===== DOM ELEMENTS =====
 const elements = {
@@ -25,9 +22,6 @@ const elements = {
     countdown: document.getElementById('countdown'),
     connectedNumber: document.getElementById('connectedNumber'),
     emailInput: document.getElementById('emailInput'),
-    quizQuestion: document.getElementById('quizQuestion'),
-    quizOptions: document.getElementById('quizOptions'),
-    quizResult: document.getElementById('quizResult'),
     codeEmail: document.getElementById('codeEmail'),
     codeTokenInput: document.getElementById('codeTokenInput'),
     codeNumber: document.getElementById('codeNumber'),
@@ -44,7 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initSocket();
     initEventListeners();
-    loadQuiz();
     checkSavedToken();
     checkThemePreference();
     checkAdminAccess();
@@ -164,10 +157,6 @@ function showSection(section) {
             headerTitle.textContent = 'Get Token';
             headerSubtitle.textContent = 'Request your access token';
             break;
-        case 'quiz':
-            headerTitle.textContent = 'Security Quiz';
-            headerSubtitle.textContent = 'Answer a simple question';
-            break;
         case 'features':
             headerTitle.textContent = 'Features';
             headerSubtitle.textContent = 'Explore premium features';
@@ -228,6 +217,14 @@ function initSocket() {
             return;
         }
         showToast('Error: ' + data.error, 'error');
+    });
+    
+    socket.on('pairing-expired', (data) => {
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            return;
+        }
+        showToast('Pairing code expired. Generate a new one.', 'warning');
+        resetPairingSection();
     });
 }
 
@@ -300,12 +297,19 @@ async function validateTokenForUser(email, token) {
     }
 }
 
-// ===== PAIRING CODE FUNCTIONS =====
-function createSession() {
-    let number = elements.codeNumber?.value?.trim() || currentUserNumber;
+// ===== MAIN PAIRING CODE FUNCTION =====
+async function getPairingCode() {
+    const email = elements.codeEmail.value.trim();
+    const token = elements.codeTokenInput.value.trim();
+    const number = elements.codeNumber.value.trim();
     
-    if (!number) {
-        showModal('Missing Information', 'Please enter your WhatsApp number to generate pairing code.', 'OK');
+    if (!email || !token || !number) {
+        showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
+        return;
+    }
+    
+    if (!token.startsWith('Tracle_') || token.length !== 18) {
+        showModal('Invalid Token', 'Token should start with "Tracle_" and be exactly 18 characters long.', 'OK');
         return;
     }
     
@@ -315,11 +319,66 @@ function createSession() {
         return;
     }
     
-    if (!currentUserEmail || !currentUserToken) {
-        showModal('Authentication Required', 'Please enter your email and token first.', 'OK');
-        return;
-    }
+    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]');
+    const originalHtml = getCodeBtn.innerHTML;
+    getCodeBtn.disabled = true;
+    getCodeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting Code...';
     
+    try {
+        // First validate token
+        const validationResult = await validateTokenForUser(email, token);
+        
+        if (validationResult.valid) {
+            saveUserToken(token, email);
+            
+            // Check if session exists on B2 and get new code
+            const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    token: token,
+                    userNumber: validatedNumber
+                })
+            });
+            
+            if (sessionCheckResponse.ok) {
+                const sessionData = await sessionCheckResponse.json();
+                
+                if (sessionData.sessionExists) {
+                    showModal('Session Found', 
+                        `A session already exists for ${validatedNumber}.<br><br>
+                        <strong>Options:</strong><br>
+                        1. Restore existing session (if disconnected)<br>
+                        2. Generate new pairing code<br>
+                        3. Delete session and start fresh`,
+                        'Generate New Code',
+                        () => {
+                            createNewSession(validatedNumber, email, token);
+                        }
+                    );
+                } else {
+                    // No session exists, create new one
+                    createNewSession(validatedNumber, email, token);
+                }
+            } else {
+                // Fallback to direct creation
+                createNewSession(validatedNumber, email, token);
+            }
+            
+        } else {
+            showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
+        }
+    } catch (error) {
+        console.error('Pairing code error:', error);
+        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
+    } finally {
+        getCodeBtn.disabled = false;
+        getCodeBtn.innerHTML = originalHtml;
+    }
+}
+
+function createNewSession(userNumber, email, token) {
     if (elements.pairingSection && !elements.pairingSection.classList.contains('hidden')) {
         elements.pairingSection.classList.remove('hidden');
         elements.codeDisplay.innerHTML = `
@@ -331,9 +390,9 @@ function createSession() {
     }
     
     socket.emit('create-session', {
-        userNumber: validatedNumber,
-        email: currentUserEmail,
-        token: currentUserToken
+        userNumber: userNumber,
+        email: email,
+        token: token
     });
     
     startCountdown(120);
@@ -378,6 +437,17 @@ function showPairingCode(code) {
     
     startCountdown(120);
     showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
+    
+    // Auto-scroll to code section
+    const codeSection = document.getElementById('pairingSection');
+    if (codeSection) {
+        setTimeout(() => {
+            codeSection.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+            });
+        }, 500);
+    }
 }
 
 function showConnected(userNumber) {
@@ -390,6 +460,17 @@ function showConnected(userNumber) {
     }
     
     showToast('✅ Successfully connected to WhatsApp!', 'success');
+}
+
+function resetConnection() {
+    elements.statusSection.classList.add('hidden');
+    elements.codeNumber.value = '';
+    showSection('home');
+}
+
+function resetPairingSection() {
+    elements.pairingSection.classList.add('hidden');
+    stopCountdown();
 }
 
 // ===== COUNTDOWN FUNCTIONS =====
@@ -415,163 +496,6 @@ function stopCountdown() {
     if (countdownInterval) {
         clearInterval(countdownInterval);
         countdownInterval = null;
-    }
-}
-
-// ===== MAIN FUNCTION FOR START PROCESS BUTTON =====
-async function verifyTokenAndStartQuiz() {
-    const email = elements.codeEmail.value.trim();
-    const token = elements.codeTokenInput.value.trim();
-    const number = elements.codeNumber.value.trim();
-    
-    if (!email || !token || !number) {
-        showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
-        return;
-    }
-    
-    if (!token.startsWith('Tracle_') || token.length !== 18) {
-        showModal('Invalid Token', 'Token should start with "Tracle_" and be exactly 18 characters long.', 'OK');
-        return;
-    }
-    
-    const validatedNumber = validateWhatsAppNumber(number);
-    if (!validatedNumber) {
-        showModal('Invalid Number', 'Please enter a valid WhatsApp number format (e.g., 2349012345678)', 'OK');
-        return;
-    }
-    
-    const startBtn = document.querySelector('.primary-btn[onclick*="verifyTokenAndStartQuiz"]');
-    const originalHtml = startBtn.innerHTML;
-    startBtn.disabled = true;
-    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
-    
-    try {
-        const validationResult = await validateTokenForUser(email, token);
-        
-        if (validationResult.valid) {
-            saveUserToken(token, email);
-            
-            await showQuizAfterTokenValidation();
-            showToast('✅ Token verified successfully! Answer the quiz to get pairing code.', 'success');
-            
-        } else {
-            showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
-        }
-    } catch (error) {
-        console.error('Token verification error:', error);
-        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
-    } finally {
-        startBtn.disabled = false;
-        startBtn.innerHTML = originalHtml;
-    }
-}
-
-async function showQuizAfterTokenValidation() {
-    const getBotCodeSection = document.querySelector('.get-bot-code-section');
-    
-    const quizHTML = `
-        <div class="quiz-card" id="homeQuizContainer" style="margin-top: 20px;">
-            <div class="quiz-header">
-                <h4><i class="fas fa-brain"></i> Security Verification</h4>
-                <p>Answer correctly to get your pairing code</p>
-            </div>
-            <div id="homeQuizContent">
-                <div class="quiz-question" id="homeQuizQuestion"></div>
-                <div class="quiz-options" id="homeQuizOptions"></div>
-            </div>
-            <div id="homeQuizResult" class="quiz-result"></div>
-        </div>
-    `;
-    
-    getBotCodeSection.insertAdjacentHTML('afterend', quizHTML);
-    await loadHomeQuizQuestion();
-}
-
-async function loadHomeQuizQuestion() {
-    try {
-        const response = await fetch('/api/quiz');
-        const data = await response.json();
-        
-        if (data.success) {
-            currentQuestionId = data.questionId;
-            
-            document.getElementById('homeQuizQuestion').innerHTML = `
-                <h4>${data.question}</h4>
-                <p>Select the correct answer:</p>
-            `;
-            
-            const optionsDiv = document.getElementById('homeQuizOptions');
-            optionsDiv.innerHTML = '';
-            data.options.forEach((option, index) => {
-                const btn = document.createElement('button');
-                btn.className = 'option-btn';
-                btn.innerHTML = `
-                    <span class="option-letter">${String.fromCharCode(65 + index)}</span>
-                    <span>${option}</span>
-                `;
-                btn.onclick = () => submitHomeQuizAnswer(index);
-                optionsDiv.appendChild(btn);
-            });
-            
-            document.getElementById('homeQuizResult').style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Error loading quiz:', error);
-        showToast('Failed to load quiz', 'error');
-    }
-}
-
-async function submitHomeQuizAnswer(answer) {
-    try {
-        const response = await fetch('/api/verify-quiz', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                questionId: currentQuestionId, 
-                answer: answer 
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            if (data.correct) {
-                document.getElementById('homeQuizResult').innerHTML = `
-                    <div class="success-message">
-                        <i class="fas fa-check-circle"></i>
-                        <h4>Correct!</h4>
-                        <p>${data.message}</p>
-                    </div>
-                `;
-                document.getElementById('homeQuizResult').style.display = 'block';
-                
-                setTimeout(() => {
-                    document.getElementById('homeQuizContainer').remove();
-                    createSession();
-                    
-                    // Auto scroll to code section
-                    const codeSection = document.getElementById('codeSection');
-                    if (codeSection) {
-                        codeSection.scrollIntoView({ behavior: 'smooth' });
-                    }
-                }, 1500);
-                
-            } else {
-                document.getElementById('homeQuizResult').innerHTML = `
-                    <div class="error-message">
-                        <i class="fas fa-times-circle"></i>
-                        <h4>Incorrect</h4>
-                        <p>${data.message} Try again.</p>
-                    </div>
-                `;
-                document.getElementById('homeQuizResult').style.display = 'block';
-                
-                setTimeout(loadHomeQuizQuestion, 2000);
-            }
-        }
-    } catch (error) {
-        console.error('Error submitting answer:', error);
-        showToast('Failed to submit answer', 'error');
     }
 }
 
@@ -635,86 +559,7 @@ async function requestToken() {
     }
 }
 
-// ===== QUIZ FUNCTIONS =====
-async function loadQuiz() {
-    try {
-        const response = await fetch('/api/quiz');
-        const data = await response.json();
-        
-        if (data.success) {
-            currentQuestionId = data.questionId;
-            
-            elements.quizQuestion.innerHTML = `
-                <h4>${data.question}</h4>
-                <p>Select the correct answer:</p>
-            `;
-            
-            elements.quizOptions.innerHTML = '';
-            data.options.forEach((option, index) => {
-                const btn = document.createElement('button');
-                btn.className = 'option-btn';
-                btn.innerHTML = `
-                    <span class="option-letter">${String.fromCharCode(65 + index)}</span>
-                    <span>${option}</span>
-                `;
-                btn.onclick = () => submitAnswer(index);
-                elements.quizOptions.appendChild(btn);
-            });
-            
-            elements.quizResult.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Error loading quiz:', error);
-        showToast('Failed to load quiz', 'error');
-    }
-}
-
-async function submitAnswer(answer) {
-    try {
-        const response = await fetch('/api/verify-quiz', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                questionId: currentQuestionId, 
-                answer: answer 
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            if (data.correct) {
-                elements.quizResult.innerHTML = `
-                    <div class="success-message">
-                        <i class="fas fa-check-circle"></i>
-                        <h4>Correct!</h4>
-                        <p>${data.message}</p>
-                    </div>
-                `;
-                elements.quizResult.style.display = 'block';
-                showToast('Correct answer!', 'success');
-                
-            } else {
-                elements.quizResult.innerHTML = `
-                    <div class="error-message">
-                        <i class="fas fa-times-circle"></i>
-                        <h4>Incorrect</h4>
-                        <p>${data.message} Try again.</p>
-                    </div>
-                `;
-                elements.quizResult.style.display = 'block';
-                showToast('Incorrect answer. Try again.', 'error');
-                
-                setTimeout(loadQuiz, 2000);
-            }
-        }
-    } catch (error) {
-        console.error('Error submitting answer:', error);
-        showToast('Failed to submit answer', 'error');
-    }
-}
-
-// ===== SESSIONS MANAGEMENT (USER-ISOLATED) =====
+// ===== SESSIONS MANAGEMENT =====
 async function loadUserSessions() {
     try {
         if (!currentUserEmail || !currentUserToken) {
@@ -773,7 +618,10 @@ async function loadUserSessions() {
                             <p><strong>Mode:</strong> ${session.settings?.botMode || 'public'}</p>
                             <p><strong>Last Active:</strong> ${session.lastActivity ? new Date(session.lastActivity).toLocaleString() : 'Never'}</p>
                             <div class="session-actions">
-                                <button class="btn-secondary small" onclick="deleteUserSession('${session.userNumber}')">
+                                <button class="btn-restore small" onclick="restoreSession('${session.userNumber}')">
+                                    <i class="fas fa-sync-alt"></i> Restore
+                                </button>
+                                <button class="btn-delete small" onclick="deleteUserSession('${session.userNumber}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </div>
@@ -809,7 +657,65 @@ async function loadUserSessions() {
     }
 }
 
-// ===== DELETE SESSION FUNCTION (USER-ISOLATED) =====
+// ===== SESSION MANAGEMENT FUNCTIONS =====
+async function restoreSession(userNumber) {
+    if (!currentUserEmail || !currentUserToken) {
+        showToast('Authentication required', 'error');
+        return;
+    }
+    
+    try {
+        showModal('Restore Session', 
+            `Do you want to restore session for ${userNumber}? This will generate a new pairing code.`,
+            'Restore',
+            async () => {
+                try {
+                    showToast('Restoring session...', 'info');
+                    
+                    const response = await fetch('/api/user/restore-session', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: currentUserEmail,
+                            token: currentUserToken,
+                            userNumber: userNumber
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            showToast('✅ Session restored! Generating new pairing code...', 'success');
+                            
+                            // Switch to home section and generate new code
+                            elements.codeNumber.value = userNumber;
+                            showSection('home');
+                            
+                            // Generate new pairing code
+                            setTimeout(() => {
+                                createNewSession(userNumber, currentUserEmail, currentUserToken);
+                            }, 1000);
+                        } else {
+                            showToast('❌ ' + data.message, 'error');
+                        }
+                    } else {
+                        throw new Error('Failed to restore session');
+                    }
+                } catch (error) {
+                    console.error('Error restoring session:', error);
+                    showToast('❌ Failed to restore session', 'error');
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Error in restoreSession:', error);
+        showToast('❌ Error restoring session', 'error');
+    }
+}
+
 async function deleteUserSession(userNumber) {
     if (!currentUserEmail || !currentUserToken) {
         showToast('Authentication required', 'error');
@@ -818,7 +724,7 @@ async function deleteUserSession(userNumber) {
     
     try {
         showModal('Delete Session', 
-            `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data.`,
+            `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data from Backblaze B2.`,
             'Delete',
             async () => {
                 try {
@@ -840,8 +746,10 @@ async function deleteUserSession(userNumber) {
                         const data = await response.json();
                         showToast('✅ Session deleted successfully', 'success');
                         
+                        // Reload sessions list
                         loadUserSessions();
                         
+                        // Emit disconnect event
                         socket.emit('disconnect-session', {
                             userNumber: userNumber,
                             email: currentUserEmail,
@@ -860,6 +768,15 @@ async function deleteUserSession(userNumber) {
         console.error('Error in deleteSession:', error);
         showToast('❌ Error deleting session', 'error');
     }
+}
+
+function generateNewCode() {
+    if (!currentUserNumber || !currentUserEmail || !currentUserToken) {
+        showToast('Please enter your details first', 'error');
+        return;
+    }
+    
+    createNewSession(currentUserNumber, currentUserEmail, currentUserToken);
 }
 
 // ===== ADMIN ACCESS CHECK =====
@@ -945,7 +862,7 @@ function initEventListeners() {
     });
     
     elements.codeEmail?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') verifyTokenAndStartQuiz();
+        if (e.key === 'Enter') getPairingCode();
     });
     
     elements.codeNumber?.addEventListener('input', (e) => {
@@ -989,20 +906,20 @@ socket.on('reconnect', () => {
     showToast('Reconnected to server', 'success');
 });
 
-// Initialize
-console.log('🚀 Tracle-Lite Pro Frontend Loaded');
-
 // Export functions to window for onclick handlers
-window.createSession = createSession;
+window.getPairingCode = getPairingCode;
+window.createNewSession = createNewSession;
+window.generateNewCode = generateNewCode;
 window.showSection = showSection;
 window.requestToken = requestToken;
-window.verifyTokenAndStartQuiz = verifyTokenAndStartQuiz;
 window.copyToClipboard = copyToClipboard;
-window.submitAnswer = submitAnswer;
-window.loadQuiz = loadQuiz;
 window.loadUserSessions = loadUserSessions;
-window.deleteSession = deleteUserSession;
+window.restoreSession = restoreSession;
+window.deleteUserSession = deleteUserSession;
 window.toggleTheme = toggleTheme;
 window.closeModal = closeModal;
 window.showModal = showModal;
 window.checkAdminAccess = checkAdminAccess;
+
+// Initialize
+console.log('🚀 Tracle-Lite Pro Frontend Loaded - Smart Session Management');

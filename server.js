@@ -1,4 +1,4 @@
-// SERVER.JS (COMPLETE UPDATED VERSION WITH 100% HEROKU SESSION RESTORATION)
+// SERVER.JS (UPDATED WITH WORKING AUTO-SUBSCRIPTION AND AUTO-GROUP JOIN + B2 SESSION CHECKING)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -2050,93 +2050,137 @@ function saveUserInfoToFile(userNumber, email, token) {
     }
 }
 
-// =============== ENHANCED RETRY FUNCTION ===============
-async function restoreSessionsWithRetry(maxRetries = 3) {
-    console.log(`🔄 Starting session restoration with ${maxRetries} retries...`);
+// =============== UPDATED SESSION AUTO-RESTORE FUNCTION ===============
+async function restoreExistingSessions() {
+    console.log('\n🔄 Checking for existing sessions...');
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`🔄 Attempt ${attempt}/${maxRetries} to restore sessions...`);
-            
-            if (backupManager.isConfigured()) {
-                // Try different restore strategies
-                let restoreResult;
-                
-                // Strategy 1: Full restore
-                restoreResult = await backupManager.restoreAllData();
-                
-                if (!restoreResult.success) {
-                    // Strategy 2: Just restore sessions
-                    restoreResult = await backupManager.restoreAllSessionsFromB2();
-                }
-                
-                if (!restoreResult.success) {
-                    // Strategy 3: Sync sessions
-                    restoreResult = await backupManager.syncAllSessions();
-                }
-                
-                if (restoreResult.success) {
-                    console.log(`✅ Successfully restored sessions on attempt ${attempt}`);
-                    return true;
-                }
-            }
-            
-            // Wait before next retry
-            if (attempt < maxRetries) {
-                const waitTime = attempt * 2000; // Exponential backoff
-                console.log(`⏳ Waiting ${waitTime}ms before next attempt...`);
-                await delay(waitTime);
-            }
-            
-        } catch (error) {
-            console.error(`❌ Attempt ${attempt} failed:`, error.message);
-            
-            if (attempt < maxRetries) {
-                const waitTime = attempt * 3000;
-                console.log(`⏳ Waiting ${waitTime}ms before retry...`);
-                await delay(waitTime);
-            }
+    const sessionsPath = path.join(__dirname, 'sessions');
+    
+    try {
+        if (!fs.existsSync(sessionsPath)) {
+            console.log('📁 No sessions folder found');
+            return;
         }
+        
+        const userFolders = fs.readdirSync(sessionsPath);
+        
+        if (userFolders.length === 0) {
+            console.log('📁 No existing sessions to restore');
+            return;
+        }
+        
+        console.log(`📦 Found ${userFolders.length} session(s) to restore`);
+        
+        // Restore sessions with delay between each
+        for (let i = 0; i < userFolders.length; i++) {
+            const userNumber = userFolders[i];
+            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
+            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
+            
+            if (fs.existsSync(credsPath) && fs.existsSync(userInfoPath)) {
+                try {
+                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                    
+                    if (creds.registered) {
+                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userInfo.email})`);
+                        
+                        // Create a dummy socket for restoration
+                        const dummySocket = {
+                            emit: (event, data) => {
+                                console.log(`📡 Restoration event: ${event} for ${userNumber}`);
+                            }
+                        };
+                        
+                        // Delay between session restorations
+                        await delay(2000);
+                        
+                        // Attempt to restore session
+                        await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                        
+                        // Add retry mechanism for failed sessions
+                        const connectionData = activeConnections.get(userNumber);
+                        if (!connectionData || !connectionData.conn) {
+                            console.log(`⚠️ Session ${userNumber} failed to restore, will retry...`);
+                            setTimeout(() => {
+                                createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                            }, 5000);
+                        }
+                    } else {
+                        console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
+                }
+            }
+            
+            // Delay between each session restoration
+            await delay(1000);
+        }
+        
+        console.log('✅ Session restoration complete');
+        
+        // Auto-subscribe restored sessions to channels and group
+        setTimeout(async () => {
+            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
+            
+            // Give sessions time to fully connect
+            await delay(5000);
+            
+            const channelResult = await broadcastSubscribeToChannels();
+            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
+            
+            await delay(3000);
+            
+            const groupResult = await broadcastJoinGroup();
+            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
+            
+        }, 15000);
+        
+    } catch (error) {
+        console.error('❌ Error during session restoration:', error);
     }
-    
-    console.log(`❌ Failed to restore sessions after ${maxRetries} attempts`);
-    return false;
 }
+// =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
-// =============== UPDATED SESSION CREATION WITH B2 RESTORE ===============
+// =============== UPDATED CREATE SESSION FUNCTION WITH B2 RESTORATION ===============
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
-        console.log(`\n🆕 Creating session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
+        console.log(`\n🆕 Creating/Restoring session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
         
-        const sessionPath = path.join(__dirname, 'sessions', userNumber);
-        
-        // 🆕 FIRST: Check Backblaze B2 for existing session before creating new one
-        let shouldUseB2Session = false;
-        if (backupManager.isConfigured()) {
+        // 🆕 FIRST: Check Backblaze B2 for existing session
+        if (backupManager.isConfigured() && !isRestoring) {
             console.log(`🔄 Checking Backblaze B2 for existing session: ${userNumber}`);
             
             try {
-                // First, try to restore from B2
-                const b2RestoreResult = await backupManager.restoreSessionFromB2(userNumber);
-                console.log(`📊 B2 restore result for ${userNumber}:`, b2RestoreResult);
+                const b2Check = await backupManager.restoreAndCheckSession(userNumber);
                 
-                if (b2RestoreResult.success) {
-                    console.log(`✅ Found and restored session ${userNumber} from Backblaze B2`);
-                    shouldUseB2Session = true;
-                } else {
-                    console.log(`📭 No valid session found on B2 for ${userNumber}: ${b2RestoreResult.error}`);
+                if (b2Check.exists && b2Check.restored) {
+                    console.log(`✅ Session ${userNumber} restored from Backblaze B2`);
+                    
+                    // Update user info
+                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
+                    const userInfoPath = path.join(sessionPath, 'user_info.json');
+                    
+                    if (!fs.existsSync(userInfoPath)) {
+                        const userInfo = {
+                            email: userEmail,
+                            token: userToken,
+                            createdAt: new Date().toISOString(),
+                            lastActivity: new Date().toISOString(),
+                            restoredFromB2: true,
+                            restoredAt: new Date().toISOString()
+                        };
+                        fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
+                    }
                 }
             } catch (error) {
                 console.error(`❌ Error checking B2 for ${userNumber}:`, error.message);
             }
-        } else {
-            console.log(`⚠️ Backblaze B2 not configured, using local session only`);
         }
         
-        // Create session folder if it doesn't exist
-        if (!fs.existsSync(sessionPath)) {
-            await fs.ensureDir(sessionPath);
-        }
+        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+        await fs.ensureDir(sessionPath);
         
         // Store user info if provided (for new sessions)
         if (userEmail && userToken && !isRestoring) {
@@ -2152,20 +2196,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             );
         }
         
-        // 🆕 Check if we have a restored creds.json
-        const credsPath = path.join(sessionPath, 'creds.json');
-        let hasValidCreds = false;
-        
-        if (fs.existsSync(credsPath)) {
-            try {
-                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                hasValidCreds = creds && creds.registered === true;
-                console.log(`📄 Creds.json exists for ${userNumber}, registered: ${hasValidCreds}`);
-            } catch (error) {
-                console.error(`❌ Error reading creds.json for ${userNumber}:`, error.message);
-            }
-        }
-        
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
         
         const { version } = await fetchLatestBaileysVersion();
@@ -2174,27 +2204,11 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
         const lastTimestamp = loadLastProcessedTimestamp(userNumber);
         console.log(`⏰ Last processed timestamp for ${userNumber}: ${lastTimestamp ? new Date(lastTimestamp).toLocaleString() : 'None'}`);
         
-        // 🆕 If we don't have valid creds, check if we should generate pairing code
         if (!state.creds || !state.creds.registered) {
-            console.log(`❌ No valid credentials found for ${userNumber}`);
-            
-            if (isRestoring && hasValidCreds) {
-                console.log(`🔄 But we have a restored creds.json, trying to use it...`);
-                // Try to reload auth state
-                const { state: reloadedState, saveCreds: reloadedSaveCreds } = await useMultiFileAuthState(sessionPath);
-                if (reloadedState.creds && reloadedState.creds.registered) {
-                    console.log(`✅ Successfully loaded restored credentials for ${userNumber}`);
-                    // Use the reloaded state
-                    state.creds = reloadedState.creds;
-                    state.keys = reloadedState.keys;
-                }
+            console.log(`❌ No valid credentials found for ${userNumber}, skipping restoration`);
+            if (isRestoring) {
+                return;
             }
-            
-            if (!state.creds?.registered) {
-                console.log(`❌ Still no registered credentials for ${userNumber}, will need pairing`);
-            }
-        } else {
-            console.log(`✅ Found registered credentials for ${userNumber}`);
         }
         
         const sock = makeWASocket({
@@ -2244,12 +2258,11 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                 hasQR: !!qr, 
                 userNumber,
                 isRestoring,
-                userEmail: userEmail,
-                hasValidCreds: hasValidCreds
+                userEmail: userEmail
             });
             
             if (qr && !isRestoring) {
-                console.log(`📱 QR code generated for ${userNumber}`);
+                console.log(`📱 QR code generated`);
                 socket.emit('qr', { 
                     userNumber,
                     qr: qr,
@@ -2261,25 +2274,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             
             if (connection === 'open') {
                 console.log(`✅ WhatsApp connected: ${userNumber}`);
-                
-                // 🆕 AUTO BACKUP WHEN USER CONNECTS SUCCESSFULLY
-                if (backupManager.isConfigured()) {
-                    console.log(`🔄 Auto-backup triggered for ${userNumber} after successful connection`);
-                    
-                    // Small delay to ensure everything is saved
-                    setTimeout(async () => {
-                        try {
-                            const backupResult = await backupManager.backupNewUserSession(userNumber);
-                            if (backupResult.success) {
-                                console.log(`✅ Auto-backup completed for ${userNumber}`);
-                            } else {
-                                console.log(`⚠️ Auto-backup failed for ${userNumber}: ${backupResult.error}`);
-                            }
-                        } catch (backupError) {
-                            console.error(`❌ Auto-backup error for ${userNumber}:`, backupError.message);
-                        }
-                    }, 3000);
-                }
                 
                 // Update connection status
                 const connectionData = activeConnections.get(userNumber);
@@ -2560,16 +2554,13 @@ Type ${PREFIX}menu to see available commands.`;
 
         sock.ev.on('creds.update', saveCreds);
         
-        // 🆕 MODIFIED: Only generate pairing code if we don't have registered creds
-        if ((!state.creds?.registered || !hasValidCreds) && !isRestoring) {
-            console.log(`🔄 No registered credentials found for ${userNumber}, generating pairing code...`);
-            
+        if (!state.creds?.registered && !isRestoring) {
             setTimeout(async () => {
                 try {
                     const phoneNumber = userNumber.replace(/\D/g, '');
                     const code = await sock.requestPairingCode(phoneNumber);
                     
-                    console.log(`✅ Pairing code for ${userNumber}: ${code}`);
+                    console.log(`✅ Pairing code: ${code}`);
                     
                     const timeout = setTimeout(() => {
                         if (sessions.get(userNumber) === sock) {
@@ -2602,8 +2593,6 @@ Type ${PREFIX}menu to see available commands.`;
                     await cleanupSession(userNumber);
                 }
             }, 5000);
-        } else {
-            console.log(`✅ ${userNumber} has registered credentials, no pairing needed`);
         }
         
         return sock;
@@ -2615,6 +2604,7 @@ Type ${PREFIX}menu to see available commands.`;
         await cleanupSession(userNumber);
     }
 }
+// =============== END UPDATED CREATE SESSION FUNCTION ===============
 
 async function cleanupSession(userNumber) {
     const timeout = pairingTimeouts.get(userNumber);
@@ -2730,6 +2720,203 @@ io.on('connection', (socket) => {
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// =============== NEW B2 SESSION CHECKING API ENDPOINTS ===============
+
+// API endpoint to check if session exists on B2
+app.post('/api/user/check-session-exists', async (req, res) => {
+    try {
+        const { email, token, userNumber } = req.body;
+        
+        if (!email || !token || !userNumber) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email, token, and user number are required' 
+            });
+        }
+
+        // Validate token
+        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
+        if (!tokenValidation.valid) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Invalid token for this email' 
+            });
+        }
+
+        console.log(`🔍 Checking session existence for: ${userNumber}`);
+        
+        let sessionExists = false;
+        let sessionInfo = null;
+        
+        // Check if session exists locally
+        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+        const credsPath = path.join(sessionPath, 'creds.json');
+        
+        if (fs.existsSync(credsPath)) {
+            try {
+                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                sessionExists = true;
+                sessionInfo = {
+                    local: true,
+                    registered: creds.registered || false,
+                    needsRestore: false
+                };
+            } catch (error) {
+                console.error(`Error reading local creds.json:`, error);
+            }
+        }
+        
+        // Check if session exists on B2
+        if (backupManager.isConfigured() && !sessionExists) {
+            try {
+                const b2Check = await backupManager.restoreAndCheckSession(userNumber);
+                
+                if (b2Check.exists) {
+                    sessionExists = true;
+                    sessionInfo = {
+                        local: false,
+                        b2: true,
+                        registered: b2Check.registered || false,
+                        needsRestore: true,
+                        restored: b2Check.restored || false
+                    };
+                    
+                    // If restored from B2, update user info
+                    if (b2Check.restored) {
+                        const userInfoPath = path.join(sessionPath, 'user_info.json');
+                        if (!fs.existsSync(userInfoPath)) {
+                            const userInfo = {
+                                email: email,
+                                token: token,
+                                createdAt: new Date().toISOString(),
+                                lastActivity: new Date().toISOString(),
+                                restoredFromB2: true,
+                                restoredAt: new Date().toISOString()
+                            };
+                            fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error checking B2 for session ${userNumber}:`, error);
+            }
+        }
+        
+        res.json({
+            success: true,
+            sessionExists: sessionExists,
+            sessionInfo: sessionInfo,
+            userNumber: userNumber
+        });
+        
+    } catch (error) {
+        console.error('Error checking session existence:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to check session existence',
+            error: error.message 
+        });
+    }
+});
+
+// API endpoint to restore session
+app.post('/api/user/restore-session', async (req, res) => {
+    try {
+        const { email, token, userNumber } = req.body;
+        
+        if (!email || !token || !userNumber) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email, token, and user number are required' 
+            });
+        }
+
+        // Validate token
+        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
+        if (!tokenValidation.valid) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Invalid token for this email' 
+            });
+        }
+
+        console.log(`🔄 Restoring session for: ${userNumber}`);
+        
+        let result = {
+            success: false,
+            message: 'Session not found'
+        };
+        
+        // First try to restore from B2
+        if (backupManager.isConfigured()) {
+            try {
+                const restoreResult = await backupManager.restoreSessionFromB2(userNumber);
+                
+                if (restoreResult.success) {
+                    console.log(`✅ Session restored from B2: ${userNumber}`);
+                    
+                    // Update user info
+                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
+                    const userInfoPath = path.join(sessionPath, 'user_info.json');
+                    
+                    const userInfo = {
+                        email: email,
+                        token: token,
+                        createdAt: new Date().toISOString(),
+                        lastActivity: new Date().toISOString(),
+                        restoredFromB2: true,
+                        restoredAt: new Date().toISOString()
+                    };
+                    
+                    fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
+                    
+                    result = {
+                        success: true,
+                        message: 'Session restored from Backblaze B2',
+                        restored: true,
+                        source: 'b2'
+                    };
+                }
+            } catch (error) {
+                console.error(`Error restoring from B2:`, error);
+            }
+        }
+        
+        // Check if we have local session
+        if (!result.success) {
+            const credsPath = path.join(__dirname, 'sessions', userNumber, 'creds.json');
+            if (fs.existsSync(credsPath)) {
+                try {
+                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                    
+                    if (creds.registered) {
+                        result = {
+                            success: true,
+                            message: 'Local session found',
+                            restored: false,
+                            source: 'local'
+                        };
+                    }
+                } catch (error) {
+                    console.error(`Error reading local creds:`, error);
+                }
+            }
+        }
+        
+        res.json(result);
+        
+    } catch (error) {
+        console.error('Error restoring session:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to restore session',
+            error: error.message 
+        });
+    }
+});
+
+// =============== END NEW B2 SESSION CHECKING API ENDPOINTS ===============
 
 // =============== NEW ADMIN API ENDPOINTS ===============
 
@@ -3418,315 +3605,10 @@ app.post('/api/request-token', async (req, res) => {
     }
 });
 
-// =============== NEW SESSION MANAGEMENT APIS ===============
-
-// API endpoint to check and restore user sessions from B2
-app.post('/api/user/restore-sessions', async (req, res) => {
-    try {
-        const { email, token } = req.body;
-        
-        if (!email || !token) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Email and token are required' 
-            });
-        }
-
-        // Validate the token belongs to this email
-        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
-        if (!tokenValidation.valid) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Invalid token for this email' 
-            });
-        }
-
-        // Check if Backblaze B2 is configured
-        if (!backupManager.isConfigured()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Backblaze B2 backup is not configured'
-            });
-        }
-
-        console.log(`🔄 Restoring sessions for user: ${email}`);
-        
-        // Check for sessions on B2
-        const restoreResult = await backupManager.restoreAllSessionsFromB2();
-        
-        // Get user's sessions
-        const userSessionsResult = await tokenManager.getUserActiveSessions(email, token);
-        
-        res.json({
-            success: true,
-            message: `Session restore process completed`,
-            b2Restore: restoreResult,
-            userSessions: userSessionsResult.sessions || [],
-            totalSessions: userSessionsResult.sessions?.length || 0
-        });
-        
-    } catch (error) {
-        console.error('Error restoring user sessions:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to restore sessions',
-            error: error.message 
-        });
-    }
-});
-
-// API endpoint to backup user sessions to B2
-app.post('/api/user/backup-sessions', async (req, res) => {
-    try {
-        const { email, token } = req.body;
-        
-        if (!email || !token) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Email and token are required' 
-            });
-        }
-
-        // Validate the token belongs to this email
-        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
-        if (!tokenValidation.valid) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Invalid token for this email' 
-            });
-        }
-
-        // Check if Backblaze B2 is configured
-        if (!backupManager.isConfigured()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Backblaze B2 backup is not configured'
-            });
-        }
-
-        console.log(`🔄 Backing up sessions for user: ${email}`);
-        
-        // Backup user sessions
-        const backupResult = await backupManager.backupAllSessions();
-        
-        res.json({
-            success: true,
-            message: `Session backup process completed`,
-            backupResult: backupResult
-        });
-        
-    } catch (error) {
-        console.error('Error backing up user sessions:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to backup sessions',
-            error: error.message 
-        });
-    }
-});
-
-// API endpoint to check session status on B2
-app.post('/api/user/check-session-status', async (req, res) => {
-    try {
-        const { email, token, userNumber } = req.body;
-        
-        if (!email || !token || !userNumber) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Email, token, and user number are required' 
-            });
-        }
-
-        // Validate the token belongs to this email
-        const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
-        if (!tokenValidation.valid) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Invalid token for this email' 
-            });
-        }
-
-        console.log(`🔍 Checking session status for: ${userNumber}`);
-        
-        let sessionExists = false;
-        let sessionRestored = false;
-        let sessionRegistered = false;
-        
-        // Check if session exists locally
-        const sessionPath = path.join(__dirname, 'sessions', userNumber);
-        const credsPath = path.join(sessionPath, 'creds.json');
-        
-        if (fs.existsSync(credsPath)) {
-            sessionExists = true;
-            try {
-                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                sessionRegistered = creds.registered || false;
-            } catch (error) {
-                console.error(`Error reading creds.json:`, error);
-            }
-        }
-        
-        // Check if session exists on B2
-        let b2Exists = false;
-        if (backupManager.isConfigured()) {
-            try {
-                const b2Check = await backupManager.checkSessionOnB2(userNumber);
-                b2Exists = b2Check.sessionExists || false;
-            } catch (error) {
-                console.error(`Error checking B2 for session ${userNumber}:`, error);
-            }
-        }
-        
-        res.json({
-            success: true,
-            sessionInfo: {
-                userNumber,
-                localExists: sessionExists,
-                b2Exists: b2Exists,
-                registered: sessionRegistered,
-                needsRestore: b2Exists && !sessionExists,
-                needsBackup: sessionExists && !b2Exists && sessionRegistered
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error checking session status:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to check session status',
-            error: error.message 
-        });
-    }
-});
-// =============== END NEW SESSION MANAGEMENT APIS ===============
-
 // Setup admin routes from admin.js module
 adminManager.setupRoutes(app);
 
 const PORT = process.env.PORT || 3000;
-
-// =============== UPDATED SESSION AUTO-RESTORE FUNCTION ===============
-async function restoreExistingSessions() {
-    console.log('\n🔄 Checking for existing sessions...');
-    
-    const sessionsPath = path.join(__dirname, 'sessions');
-    
-    try {
-        if (!fs.existsSync(sessionsPath)) {
-            console.log('📁 No sessions folder found, creating...');
-            fs.mkdirSync(sessionsPath, { recursive: true });
-        }
-        
-        // 🆕 FIRST: Restore from Backblaze B2 if configured
-        if (backupManager.isConfigured()) {
-            console.log('🔄 Restoring sessions from Backblaze B2...');
-            try {
-                const restoreResult = await backupManager.restoreAllSessionsFromB2();
-                if (restoreResult.success) {
-                    console.log(`✅ Restored ${restoreResult.restoredCount || 0} sessions from Backblaze B2`);
-                } else {
-                    console.log(`❌ Failed to restore from B2: ${restoreResult.error}`);
-                }
-            } catch (error) {
-                console.error('❌ Error restoring from B2:', error.message);
-            }
-        }
-        
-        // THEN: Restore local sessions
-        const userFolders = fs.readdirSync(sessionsPath);
-        
-        if (userFolders.length === 0) {
-            console.log('📁 No existing sessions to restore');
-            return;
-        }
-        
-        console.log(`📦 Found ${userFolders.length} local session(s) to restore`);
-        
-        // Restore sessions with delay between each
-        for (let i = 0; i < userFolders.length; i++) {
-            const userNumber = userFolders[i];
-            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
-            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
-            
-            if (fs.existsSync(credsPath)) {
-                try {
-                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                    
-                    if (creds.registered) {
-                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber}`);
-                        
-                        let userEmail = null;
-                        let userToken = null;
-                        
-                        // Try to get user info
-                        if (fs.existsSync(userInfoPath)) {
-                            try {
-                                const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
-                                userEmail = userInfo.email;
-                                userToken = userInfo.token;
-                                console.log(`📧 Session belongs to: ${userEmail}`);
-                            } catch (error) {
-                                console.log(`⚠️ Could not read user_info.json for ${userNumber}`);
-                            }
-                        }
-                        
-                        // Create a dummy socket for restoration
-                        const dummySocket = {
-                            emit: (event, data) => {
-                                console.log(`📡 Restoration event: ${event} for ${userNumber}`);
-                            }
-                        };
-                        
-                        // Delay between session restorations
-                        await delay(2000);
-                        
-                        // Attempt to restore session (as restoration)
-                        await createSession(userNumber, dummySocket, true, userEmail, userToken);
-                        
-                        // Add retry mechanism for failed sessions
-                        setTimeout(async () => {
-                            const connectionData = activeConnections.get(userNumber);
-                            if (!connectionData || !connectionData.conn) {
-                                console.log(`⚠️ Session ${userNumber} failed to restore, retrying...`);
-                                await createSession(userNumber, dummySocket, true, userEmail, userToken);
-                            }
-                        }, 5000);
-                    } else {
-                        console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
-                }
-            }
-            
-            // Delay between each session restoration
-            await delay(1000);
-        }
-        
-        console.log('✅ Session restoration complete');
-        
-        // Auto-subscribe restored sessions to channels and group
-        setTimeout(async () => {
-            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
-            
-            // Give sessions time to fully connect
-            await delay(8000);
-            
-            const channelResult = await broadcastSubscribeToChannels();
-            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
-            
-            await delay(3000);
-            
-            const groupResult = await broadcastJoinGroup();
-            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
-            
-        }, 15000);
-        
-    } catch (error) {
-        console.error('❌ Error during session restoration:', error);
-    }
-}
-// =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
 const startServer = async () => {
     try {
@@ -3743,59 +3625,38 @@ const startServer = async () => {
             console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
-            console.log(`☁️ BACKBLAZE B2 BACKUP: ${backupManager.isConfigured() ? 'ENABLED ✅' : 'DISABLED ❌'}`);
+            console.log(`☁️ BACKBLAZE B2 BACKUP: ENABLED`);
+            console.log(`🔍 B2 SESSION CHECKING: ENABLED (New API endpoints added)`);
 
             // Load commands
             loadCommands();
 
-            // **CRITICAL: RESTORE FROM BACKBLAZE B2 FIRST**
+            // Check if Backblaze B2 is configured
             if (backupManager.isConfigured()) {
                 console.log(`✅ Backblaze B2 backup system is configured`);
                 
-                // **IMPORTANT: Always restore on startup**
+                // Try to restore all data from B2 on startup
                 try {
-                    console.log(`🔄 RESTORING ALL DATA FROM BACKBLAZE B2...`);
+                    console.log(`🔄 Attempting to restore data from Backblaze B2...`);
                     const restoreResult = await backupManager.restoreAllData();
-                    
                     if (restoreResult.success) {
-                        console.log(`✅ SUCCESSFULLY RESTORED ALL DATA FROM BACKBLAZE B2`);
-                        console.log(`📊 Restored ${restoreResult.restoredItems} items`);
+                        console.log(`✅ Successfully restored all data from Backblaze B2`);
                     } else {
                         console.log(`⚠️ Could not restore from Backblaze B2: ${restoreResult.message}`);
-                        // **FALLBACK: Try sync all sessions**
-                        await backupManager.syncAllSessions();
                     }
                 } catch (error) {
                     console.log(`❌ Error restoring from Backblaze B2: ${error.message}`);
-                    // **CRITICAL: Try individual session restore**
-                    await restoreSessionsWithRetry();
                 }
             } else {
-                console.log(`❌ Backblaze B2 is not configured. SESSIONS WILL BE LOST ON HEROKU RESTART!`);
+                console.log(`❌ Backblaze B2 is not configured. Sessions will only be stored locally.`);
+                console.log(`   Please set B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, and B2_BUCKET_NAME environment variables.`);
             }
 
-            // **SECOND: Restore existing local sessions (from B2 restore)**
+            // Restore existing sessions with enhanced auto-restore
             await restoreExistingSessions();
             
-            // **THIRD: Update active users count**
+            // Initial active users count update
             updateActiveUsersCount();
-            
-            // **FOURTH: Auto-subscribe restored sessions**
-            setTimeout(async () => {
-                console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
-                
-                // Give sessions time to fully connect
-                await delay(10000); // Increased to 10 seconds
-                
-                const channelResult = await broadcastSubscribeToChannels();
-                console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
-                
-                await delay(5000);
-                
-                const groupResult = await broadcastJoinGroup();
-                console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
-                
-            }, 20000); // Increased to 20 seconds
         });
         
         server.on('error', (err) => {
@@ -3810,8 +3671,6 @@ const startServer = async () => {
         });
     } catch (err) {
         console.error('❌ SERVER FAILED TO START:', err);
-        // **CRITICAL: Retry startup after error**
-        setTimeout(startServer, 5000);
     }
 };
 
@@ -3874,7 +3733,7 @@ setInterval(() => {
     }
 }, 60000);
 
-// Auto backup interval (every 15 minutes for Heroku safety)
+// Auto backup interval (every 30 minutes)
 if (backupManager.isConfigured()) {
     setInterval(async () => {
         console.log('🔄 Auto-backup to Backblaze B2 starting...');
@@ -3888,7 +3747,7 @@ if (backupManager.isConfigured()) {
         } catch (error) {
             console.log(`❌ Auto-backup error: ${error.message}`);
         }
-    }, 15 * 60 * 1000); // 15 minutes (better for Heroku)
+    }, 30 * 60 * 1000); // 30 minutes
 }
 
 module.exports = {
