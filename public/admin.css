@@ -1580,3 +1580,32 @@ body.theme-indigo .stat-item i { color: #6366f1; }
     color: var(--gray-color);
     font-size: 12px;
 }
+
+/* Status badge styling */
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.status-active { background: #10b981; color: white; }
+.status-pending { background: #f59e0b; color: white; }
+.status-approved { background: #3b82f6; color: white; }
+.status-terminated { background: #ef4444; color: white; }
+.status-paid { background: #8b5cf6; color: white; }
+.status-free { background: #14b8a6; color: white; }
+
+/* Location display */
+.location-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+}
+
+.location-display i {
+    color: #3b82f6;
+}

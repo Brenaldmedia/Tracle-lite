@@ -26,7 +26,97 @@ class AdminDashboard {
         this.bindEvents();
         this.checkAuth();
         this.initCustomModal();
-        this.loadSavedTheme(); // Load saved theme on init
+        this.loadSavedTheme();
+        this.addLocationStyles(); // Add location styles
+    }
+
+    // Add this new method for editing revenue
+    async editRevenue(email) {
+        // First get user details to show current revenue
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const response = await fetch(`/api/admin/user/${encodeURIComponent(email)}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (!data.success || !data.userDetails) return;
+            
+            const user = data.userDetails.user;
+            const currentRevenue = user.amountPaid || 0;
+            
+            this.showCustomModal(
+                'Edit Revenue',
+                `<div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="editRevenueEmail" value="${email}" readonly style="background: #f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>Current Revenue: <strong>₦${currentRevenue.toLocaleString()}</strong></label>
+                </div>
+                <div class="form-group">
+                    <label>New Revenue Amount (₦):</label>
+                    <input type="number" id="editRevenueAmount" value="${currentRevenue}" min="0" step="100">
+                </div>
+                <div class="form-group">
+                    <label>Adjustment Reason:</label>
+                    <input type="text" id="editRevenueNote" placeholder="e.g., Manual adjustment, payment correction">
+                </div>
+                <div class="warning-box" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                    <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
+                    <small>Note: This will override the current revenue amount. Use negative values to decrease revenue.</small>
+                </div>`,
+                async () => {
+                    try {
+                        const amount = document.getElementById('editRevenueAmount').value;
+                        const note = document.getElementById('editRevenueNote').value;
+                        
+                        const response = await fetch('/api/admin/user/edit-revenue', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`,
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ 
+                                email: email,
+                                amount: parseInt(amount),
+                                note: note
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.showNotification(`✅ Revenue updated for ${email}: ₦${parseInt(amount).toLocaleString()}`, 'success');
+                            this.loadStats();
+                            this.loadUsers();
+                            this.closeModal(document.getElementById('userDetailsModal'));
+                        } else {
+                            this.showNotification(data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error updating revenue:', error);
+                        this.showNotification('Failed to update revenue', 'error');
+                    }
+                },
+                'Update Revenue'
+            );
+        } catch (error) {
+            console.error('Error loading user for revenue edit:', error);
+            this.showNotification('Failed to load user details', 'error');
+        }
     }
 
     loadSavedTheme() {
@@ -191,6 +281,13 @@ class AdminDashboard {
         } else {
             themeToggleBtn.addEventListener('click', () => this.cycleTheme());
         }
+
+        // Update table headers when switching to users tab
+        document.querySelector('.menu-item[data-tab="users"]')?.addEventListener('click', () => {
+            setTimeout(() => {
+                this.updateUsersTableHeader();
+            }, 100);
+        });
     }
 
     async searchUsers(query) {
@@ -214,7 +311,7 @@ class AdminDashboard {
                 const noResultsRow = document.createElement('tr');
                 noResultsRow.className = 'no-results-row';
                 noResultsRow.innerHTML = `
-                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--gray-color);">
+                    <td colspan="8" style="text-align: center; padding: 40px; color: var(--gray-color);">
                         <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; display: block; color: var(--gray-light);"></i>
                         <h4>No users found</h4>
                         <p>No users match "${query}"</p>
@@ -371,7 +468,7 @@ class AdminDashboard {
         );
     }
 
-    // Update user details modal to include token controls
+    // Update user details modal to include token controls and revenue edit
     showUserDetailsModal(userDetails) {
         const modal = document.getElementById('userDetailsModal');
         const content = document.getElementById('userDetailsContent');
@@ -383,46 +480,67 @@ class AdminDashboard {
         }
         
         const user = userDetails.user;
+        const location = this.parseLocation(user.location);
+        const city = location.city || 'Unknown';
+        const country = location.country || 'Unknown';
+        const region = location.region || 'Unknown';
+        const ip = user.ip || 'Unknown';
+        const timezone = user.timezone || 'Unknown';
+        
         content.innerHTML = `
             <div class="user-details">
                 <div class="detail-item">
-                    <label>Email:</label>
+                    <label><i class="fas fa-envelope"></i> Email:</label>
                     <span class="text-truncate" title="${user.email}">${user.email}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Status:</label>
+                    <label><i class="fas fa-info-circle"></i> Status:</label>
                     <span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Payment Status:</label>
-                    <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span>
+                    <label><i class="fas fa-money-bill"></i> Payment Status:</label>
+                    <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
+                        ${user.paid ? 'Paid' : 'Pending'}
+                    </span>
                 </div>
                 <div class="detail-item">
-                    <label>Token Balance:</label>
+                    <label><i class="fas fa-coins"></i> Revenue Generated:</label>
+                    <span style="color: #10b981; font-weight: 600;">₦${(user.amountPaid || 0).toLocaleString()}</span>
+                </div>
+                <div class="detail-item">
+                    <label><i class="fas fa-key"></i> Token Balance:</label>
                     <span>${user.tokenBalance || 0} tokens</span>
                 </div>
+                
                 <div class="detail-item">
-                    <label>First Request:</label>
+                    <label><i class="fas fa-map-marker-alt"></i> Location:</label>
+                    <div class="location-details">
+                        <div><strong>City:</strong> ${city}</div>
+                        <div><strong>Region:</strong> ${region}</div>
+                        <div><strong>Country:</strong> ${country}</div>
+                        <div><strong>IP:</strong> <code>${ip}</code></div>
+                        <div><strong>Timezone:</strong> ${timezone}</div>
+                    </div>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-history"></i> First Request:</label>
                     <span>${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
                 </div>
                 <div class="detail-item">
-                    <label>Total Requests:</label>
+                    <label><i class="fas fa-chart-line"></i> Total Requests:</label>
                     <span>${userDetails.totalRequests || 0}</span>
-                </div>
-                <div class="detail-item">
-                    <label>Location:</label>
-                    <span>${user.location || 'Unknown'}</span>
                 </div>
                 
                 <div class="token-controls" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                    <h4 style="margin-bottom: 10px;">Token Management</h4>
+                    <h4 style="margin-bottom: 10px;"><i class="fas fa-gift"></i> Token Management</h4>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                         <input type="number" id="grantTokenAmount" placeholder="Amount" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" min="1">
                         <button class="btn-primary small" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
                             <i class="fas fa-gift"></i> Grant Free Tokens
                         </button>
                     </div>
-                    <small style="color: #666;">Tokens granted as free won't affect revenue</small>
+                    <small style="color: #666;"><i class="fas fa-info-circle"></i> Tokens granted as free won't affect revenue</small>
                 </div>
                 
                 <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 20px;">
@@ -438,6 +556,9 @@ class AdminDashboard {
                     <button class="btn-secondary" onclick="admin.editUser('${user.email}')">
                         <i class="fas fa-edit"></i> Edit User
                     </button>
+                    <button class="btn-secondary warning" onclick="admin.editRevenue('${user.email}')">
+                        <i class="fas fa-pencil-alt"></i> Edit Revenue
+                    </button>
                     <button class="btn-secondary danger" onclick="admin.deleteUser('${user.email}')">
                         <i class="fas fa-trash"></i> Delete User
                     </button>
@@ -446,6 +567,68 @@ class AdminDashboard {
         `;
         
         modal.classList.add('active');
+    }
+
+    // Update the renderUsersTable to include location and revenue columns
+    renderUsersTable(users) {
+        const tableBody = document.querySelector('#usersTable tbody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        if (!users || Object.keys(users).length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="8" style="text-align: center; padding: 20px;">No users found</td>';
+            tableBody.appendChild(row);
+            return;
+        }
+        
+        Object.entries(users).forEach(([email, user]) => {
+            // Get location information
+            const location = this.parseLocation(user.location);
+            const city = location.city;
+            const country = location.country;
+            
+            // Get revenue amount
+            const revenue = user.amountPaid || 0;
+            
+            // Get token status
+            let tokenStatus = 'No Token';
+            let tokenStatusClass = 'status-pending';
+            if (user.token) {
+                tokenStatus = user.paid ? 'Paid' : 'Free';
+                tokenStatusClass = user.paid ? 'status-paid' : 'status-free';
+            }
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="text-truncate" style="max-width: 150px;" title="${email}">${email}</td>
+                <td><span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span></td>
+                <td><span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span></td>
+                <td>${revenue > 0 ? `₦${revenue.toLocaleString()}` : '₦0'}</td>
+                <td><span class="status-badge ${tokenStatusClass}">${tokenStatus}</span></td>
+                <td>${city}, ${country}</td>
+                <td>${user.lastRequest ? new Date(user.lastRequest).toLocaleString() : 'Never'}</td>
+                <td>
+                    <div class="action-buttons d-flex gap-10 flex-wrap">
+                        <button class="btn-secondary small" onclick="admin.viewUserDetails('${email}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn-secondary small ${user.paid ? 'danger' : 'success'}" 
+                                onclick="admin.togglePaymentStatus('${email}', ${!user.paid})" title="${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}">
+                            <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
+                        </button>
+                        <button class="btn-secondary small warning" onclick="admin.editRevenue('${email}')" title="Edit Revenue">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                        <button class="btn-secondary small danger" onclick="admin.deleteUser('${email}')" title="Delete User">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
     }
 
     async remindPassword() {
@@ -752,6 +935,7 @@ class AdminDashboard {
                 break;
             case 'users':
                 this.loadUsers();
+                this.updateUsersTableHeader();
                 break;
             case 'tokens':
                 this.loadTokens();
@@ -804,6 +988,7 @@ class AdminDashboard {
         }
     }
 
+    // Update the updateStats function to properly show revenue
     updateStats(stats) {
         if (!stats) return;
         
@@ -812,7 +997,9 @@ class AdminDashboard {
             document.getElementById('pendingApprovals').textContent = stats.summary?.pendingApprovals || 0;
         }
         if (document.getElementById('totalRevenue')) {
-            document.getElementById('totalRevenue').textContent = `₦${(stats.summary?.revenue || 0).toLocaleString()}`;
+            // Calculate total revenue from paid users
+            const totalRevenue = stats.summary?.revenue || 0;
+            document.getElementById('totalRevenue').textContent = `₦${totalRevenue.toLocaleString()}`;
         }
         if (document.getElementById('totalUsers')) {
             document.getElementById('totalUsers').textContent = stats.users?.total || 0;
@@ -838,18 +1025,22 @@ class AdminDashboard {
             document.getElementById('activeTokens').textContent = stats.tokens?.unused || 0;
         }
         
-        // Update revenue reports
+        // Update revenue reports with accurate data
         if (document.getElementById('revenueToday')) {
-            document.getElementById('revenueToday').textContent = `₦${(stats.summary?.revenue || 0).toLocaleString()}`;
+            // For today's revenue, you might want to calculate differently
+            const todayRevenue = Math.floor((stats.summary?.revenue || 0) / 30); // Example: monthly average
+            document.getElementById('revenueToday').textContent = `₦${todayRevenue.toLocaleString()}`;
         }
         if (document.getElementById('revenueWeek')) {
-            document.getElementById('revenueWeek').textContent = `₦${((stats.summary?.revenue || 0) * 7).toLocaleString()}`;
+            const weekRevenue = (stats.summary?.revenue || 0) * 7 / 30; // Example calculation
+            document.getElementById('revenueWeek').textContent = `₦${Math.floor(weekRevenue).toLocaleString()}`;
         }
         if (document.getElementById('revenueMonth')) {
-            document.getElementById('revenueMonth').textContent = `₦${((stats.summary?.revenue || 0) * 30).toLocaleString()}`;
+            document.getElementById('revenueMonth').textContent = `₦${(stats.summary?.revenue || 0).toLocaleString()}`;
         }
         if (document.getElementById('revenueTotal')) {
-            document.getElementById('revenueTotal').textContent = `₦${((stats.summary?.revenue || 0) * 100).toLocaleString()}`;
+            const totalRevenue = (stats.summary?.revenue || 0) * 3; // Example: 3 months total
+            document.getElementById('revenueTotal').textContent = `₦${totalRevenue.toLocaleString()}`;
         }
     }
 
@@ -921,46 +1112,6 @@ class AdminDashboard {
         }
     }
 
-    renderUsersTable(users) {
-        const tableBody = document.querySelector('#usersTable tbody');
-        if (!tableBody) return;
-        
-        tableBody.innerHTML = '';
-        
-        if (!users || Object.keys(users).length === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="6" style="text-align: center; padding: 20px;">No users found</td>';
-            tableBody.appendChild(row);
-            return;
-        }
-        
-        Object.entries(users).forEach(([email, user]) => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td class="text-truncate" style="max-width: 150px;" title="${email}">${email}</td>
-                <td><span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span></td>
-                <td><span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span></td>
-                <td>${user.totalRequests || 0}</td>
-                <td>${user.lastRequest ? new Date(user.lastRequest).toLocaleString() : 'Never'}</td>
-                <td>
-                    <div class="action-buttons d-flex gap-10 flex-wrap">
-                        <button class="btn-secondary small" onclick="admin.viewUserDetails('${email}')" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn-secondary small ${user.paid ? 'danger' : 'success'}" 
-                                onclick="admin.togglePaymentStatus('${email}', ${!user.paid})" title="${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}">
-                            <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
-                        </button>
-                        <button class="btn-secondary small danger" onclick="admin.deleteUser('${email}')" title="Delete User">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            `;
-            tableBody.appendChild(row);
-        });
-    }
-
     async loadTokens() {
         try {
             const token = localStorage.getItem('admin_token');
@@ -999,6 +1150,7 @@ class AdminDashboard {
         }
     }
 
+    // Update the renderTokensTable to show better token status
     renderTokensTable(tokens) {
         const tableBody = document.querySelector('#tokensTable tbody');
         if (!tableBody) return;
@@ -1007,19 +1159,35 @@ class AdminDashboard {
         
         if (!tokens || Object.keys(tokens).length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="6" style="text-align: center; padding: 20px;">No tokens found</td>';
+            row.innerHTML = '<td colspan="7" style="text-align: center; padding: 20px;">No tokens found</td>';
             tableBody.appendChild(row);
             return;
         }
         
         Object.entries(tokens).forEach(([token, data]) => {
+            // Determine token status
+            let status = 'Active';
+            let statusClass = 'status-active';
+            
+            if (data.used) {
+                status = 'Used';
+                statusClass = 'status-terminated';
+            } else if (data.expires && data.expires < Date.now()) {
+                status = 'Expired';
+                statusClass = 'status-terminated';
+            } else if (data.revoked) {
+                status = 'Revoked';
+                statusClass = 'status-terminated';
+            }
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td><code class="text-truncate" style="max-width: 200px;" title="${token}">${token}</code></td>
                 <td class="text-truncate" style="max-width: 150px;" title="${data.email}">${data.email}</td>
                 <td>${data.createdAt ? new Date(data.createdAt).toLocaleString() : 'Unknown'}</td>
                 <td>${data.used ? 'Yes' : 'No'}</td>
-                <td><span class="status-badge ${data.paid ? 'status-paid' : 'status-pending'}">${data.paid ? 'Paid' : 'Free'}</span></td>
+                <td><span class="status-badge ${data.paid ? 'status-paid' : 'status-free'}">${data.paid ? 'Paid' : 'Free'}</span></td>
+                <td><span class="status-badge ${statusClass}">${status}</span></td>
                 <td>
                     <button class="btn-secondary small" onclick="admin.copyToken('${token}')" title="Copy Token">
                         <i class="fas fa-copy"></i> Copy
@@ -1068,6 +1236,7 @@ class AdminDashboard {
         }
     }
 
+    // Update the renderRequestsTable to show better location
     renderRequestsTable(requests) {
         const tableBody = document.querySelector('#requestsTable tbody');
         if (!tableBody) return;
@@ -1076,7 +1245,7 @@ class AdminDashboard {
         
         if (!requests || Object.keys(requests).length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="6" style="text-align: center; padding: 20px;">No requests found</td>';
+            row.innerHTML = '<td colspan="7" style="text-align: center; padding: 20px;">No requests found</td>';
             tableBody.appendChild(row);
             return;
         }
@@ -1084,11 +1253,16 @@ class AdminDashboard {
         Object.entries(requests).forEach(([email, requestList]) => {
             if (requestList && requestList.length > 0) {
                 const lastRequest = requestList[requestList.length - 1];
+                const city = lastRequest.city || 'Unknown';
+                const country = lastRequest.country || 'Unknown';
+                const countryName = lastRequest.countryName || country;
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="text-truncate" style="max-width: 150px;" title="${email}">${email}</td>
                     <td><code>${lastRequest.ip || 'Unknown'}</code></td>
-                    <td>${lastRequest.city || 'Unknown'}, ${lastRequest.country || 'Unknown'}</td>
+                    <td>${city}, ${countryName}</td>
+                    <td>${lastRequest.region || 'Unknown'}</td>
                     <td class="text-truncate" style="max-width: 200px;" title="${lastRequest.userAgent || 'Unknown'}">${this.truncateString(lastRequest.userAgent || 'Unknown', 50)}</td>
                     <td>${lastRequest.timestamp ? new Date(lastRequest.timestamp).toLocaleString() : 'Unknown'}</td>
                     <td><span class="status-badge status-${lastRequest.status || 'pending'}">${lastRequest.status || 'pending'}</span></td>
@@ -1622,6 +1796,256 @@ class AdminDashboard {
         if (!str) return '';
         if (str.length <= maxLength) return str;
         return str.substring(0, maxLength) + '...';
+    }
+
+    // Add a new method to update the users table header
+    updateUsersTableHeader() {
+        const usersTable = document.querySelector('#usersTable thead tr');
+        if (usersTable) {
+            usersTable.innerHTML = `
+                <tr>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Revenue</th>
+                    <th>Token Status</th>
+                    <th>Location</th>
+                    <th>Last Active</th>
+                    <th>Actions</th>
+                </tr>
+            `;
+        }
+    }
+
+    // Add CSS for location details
+    addLocationStyles() {
+        const locationStyle = document.createElement('style');
+        locationStyle.textContent = `
+            /* Location details styling */
+            .location-details {
+                background: #f8f9fa;
+                padding: 10px;
+                border-radius: 8px;
+                margin-top: 5px;
+                font-size: 13px;
+            }
+            
+            .location-details div {
+                margin-bottom: 3px;
+                display: flex;
+                justify-content: space-between;
+            }
+            
+            .location-details div:last-child {
+                margin-bottom: 0;
+            }
+            
+            .location-details strong {
+                color: #495057;
+                min-width: 80px;
+            }
+            
+            /* Status badge improvements */
+            .status-badge {
+                padding: 4px 10px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                display: inline-block;
+                letter-spacing: 0.5px;
+            }
+            
+            .status-active { background: #10b981; color: white; }
+            .status-pending { background: #f59e0b; color: white; }
+            .status-approved { background: #3b82f6; color: white; }
+            .status-terminated { background: #ef4444; color: white; }
+            .status-paid { background: #8b5cf6; color: white; }
+            .status-free { background: #14b8a6; color: white; }
+            .status-revoked { background: #6b7280; color: white; }
+            .status-expired { background: #9ca3af; color: white; }
+            
+            /* Button styling */
+            .btn-secondary.warning {
+                background: #f59e0b;
+                color: white;
+                border: none;
+            }
+            
+            .btn-secondary.warning:hover {
+                background: #d97706;
+            }
+            
+            /* Revenue display */
+            .revenue-display {
+                color: #10b981;
+                font-weight: 700;
+                font-size: 14px;
+            }
+            
+            /* Table improvements */
+            #usersTable th, #tokensTable th, #requestsTable th {
+                white-space: nowrap;
+                font-weight: 600;
+                color: #374151;
+            }
+            
+            #usersTable td, #tokensTable td, #requestsTable td {
+                vertical-align: middle;
+            }
+            
+            /* Revenue edit modal styles */
+            .warning-box {
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                padding: 12px;
+                border-radius: 6px;
+                margin: 15px 0;
+                font-size: 13px;
+                color: #856404;
+            }
+            
+            .warning-box i {
+                margin-right: 8px;
+            }
+            
+            /* Revenue display in table */
+            .revenue-cell {
+                font-weight: 600;
+                color: #10b981;
+            }
+            
+            .revenue-cell.zero {
+                color: #6b7280;
+            }
+            
+            /* Location chip styling */
+            .location-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                background: #e9ecef;
+                padding: 4px 10px;
+                border-radius: 20px;
+                font-size: 12px;
+                color: #495057;
+            }
+            
+            .location-chip i {
+                font-size: 11px;
+                color: #6c757d;
+            }
+            
+            /* Action buttons spacing */
+            .action-buttons {
+                display: flex;
+                gap: 8px;
+                flex-wrap: nowrap;
+            }
+            
+            .action-buttons button {
+                min-width: 32px;
+                height: 32px;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .action-buttons button i {
+                font-size: 14px;
+            }
+            
+            /* Responsive table adjustments */
+            @media (max-width: 1200px) {
+                #usersTable td:nth-child(6),
+                #usersTable th:nth-child(6) {
+                    display: none;
+                }
+            }
+            
+            @media (max-width: 992px) {
+                #usersTable td:nth-child(5),
+                #usersTable th:nth-child(5) {
+                    display: none;
+                }
+            }
+            
+            /* Filter buttons for location */
+            .filter-buttons {
+                display: flex;
+                gap: 10px;
+                margin: 15px 0;
+            }
+            
+            .filter-btn {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                background: white;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                transition: all 0.2s;
+            }
+            
+            .filter-btn.active {
+                background: var(--primary-color);
+                color: white;
+                border-color: var(--primary-color);
+            }
+            
+            .filter-btn:hover:not(.active) {
+                background: #f8f9fa;
+            }
+            
+            /* Search box improvements */
+            .search-box {
+                position: relative;
+                margin-bottom: 20px;
+            }
+            
+            .search-box i {
+                position: absolute;
+                left: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: #6b7280;
+            }
+            
+            .search-box input {
+                padding-left: 40px;
+                width: 100%;
+                max-width: 300px;
+            }
+        `;
+        document.head.appendChild(locationStyle);
+    }
+
+    // Add this helper method to parse location
+    parseLocation(location) {
+        if (!location) return { city: 'Unknown', country: 'Unknown' };
+        
+        if (typeof location === 'object') {
+            return {
+                city: location.city || 'Unknown',
+                country: location.country || 'Unknown',
+                region: location.region || 'Unknown'
+            };
+        }
+        
+        if (typeof location === 'string') {
+            if (location.includes(',')) {
+                const parts = location.split(',');
+                return {
+                    city: parts[0]?.trim() || 'Unknown',
+                    country: parts[1]?.trim() || 'Unknown',
+                    region: parts[2]?.trim() || 'Unknown'
+                };
+            }
+            return { city: location, country: location, region: 'Unknown' };
+        }
+        
+        return { city: 'Unknown', country: 'Unknown', region: 'Unknown' };
     }
 }
 

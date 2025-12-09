@@ -1,4 +1,4 @@
-// SERVER.JS (UPDATED WITH CONNECTION STABILITY AND 7-HOUR ALIVE MESSAGES)
+// SERVER.JS (COMPLETE UPDATED VERSION WITH ALL REQUESTED FEATURES)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -17,6 +17,12 @@ const fs = require('fs-extra');
 const http = require('http');
 const socketIO = require('socket.io');
 const pino = require('pino');
+
+// Add at the top with other requires
+const geoip = require('geoip-lite');
+
+const { getName, getCode } = require('country-list');
+const cities = require('cities');
 
 const app = express();
 const server = http.createServer(app);
@@ -2314,6 +2320,7 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             }
         }
         
+        // ===== UPDATED CONNECTION SETTINGS =====
         const sock = makeWASocket({
             version,
             auth: {
@@ -2325,25 +2332,27 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             browser: Browsers.macOS("Safari"),
             syncFullHistory: false,
             markOnlineOnConnect: true,
-            connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 15000, // Send keep-alive every 15 seconds
-            maxIdleTimeMs: 300000, // 5 minutes idle timeout instead of 1 minute
-            maxRetries: 10, // Increased retry attempts
+            connectTimeoutMs: 120000, // Increased from 60000
+            keepAliveIntervalMs: 10000, // Send keep-alive every 10 seconds
+            maxIdleTimeMs: 600000, // 10 minutes idle timeout
+            maxRetries: 15, // Increased retry attempts
             emitOwnEvents: true,
-            defaultQueryTimeoutMs: 30000,
+            defaultQueryTimeoutMs: 60000,
             getMessage: async () => ({ conversation: '' }),
             shouldIgnoreJid: (jid) => false,
             fireInitQueries: true,
-            retryRequestDelayMs: 250, // Reduced delay for retries
-            // ADDED: Keep connection alive with these settings
+            retryRequestDelayMs: 200,
+            // Enhanced connection stability
             keepAlive: true,
             alwaysUseTakeover: true,
-            mobile: false, // Set to false for better stability
-            linkPreviewImageThumbnailWidth: 192, // Standard settings
+            mobile: false,
+            linkPreviewImageThumbnailWidth: 192,
             transactionOpts: {
-                maxCommitRetries: 10,
-                delayBetweenTriesMs: 3000
-            }
+                maxCommitRetries: 15,
+                delayBetweenTriesMs: 5000
+            },
+            // Add heartbeat
+            heartbeatInterval: 30000
         });
 
         sock.userNumber = userNumber;
@@ -2363,7 +2372,8 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             token: userToken,
             isConnected: false, // Track connection status
             lastActivity: Date.now(), // Track last activity
-            connectionAttempts: 0 // Track connection attempts
+            connectionAttempts: 0, // Track connection attempts
+            connectedAt: null // Track when connected
         });
 
         // =============== UPDATED CONNECTION EVENT HANDLER WITH IMPROVED STABILITY ===============
@@ -2399,6 +2409,7 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                     connectionData.hasLinked = true;
                     connectionData.lastActivity = Date.now();
                     connectionData.connectionAttempts = 0; // Reset attempts on successful connection
+                    connectionData.connectedAt = Date.now();
                 }
                 
                 const timeout = pairingTimeouts.get(userNumber);
@@ -2509,6 +2520,7 @@ Type ${PREFIX}menu to see all commands.`;
                                 botNumber = botJid.split('@')[0];
                             }
                             
+                            botNumber = botNumber.replace(/\D/g, '');
                             const userJid = `${botNumber}@s.whatsapp.net`;
                             const userSettings = getUserSettings(userNumber);
                             
@@ -2519,12 +2531,15 @@ Type ${PREFIX}menu to see all commands.`;
 🤖 Bot: ${userSettings.botName || BOT_NAME}
 📌 Prefix: ${userPrefixes.get(userNumber) || PREFIX}
 ⏰ Time: ${new Date().toLocaleString()}
+📱 Connected Number: ${botNumber}
 
 📢 *Auto Subscription Completed:*
-• Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} subscribed
-• Group: ${groupResult.success ? 'Joined ✅' : 'Joining...'}
+• Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} ✅
+• Group: ${groupResult.success ? '✅' : '❌'}
 
 ${!groupResult.success ? `🔗 Join group manually: ${GROUP_INVITE_LINK}` : ''}
+
+Total connected: ${Array.from(activeConnections.values()).filter(c => c.isConnected).length} devices
 
 Type ${PREFIX}menu to see available commands.`;
 
@@ -2615,6 +2630,7 @@ Type ${PREFIX}menu to see available commands.`;
                 updateActiveUsersCount();
             }
             
+            // ===== UPDATED CONNECTION CLOSE HANDLER WITH ENHANCED RECONNECTION =====
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const errorMessage = lastDisconnect?.error?.message;
@@ -2670,25 +2686,32 @@ Type ${PREFIX}menu to see available commands.`;
                     // Update active users count when a session disconnects
                     updateActiveUsersCount();
                     
-                    // Improved auto-reconnect logic
-                    const maxAttempts = 5;
-                    const connectionDataCheck = activeConnections.get(userNumber);
-                    const attempts = connectionDataCheck?.connectionAttempts || 1;
-                    
-                    if (statusCode !== DisconnectReason.loggedOut && attempts <= maxAttempts) {
-                        const retryDelay = Math.min(attempts * 5000, 30000); // Exponential backoff: 5s, 10s, 15s, 20s, 25s, max 30s
+                    // Enhanced reconnection logic with exponential backoff
+                    if (statusCode !== DisconnectReason.loggedOut) {
+                        const maxAttempts = 10;
+                        const connectionData = activeConnections.get(userNumber);
+                        const attempts = connectionData?.connectionAttempts || 1;
                         
-                        console.log(`🔁 Auto-reconnecting session ${userNumber} in ${retryDelay/1000}s (attempt ${attempts}/${maxAttempts})`);
-                        
-                        setTimeout(() => {
-                            const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                            if (fs.existsSync(sessionPath)) {
-                                console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
-                                createSession(userNumber, socket, true, userEmail, userToken);
-                            }
-                        }, retryDelay);
-                    } else if (attempts > maxAttempts) {
-                        console.log(`❌ Max reconnection attempts (${maxAttempts}) reached for ${userNumber}. Stopping auto-reconnect.`);
+                        if (attempts <= maxAttempts) {
+                            const retryDelay = Math.min(Math.pow(2, attempts) * 2000, 60000);
+                            
+                            console.log(`🔁 Auto-reconnecting session ${userNumber} in ${retryDelay/1000}s (attempt ${attempts}/${maxAttempts})`);
+                            
+                            setTimeout(async () => {
+                                const sessionPath = path.join(__dirname, 'sessions', userNumber);
+                                if (fs.existsSync(sessionPath)) {
+                                    console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
+                                    
+                                    // Check B2 first before reconnecting
+                                    if (backupManager.isConfigured() && attempts > 1) {
+                                        console.log(`🔄 Attempting B2 restore for ${userNumber} before reconnect`);
+                                        await backupManager.restoreSessionFromB2(userNumber);
+                                    }
+                                    
+                                    createSession(userNumber, socket, true, userEmail, userToken);
+                                }
+                            }, retryDelay);
+                        }
                     }
                 }
             }

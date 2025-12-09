@@ -1,9 +1,11 @@
-// FILE: token.js (COMPLETE UPDATED VERSION WITH BACKBLAZE B2 INTEGRATION)
+// FILE: token.js (UPDATED VERSION WITH ENHANCED LOCATION AND REVENUE MANAGEMENT)
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const geoip = require('geoip-lite');
+const { getName, getCode } = require('country-list');
+const cities = require('cities');
 
 class TokenManager {
     constructor() {
@@ -84,6 +86,24 @@ class TokenManager {
         }
     }
 
+    // Helper function to get country name
+    getCountryName(countryCode) {
+        const countries = {
+            'NG': 'Nigeria',
+            'US': 'United States',
+            'GB': 'United Kingdom',
+            'CA': 'Canada',
+            'AU': 'Australia',
+            'IN': 'India',
+            'KE': 'Kenya',
+            'GH': 'Ghana',
+            'ZA': 'South Africa',
+            // Add more countries as needed
+        };
+        return countries[countryCode] || countryCode;
+    }
+
+    // ===== UPDATED REQUEST TOKEN FUNCTION WITH ENHANCED LOCATION =====
     async requestToken(email, ip, userAgent) {
         try {
             if (!this.validateEmail(email)) {
@@ -93,20 +113,42 @@ class TokenManager {
                 };
             }
 
+            // Get detailed location
+            const geo = geoip.lookup(ip) || {};
+            let location = 'Unknown';
+            
+            if (geo.city && geo.country) {
+                location = `${geo.city}, ${geo.country}`;
+            } else if (geo.country) {
+                location = geo.country;
+            }
+            
+            // Try to get more detailed location
+            try {
+                // Additional location lookup
+                const countryInfo = countryLookup.lookupCountry(geo.country);
+                if (countryInfo) {
+                    location = `${geo.city || 'Unknown City'}, ${countryInfo.name}`;
+                }
+            } catch (error) {
+                console.log('Country lookup error:', error.message);
+            }
+
             // Check if email already requested
             const requests = await this.getAllRequests();
             const userRequests = requests[email] || [];
             
-            // Get user location
-            const geo = geoip.lookup(ip) || {};
-            
-            // Store request
+            // Store request with enhanced location
             const requestData = {
                 email: email,
                 ip: ip,
                 userAgent: userAgent,
                 country: geo.country || 'Unknown',
+                countryName: geo.country ? this.getCountryName(geo.country) : 'Unknown',
                 city: geo.city || 'Unknown',
+                region: geo.region || 'Unknown',
+                timezone: geo.timezone || 'Unknown',
+                location: location,
                 timestamp: new Date().toISOString(),
                 status: 'pending'
             };
@@ -124,7 +166,12 @@ class TokenManager {
                     totalRequests: 1,
                     ipAddresses: [ip],
                     userAgents: [userAgent],
-                    location: `${geo.city || 'Unknown'}, ${geo.country || 'Unknown'}`,
+                    location: location,
+                    country: geo.country || 'Unknown',
+                    countryName: geo.country ? this.getCountryName(geo.country) : 'Unknown',
+                    city: geo.city || 'Unknown',
+                    region: geo.region || 'Unknown',
+                    timezone: geo.timezone || 'Unknown',
                     status: 'pending',
                     paid: false,
                     token: null,
@@ -141,6 +188,13 @@ class TokenManager {
                 if (!users[email].userAgents.includes(userAgent)) {
                     users[email].userAgents.push(userAgent);
                 }
+                // Update location information
+                users[email].location = location;
+                users[email].country = geo.country || users[email].country || 'Unknown';
+                users[email].countryName = geo.country ? this.getCountryName(geo.country) : users[email].countryName || 'Unknown';
+                users[email].city = geo.city || users[email].city || 'Unknown';
+                users[email].region = geo.region || users[email].region || 'Unknown';
+                users[email].timezone = geo.timezone || users[email].timezone || 'Unknown';
                 users[email].lastUpdated = new Date().toISOString();
             }
             await this.saveUsers(users);
@@ -150,7 +204,11 @@ class TokenManager {
                 <h2>📋 New Token Request</h2>
                 <p><strong>Email:</strong> ${email}</p>
                 <p><strong>IP Address:</strong> ${ip}</p>
-                <p><strong>Location:</strong> ${geo.city || 'Unknown'}, ${geo.country || 'Unknown'}</p>
+                <p><strong>Location:</strong> ${location}</p>
+                <p><strong>Country:</strong> ${geo.country ? this.getCountryName(geo.country) : 'Unknown'}</p>
+                <p><strong>City:</strong> ${geo.city || 'Unknown'}</p>
+                <p><strong>Region:</strong> ${geo.region || 'Unknown'}</p>
+                <p><strong>Timezone:</strong> ${geo.timezone || 'Unknown'}</p>
                 <p><strong>User Agent:</strong> ${userAgent}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 <p><strong>Total Requests:</strong> ${userRequests.length + 1}</p>
@@ -453,34 +511,56 @@ class TokenManager {
         }
     }
 
+    // ===== UPDATED UPDATE USER PAYMENT STATUS WITH REVENUE MANAGEMENT =====
     async updateUserPaymentStatus(email, paid) {
         try {
             const users = await this.getAllUsers();
             
             if (users[email]) {
+                const wasPaid = users[email].paid || false;
                 users[email].paid = paid;
                 users[email].status = paid ? 'approved' : 'pending';
                 users[email].paymentUpdated = new Date().toISOString();
                 users[email].lastUpdated = new Date().toISOString();
                 
-                await this.saveUsers(users);
-                
-                // If paid, generate token automatically
-                if (paid) {
-                    const tokenResult = await this.generateTokenForEmail(email, true);
+                // Update revenue only when changing from not paid to paid
+                if (paid && !wasPaid) {
+                    users[email].paymentDate = new Date().toISOString();
+                    users[email].amountPaid = 1000; // Default amount
+                    
+                    // Update revenue stats
+                    const stats = await this.getStats();
+                    const newRevenue = (stats.summary?.revenue || 0) + 1000;
+                    
+                    // Save updated users
+                    await this.saveUsers(users);
+                    
                     return {
                         success: true,
                         paid: paid,
-                        tokenGenerated: tokenResult.success,
-                        token: tokenResult.token,
-                        message: `User ${paid ? 'marked as paid' : 'marked as not paid'}`
+                        revenueUpdated: true,
+                        newRevenue: newRevenue,
+                        message: `User marked as paid. Revenue increased by ₦1000`
+                    };
+                } else if (!paid && wasPaid) {
+                    // If changing from paid to not paid, decrease revenue
+                    const stats = await this.getStats();
+                    const newRevenue = Math.max(0, (stats.summary?.revenue || 0) - 1000);
+                    
+                    await this.saveUsers(users);
+                    
+                    return {
+                        success: true,
+                        paid: paid,
+                        revenueUpdated: true,
+                        newRevenue: newRevenue,
+                        message: `User marked as not paid. Revenue decreased by ₦1000`
                     };
                 }
                 
-                // Auto backup data after payment status update
-                this.autoBackupAfterUpdate('payment_status_updated');
+                await this.saveUsers(users);
                 
-                return { success: true, paid: paid };
+                return { success: true, paid: paid, revenueUpdated: false };
             }
             
             return { success: false, message: 'User not found' };
@@ -534,7 +614,7 @@ class TokenManager {
             const data = await fs.readFile(this.usersFile, 'utf8');
             const users = JSON.parse(data);
             
-            // Ensure all users have tokenBalance field
+            // Ensure all users have required fields
             let needsUpdate = false;
             for (const email in users) {
                 if (users[email].tokenBalance === undefined) {
@@ -543,6 +623,10 @@ class TokenManager {
                 }
                 if (users[email].freeTokensGranted === undefined) {
                     users[email].freeTokensGranted = 0;
+                    needsUpdate = true;
+                }
+                if (users[email].amountPaid === undefined) {
+                    users[email].amountPaid = 0;
                     needsUpdate = true;
                 }
             }
@@ -705,7 +789,10 @@ class TokenManager {
                         lastRequest: lastRequest.timestamp,
                         totalRequests: reqList.length,
                         status: usersObj[email]?.status || 'pending',
-                        paid: usersObj[email]?.paid || false
+                        paid: usersObj[email]?.paid || false,
+                        location: usersObj[email]?.location || 'Unknown',
+                        city: usersObj[email]?.city || 'Unknown',
+                        country: usersObj[email]?.country || 'Unknown'
                     });
                 }
             }
@@ -721,8 +808,14 @@ class TokenManager {
                 return requestDate === today;
             }).length;
             
-            // Calculate revenue
-            const revenue = paidUsers * 1000; // ₦1000 per token
+            // Calculate revenue - sum of all amountPaid from paid users
+            let totalRevenue = 0;
+            for (const email in usersObj) {
+                const user = usersObj[email];
+                if (user.paid && user.amountPaid) {
+                    totalRevenue += user.amountPaid;
+                }
+            }
             
             return {
                 users: {
@@ -749,8 +842,8 @@ class TokenManager {
                 },
                 summary: {
                     pendingApprovals: pendingUsers,
-                    revenue: revenue,
-                    revenueFormatted: `₦${revenue.toLocaleString()}`,
+                    revenue: totalRevenue,
+                    revenueFormatted: `₦${totalRevenue.toLocaleString()}`,
                     activeToday: activeToday,
                     backupStatus: await this.getBackupStatus()
                 }
@@ -766,6 +859,7 @@ class TokenManager {
         }
     }
 
+    // ===== UPDATED GET USER DETAILS WITH LOCATION =====
     async getUserDetails(email) {
         try {
             const users = await this.getAllUsers();
@@ -777,11 +871,42 @@ class TokenManager {
                 return { found: false };
             }
             
+            // Get location from requests
+            let locationDetails = {
+                country: 'Unknown',
+                city: 'Unknown',
+                region: 'Unknown',
+                location: 'Unknown',
+                ip: 'Unknown',
+                timezone: 'Unknown'
+            };
+            
+            const userRequests = requests[email] || [];
+            if (userRequests.length > 0) {
+                const latestRequest = userRequests[userRequests.length - 1];
+                locationDetails = {
+                    country: latestRequest.countryName || latestRequest.country || 'Unknown',
+                    city: latestRequest.city || 'Unknown',
+                    region: latestRequest.region || 'Unknown',
+                    location: latestRequest.location || 'Unknown',
+                    ip: latestRequest.ip || 'Unknown',
+                    timezone: latestRequest.timezone || 'Unknown'
+                };
+            } else {
+                // Fall back to user data
+                locationDetails = {
+                    country: user.countryName || user.country || 'Unknown',
+                    city: user.city || 'Unknown',
+                    region: user.region || 'Unknown',
+                    location: user.location || 'Unknown',
+                    ip: user.ipAddresses?.[0] || 'Unknown',
+                    timezone: user.timezone || 'Unknown'
+                };
+            }
+            
             const userTokens = Object.entries(tokens)
                 .filter(([token, data]) => data.email === email)
                 .map(([token, data]) => ({ token, ...data }));
-            
-            const userRequests = requests[email] || [];
             
             return {
                 found: true,
@@ -791,11 +916,12 @@ class TokenManager {
                     paid: user.paid || false,
                     tokenBalance: user.tokenBalance || 0,
                     freeTokensGranted: user.freeTokensGranted || 0,
+                    amountPaid: user.amountPaid || 0,
                     token: user.token,
                     firstRequest: user.firstRequest,
                     lastRequest: user.lastRequest,
                     totalRequests: user.totalRequests || 0,
-                    location: user.location,
+                    location: locationDetails,
                     ipAddresses: user.ipAddresses || [],
                     userAgents: user.userAgents || [],
                     createdAt: user.createdAt,
@@ -843,6 +969,59 @@ class TokenManager {
             return { success: false, message: 'User not found' };
         } catch (error) {
             console.error('Error deleting user:', error);
+            return { success: false, message: error.message };
+        }
+    }
+
+    // ===== UPDATED GRANT FREE TOKENS FUNCTION =====
+    async grantFreeTokens(email, amount, free = true) {
+        try {
+            if (!email || !amount) {
+                return { success: false, message: 'Email and amount are required' };
+            }
+
+            const users = await this.getAllUsers();
+            
+            if (!users[email]) {
+                return { success: false, message: 'User not found' };
+            }
+
+            // Initialize token balance if not exists
+            if (!users[email].tokenBalance) {
+                users[email].tokenBalance = 0;
+            }
+            
+            if (!users[email].freeTokensGranted) {
+                users[email].freeTokensGranted = 0;
+            }
+
+            // Add tokens
+            const tokenAmount = parseInt(amount);
+            users[email].tokenBalance += tokenAmount;
+            
+            if (free) {
+                users[email].freeTokensGranted += tokenAmount;
+                users[email].lastFreeTokenGrant = new Date().toISOString();
+            }
+            
+            users[email].lastUpdated = new Date().toISOString();
+            
+            await this.saveUsers(users);
+            
+            // Generate token for user if they don't have one
+            if (!users[email].token) {
+                await this.generateTokenForEmail(email, true);
+            }
+            
+            return {
+                success: true,
+                message: `Granted ${amount} ${free ? 'free ' : ''}tokens to ${email}`,
+                newBalance: users[email].tokenBalance,
+                free: free
+            };
+            
+        } catch (error) {
+            console.error('Error granting tokens:', error);
             return { success: false, message: error.message };
         }
     }

@@ -1,4 +1,4 @@
-// FILE: admin.js - UPDATED WITH NEW ENDPOINTS
+// FILE: admin.js BACKEND ADMIN ROUTES AND LOGIC (UPDATED)
 const crypto = require('crypto');
 const tokenManager = require('./token');
 
@@ -481,6 +481,75 @@ class AdminManager {
                 res.status(500).json({
                     success: false,
                     message: 'Restore failed'
+                });
+            }
+        });
+
+        // ===== ADDED: EDIT REVENUE ENDPOINT =====
+        app.post('/api/admin/user/edit-revenue', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email, amount, note } = req.body;
+                
+                if (!email || amount === undefined) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email and amount are required'
+                    });
+                }
+
+                const users = await tokenManager.getAllUsers();
+                
+                if (!users[email]) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'User not found'
+                    });
+                }
+
+                // Store revenue adjustment
+                if (!users[email].revenueAdjustments) {
+                    users[email].revenueAdjustments = [];
+                }
+                
+                const previousAmount = users[email].amountPaid || 0;
+                
+                users[email].revenueAdjustments.push({
+                    previousAmount: previousAmount,
+                    newAmount: parseInt(amount),
+                    note: note || 'Manual adjustment',
+                    date: new Date().toISOString(),
+                    previousPaid: users[email].paid || false
+                });
+                
+                // Update amount paid
+                users[email].amountPaid = parseInt(amount);
+                
+                // Update paid status based on revenue
+                if (parseInt(amount) > 0) {
+                    users[email].paid = true;
+                    users[email].status = 'approved';
+                } else {
+                    users[email].paid = false;
+                    users[email].status = 'pending';
+                }
+                
+                users[email].lastUpdated = new Date().toISOString();
+                
+                await tokenManager.saveUsers(users);
+                
+                res.json({
+                    success: true,
+                    message: `Revenue updated for ${email}`,
+                    previousAmount: previousAmount,
+                    newAmount: users[email].amountPaid || 0,
+                    paid: users[email].paid || false
+                });
+                
+            } catch (error) {
+                console.error('Error editing revenue:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to edit revenue'
                 });
             }
         });
