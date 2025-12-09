@@ -364,7 +364,7 @@ class AdminDashboard {
         });
     }
 
-    // Add token grant functionality
+    // ===== UPDATED GRANT FREE TOKENS FUNCTION =====
     async grantFreeTokens(email, amount) {
         try {
             const token = localStorage.getItem('admin_token');
@@ -374,7 +374,8 @@ class AdminDashboard {
                 return;
             }
             
-            const response = await fetch('/api/admin/user/grant-tokens', {
+            // First generate a free token if user doesn't have one
+            const response = await fetch('/api/admin/token/generate-free', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -383,7 +384,6 @@ class AdminDashboard {
                 },
                 body: JSON.stringify({ 
                     email: email,
-                    amount: parseInt(amount),
                     free: true
                 })
             });
@@ -391,8 +391,30 @@ class AdminDashboard {
             const data = await response.json();
             
             if (data.success) {
-                this.showNotification(`✅ Granted ${amount} free tokens to ${email}`, 'success');
-                this.loadStats();
+                // Now grant free token balance
+                const balanceResponse = await fetch('/api/admin/user/grant-tokens', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        email: email,
+                        amount: parseInt(amount),
+                        free: true
+                    })
+                });
+                
+                const balanceData = await balanceResponse.json();
+                
+                if (balanceData.success) {
+                    this.showNotification(`✅ Granted ${amount} free tokens to ${email}. Token has been sent to user's email.`, 'success');
+                    this.loadStats();
+                    this.loadUsers();
+                } else {
+                    this.showNotification(balanceData.message, 'error');
+                }
             } else {
                 this.showNotification(data.message, 'error');
             }
@@ -468,7 +490,7 @@ class AdminDashboard {
         );
     }
 
-    // Update user details modal to include token controls and revenue edit
+    // ===== UPDATED SHOW USER DETAILS MODAL =====
     showUserDetailsModal(userDetails) {
         const modal = document.getElementById('userDetailsModal');
         const content = document.getElementById('userDetailsContent');
@@ -480,6 +502,24 @@ class AdminDashboard {
         }
         
         const user = userDetails.user;
+        
+        // Get token status
+        let tokenStatus = 'No Token';
+        let tokenStatusClass = 'status-pending';
+        let tokenType = 'No Token';
+        
+        if (user.token) {
+            // Check if it's a free token
+            const isFreeToken = userDetails.tokens && userDetails.tokens.length > 0 ? 
+                userDetails.tokens[0].freeToken || !userDetails.tokens[0].paid : 
+                user.freeToken || !user.paid;
+            
+            tokenStatus = isFreeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
+            tokenStatusClass = isFreeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
+            tokenType = isFreeToken ? 'Free Token' : (user.paid ? 'Paid Token' : 'Pending Token');
+        }
+        
+        // Parse location
         const location = this.parseLocation(user.location);
         const city = location.city || 'Unknown';
         const country = location.country || 'Unknown';
@@ -500,8 +540,12 @@ class AdminDashboard {
                 <div class="detail-item">
                     <label><i class="fas fa-money-bill"></i> Payment Status:</label>
                     <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
-                        ${user.paid ? 'Paid' : 'Pending'}
+                        ${user.paid ? 'Paid' : 'Not Paid'}
                     </span>
+                </div>
+                <div class="detail-item">
+                    <label><i class="fas fa-key"></i> Token Status:</label>
+                    <span class="status-badge ${tokenStatusClass}">${tokenType}</span>
                 </div>
                 <div class="detail-item">
                     <label><i class="fas fa-coins"></i> Revenue Generated:</label>
@@ -511,7 +555,6 @@ class AdminDashboard {
                     <label><i class="fas fa-key"></i> Token Balance:</label>
                     <span>${user.tokenBalance || 0} tokens</span>
                 </div>
-                
                 <div class="detail-item">
                     <label><i class="fas fa-map-marker-alt"></i> Location:</label>
                     <div class="location-details">
@@ -535,12 +578,12 @@ class AdminDashboard {
                 <div class="token-controls" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                     <h4 style="margin-bottom: 10px;"><i class="fas fa-gift"></i> Token Management</h4>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <input type="number" id="grantTokenAmount" placeholder="Amount" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" min="1">
+                        <input type="number" id="grantTokenAmount" placeholder="Amount" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" min="1" value="1">
                         <button class="btn-primary small" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
                             <i class="fas fa-gift"></i> Grant Free Tokens
                         </button>
                     </div>
-                    <small style="color: #666;"><i class="fas fa-info-circle"></i> Tokens granted as free won't affect revenue</small>
+                    <small style="color: #666;"><i class="fas fa-info-circle"></i> Free tokens work immediately without payment</small>
                 </div>
                 
                 <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 20px;">
@@ -569,7 +612,7 @@ class AdminDashboard {
         modal.classList.add('active');
     }
 
-    // Update the renderUsersTable to include location and revenue columns
+    // ===== UPDATED RENDER USERS TABLE =====
     renderUsersTable(users) {
         const tableBody = document.querySelector('#usersTable tbody');
         if (!tableBody) return;
@@ -592,12 +635,13 @@ class AdminDashboard {
             // Get revenue amount
             const revenue = user.amountPaid || 0;
             
-            // Get token status
+            // Get token status - check if it's a free token
             let tokenStatus = 'No Token';
             let tokenStatusClass = 'status-pending';
             if (user.token) {
-                tokenStatus = user.paid ? 'Paid' : 'Free';
-                tokenStatusClass = user.paid ? 'status-paid' : 'status-free';
+                // Check if it's a free token
+                tokenStatus = user.freeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
+                tokenStatusClass = user.freeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
             }
             
             const row = document.createElement('tr');
@@ -700,7 +744,7 @@ class AdminDashboard {
         }
         
         if (password !== this.adminPassword) {
-            this.showMessage('Invalid password', 'error');
+            this.showMessage('Invalid email or password', 'error');
             passwordInput.focus();
             return;
         }
@@ -1186,7 +1230,7 @@ class AdminDashboard {
                 <td class="text-truncate" style="max-width: 150px;" title="${data.email}">${data.email}</td>
                 <td>${data.createdAt ? new Date(data.createdAt).toLocaleString() : 'Unknown'}</td>
                 <td>${data.used ? 'Yes' : 'No'}</td>
-                <td><span class="status-badge ${data.paid ? 'status-paid' : 'status-free'}">${data.paid ? 'Paid' : 'Free'}</span></td>
+                <td><span class="status-badge ${data.freeToken ? 'status-free' : (data.paid ? 'status-paid' : 'status-pending')}">${data.freeToken ? 'Free' : (data.paid ? 'Paid' : 'Pending')}</span></td>
                 <td><span class="status-badge ${statusClass}">${status}</span></td>
                 <td>
                     <button class="btn-secondary small" onclick="admin.copyToken('${token}')" title="Copy Token">
@@ -1556,10 +1600,12 @@ class AdminDashboard {
         modal.classList.add('active');
     }
 
+    // ===== UPDATED GENERATE TOKEN FUNCTION =====
     async generateToken() {
         const emailInput = document.getElementById('tokenEmail');
         const email = emailInput.value.trim();
         const paid = document.getElementById('tokenPaymentStatus').value === 'true';
+        const freeTokensAmount = document.getElementById('freeTokensAmount').value;
         
         if (!email || !this.validateEmail(email)) {
             this.showNotification('Please enter a valid email address', 'error');
@@ -1570,7 +1616,8 @@ class AdminDashboard {
         this.showCustomModal(
             'Generate Token',
             `Generate a token for user <strong>${email}</strong>?<br>
-             Payment status: <strong>${paid ? 'Paid' : 'Free'}</strong>`,
+             Payment status: <strong>${paid ? 'Paid' : 'Free'}</strong><br>
+             ${freeTokensAmount > 0 ? `Free tokens to add: <strong>${freeTokensAmount}</strong><br>` : ''}`,
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -1580,6 +1627,7 @@ class AdminDashboard {
                         return;
                     }
                     
+                    // Generate the token (paid or free)
                     const response = await fetch('/api/admin/token/generate', {
                         method: 'POST',
                         headers: {
@@ -1587,26 +1635,46 @@ class AdminDashboard {
                             'Authorization': `Bearer ${token}`,
                             'Accept': 'application/json'
                         },
-                        body: JSON.stringify({ email, paid })
+                        body: JSON.stringify({ 
+                            email, 
+                            paid,
+                            free: !paid // Mark as free if not paid
+                        })
                     });
-                    
-                    if (!response.ok) {
-                        if (response.status === 401) {
-                            this.showNotification('Session expired, please login again', 'error');
-                            this.showLogin();
-                            return;
-                        }
-                        throw new Error(`HTTP ${response.status}: Failed to generate token`);
-                    }
                     
                     const data = await response.json();
                     
                     if (data.success) {
+                        // Add free tokens if specified
+                        if (freeTokensAmount > 0) {
+                            const freeResponse = await fetch('/api/admin/user/grant-tokens', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`,
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify({ 
+                                    email: email,
+                                    amount: parseInt(freeTokensAmount),
+                                    free: true
+                                })
+                            });
+                            
+                            const freeData = await freeResponse.json();
+                            
+                            if (!freeData.success) {
+                                this.showNotification(`Token generated but failed to add free tokens: ${freeData.message}`, 'warning');
+                            }
+                        }
+                        
                         this.showNotification(`Token generated successfully! ${data.existing ? '(Already existed)' : ''}`, 'success');
                         emailInput.value = '';
+                        document.getElementById('freeTokensAmount').value = '';
                         this.closeModal(document.getElementById('generateTokenModal'));
                         this.loadStats();
                         this.loadTokens();
+                        this.loadUsers();
                     } else {
                         this.showNotification(data.message, 'error');
                     }
@@ -1861,7 +1929,7 @@ class AdminDashboard {
             .status-approved { background: #3b82f6; color: white; }
             .status-terminated { background: #ef4444; color: white; }
             .status-paid { background: #8b5cf6; color: white; }
-            .status-free { background: #14b8a6; color: white; }
+            .status-free { background: #14b8a6; color: white; }  /* NEW: Free token color */
             .status-revoked { background: #6b7280; color: white; }
             .status-expired { background: #9ca3af; color: white; }
             

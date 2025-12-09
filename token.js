@@ -1,4 +1,4 @@
-// FILE: token.js (UPDATED VERSION WITH ENHANCED LOCATION AND REVENUE MANAGEMENT)
+// FILE: token.js (UPDATED VERSION WITH ENHANCED LOCATION, FREE TOKENS, AND REVENUE MANAGEMENT)
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
@@ -67,6 +67,20 @@ class TokenManager {
         return emailRegex.test(email);
     }
 
+    // Helper function to get country name
+    getCountryName(countryCode) {
+        try {
+            return getName(countryCode) || countryCode;
+        } catch (error) {
+            const countries = {
+                'NG': 'Nigeria', 'US': 'United States', 'GB': 'United Kingdom',
+                'CA': 'Canada', 'AU': 'Australia', 'IN': 'India',
+                'KE': 'Kenya', 'GH': 'Ghana', 'ZA': 'South Africa'
+            };
+            return countries[countryCode] || countryCode;
+        }
+    }
+
     async sendEmail(to, subject, html) {
         try {
             const mailOptions = {
@@ -86,23 +100,6 @@ class TokenManager {
         }
     }
 
-    // Helper function to get country name
-    getCountryName(countryCode) {
-        const countries = {
-            'NG': 'Nigeria',
-            'US': 'United States',
-            'GB': 'United Kingdom',
-            'CA': 'Canada',
-            'AU': 'Australia',
-            'IN': 'India',
-            'KE': 'Kenya',
-            'GH': 'Ghana',
-            'ZA': 'South Africa',
-            // Add more countries as needed
-        };
-        return countries[countryCode] || countryCode;
-    }
-
     // ===== UPDATED REQUEST TOKEN FUNCTION WITH ENHANCED LOCATION =====
     async requestToken(email, ip, userAgent) {
         try {
@@ -113,25 +110,43 @@ class TokenManager {
                 };
             }
 
-            // Get detailed location
-            const geo = geoip.lookup(ip) || {};
+            // Get detailed location with multiple methods
+            let geo = geoip.lookup(ip) || {};
             let location = 'Unknown';
+            let city = 'Unknown';
+            let country = 'Unknown';
+            let region = 'Unknown';
+            let timezone = 'Unknown';
             
-            if (geo.city && geo.country) {
-                location = `${geo.city}, ${geo.country}`;
-            } else if (geo.country) {
-                location = geo.country;
-            }
-            
-            // Try to get more detailed location
-            try {
-                // Additional location lookup
-                const countryInfo = countryLookup.lookupCountry(geo.country);
-                if (countryInfo) {
-                    location = `${geo.city || 'Unknown City'}, ${countryInfo.name}`;
+            if (geo) {
+                // Get country name
+                country = this.getCountryName(geo.country) || geo.country || 'Unknown';
+                
+                // Try to get city from geoip
+                city = geo.city || 'Unknown';
+                
+                // Try to get region/state
+                region = geo.region || geo.area || 'Unknown';
+                
+                // Get timezone
+                timezone = geo.timezone || 'Unknown';
+                
+                // Build location string
+                if (city !== 'Unknown' && country !== 'Unknown') {
+                    location = `${city}, ${country}`;
+                } else if (country !== 'Unknown') {
+                    location = country;
                 }
-            } catch (error) {
-                console.log('Country lookup error:', error.message);
+                
+                // Try to get more specific city info from cities module
+                try {
+                    const cityInfo = cities.gps_lookup(geo.ll?.[0], geo.ll?.[1]);
+                    if (cityInfo && cityInfo.city) {
+                        city = cityInfo.city;
+                    }
+                } catch (error) {
+                    console.log('City lookup error:', error.message);
+                }
             }
 
             // Check if email already requested
@@ -144,10 +159,10 @@ class TokenManager {
                 ip: ip,
                 userAgent: userAgent,
                 country: geo.country || 'Unknown',
-                countryName: geo.country ? this.getCountryName(geo.country) : 'Unknown',
-                city: geo.city || 'Unknown',
-                region: geo.region || 'Unknown',
-                timezone: geo.timezone || 'Unknown',
+                countryName: country,
+                city: city,
+                region: region,
+                timezone: timezone,
                 location: location,
                 timestamp: new Date().toISOString(),
                 status: 'pending'
@@ -168,10 +183,10 @@ class TokenManager {
                     userAgents: [userAgent],
                     location: location,
                     country: geo.country || 'Unknown',
-                    countryName: geo.country ? this.getCountryName(geo.country) : 'Unknown',
-                    city: geo.city || 'Unknown',
-                    region: geo.region || 'Unknown',
-                    timezone: geo.timezone || 'Unknown',
+                    countryName: country,
+                    city: city,
+                    region: region,
+                    timezone: timezone,
                     status: 'pending',
                     paid: false,
                     token: null,
@@ -191,10 +206,10 @@ class TokenManager {
                 // Update location information
                 users[email].location = location;
                 users[email].country = geo.country || users[email].country || 'Unknown';
-                users[email].countryName = geo.country ? this.getCountryName(geo.country) : users[email].countryName || 'Unknown';
-                users[email].city = geo.city || users[email].city || 'Unknown';
-                users[email].region = geo.region || users[email].region || 'Unknown';
-                users[email].timezone = geo.timezone || users[email].timezone || 'Unknown';
+                users[email].countryName = country || users[email].countryName || 'Unknown';
+                users[email].city = city || users[email].city || 'Unknown';
+                users[email].region = region || users[email].region || 'Unknown';
+                users[email].timezone = timezone || users[email].timezone || 'Unknown';
                 users[email].lastUpdated = new Date().toISOString();
             }
             await this.saveUsers(users);
@@ -205,10 +220,10 @@ class TokenManager {
                 <p><strong>Email:</strong> ${email}</p>
                 <p><strong>IP Address:</strong> ${ip}</p>
                 <p><strong>Location:</strong> ${location}</p>
-                <p><strong>Country:</strong> ${geo.country ? this.getCountryName(geo.country) : 'Unknown'}</p>
-                <p><strong>City:</strong> ${geo.city || 'Unknown'}</p>
-                <p><strong>Region:</strong> ${geo.region || 'Unknown'}</p>
-                <p><strong>Timezone:</strong> ${geo.timezone || 'Unknown'}</p>
+                <p><strong>Country:</strong> ${country}</p>
+                <p><strong>City:</strong> ${city}</p>
+                <p><strong>Region:</strong> ${region}</p>
+                <p><strong>Timezone:</strong> ${timezone}</p>
                 <p><strong>User Agent:</strong> ${userAgent}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 <p><strong>Total Requests:</strong> ${userRequests.length + 1}</p>
@@ -241,7 +256,8 @@ class TokenManager {
         }
     }
 
-    async generateTokenForEmail(email, adminApproved = false) {
+    // ===== UPDATED GENERATE TOKEN FOR EMAIL FUNCTION WITH FREE TOKEN SUPPORT =====
+    async generateTokenForEmail(email, adminApproved = false, isFreeToken = false) {
         try {
             const users = await this.getAllUsers();
             const tokens = await this.getAllTokens();
@@ -253,8 +269,8 @@ class TokenManager {
                 };
             }
             
-            // Check if user has paid (admin must approve)
-            if (!adminApproved && !users[email].paid) {
+            // Check if user has paid (admin must approve) - EXCEPTION for free tokens
+            if (!adminApproved && !users[email].paid && !isFreeToken) {
                 return { 
                     success: false, 
                     message: 'Payment not verified. Contact admin for approval.' 
@@ -264,6 +280,14 @@ class TokenManager {
             // Check if email already has a token
             for (const [token, data] of Object.entries(tokens)) {
                 if (data.email === email) {
+                    // Update token payment status if different
+                    if (data.paid !== (isFreeToken ? false : users[email].paid)) {
+                        tokens[token].paid = isFreeToken ? false : users[email].paid;
+                        tokens[token].freeToken = isFreeToken;
+                        tokens[token].lastUpdated = new Date().toISOString();
+                        await this.saveTokens(tokens);
+                    }
+                    
                     return { 
                         success: true, 
                         token: token,
@@ -286,14 +310,17 @@ class TokenManager {
                 }
             } while (tokens[token]);
 
-            // Save token
+            // Save token with correct payment status
+            const tokenPaidStatus = isFreeToken ? false : (users[email].paid || false);
+            
             tokens[token] = {
                 email: email,
                 createdAt: new Date().toISOString(),
                 used: false,
                 lastUsed: null,
                 generatedBy: adminApproved ? 'admin' : 'system',
-                paid: users[email].paid,
+                paid: tokenPaidStatus,  // Mark as free if free token
+                freeToken: isFreeToken,  // Track if it's a free token
                 expires: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days from now
                 lastUpdated: new Date().toISOString()
             };
@@ -305,14 +332,20 @@ class TokenManager {
             users[email].lastTokenActivity = new Date().toISOString();
             users[email].lastUpdated = new Date().toISOString();
             
+            // If free token, mark as not paid
+            if (isFreeToken) {
+                users[email].paid = false;
+            }
+            
             await this.saveTokens(tokens);
             await this.saveUsers(users);
             
-            // Send token to user email
+            // Send token to user email - ALWAYS send when admin generates
             if (adminApproved) {
+                const tokenType = isFreeToken ? "Free Token" : "Paid Token";
                 const userEmailHtml = `
-                    <h2>🎉 Your Tracle-Lite Token is Approved!</h2>
-                    <p>Congratulations! Your token has been approved by admin.</p>
+                    <h2>🎉 Your Tracle-Lite ${tokenType} is Ready!</h2>
+                    <p>${isFreeToken ? 'You have been granted a free token!' : 'Your payment has been verified and token is approved!'}</p>
                     <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
                         <h3 style="color: #6366f1; font-family: monospace;">${token}</h3>
                     </div>
@@ -322,21 +355,36 @@ class TokenManager {
                         <li>Enter this token in the login section</li>
                         <li>Access all premium features</li>
                     </ol>
-                    <p><strong>Website:</strong> <a href="${process.env.APP_URL || 'https://tracle-57a788202c97.herokuapp.com/'}">${process.env.APP_URL || 'https://tracle-57a788202c97.herokuapp.com/'}</a></p>
-                    <br>
                     <p><strong>Token Details:</strong></p>
                     <ul>
                         <li>Created: ${new Date().toLocaleString()}</li>
                         <li>Expires: ${new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toLocaleString()}</li>
                         <li>Status: Active ✅</li>
+                        <li>Type: ${tokenType}</li>
                     </ul>
+                    <p><strong>Website:</strong> <a href="${process.env.APP_URL || 'https://tracle-57a788202c97.herokuapp.com/'}">${process.env.APP_URL || 'https://tracle-57a788202c97.herokuapp.com/'}</a></p>
                     <br>
                     <p>Need help? Contact us:</p>
                     <p>📧 Email: brenaldmedia@gmail.com</p>
                     <p>📱 WhatsApp: +2349025303930</p>
                 `;
                 
-                await this.sendEmail(email, '🎉 Your Tracle-Lite Token is Ready!', userEmailHtml);
+                const subject = isFreeToken ? 
+                    '🎉 Your Free Tracle-Lite Token is Ready!' : 
+                    '🎉 Your Tracle-Lite Token is Approved!';
+                
+                await this.sendEmail(email, subject, userEmailHtml);
+                
+                // Also notify admin
+                const adminHtml = `
+                    <h2>✅ Token Generated Successfully</h2>
+                    <p><strong>User:</strong> ${email}</p>
+                    <p><strong>Token:</strong> ${token}</p>
+                    <p><strong>Type:</strong> ${tokenType}</p>
+                    <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                    <p><strong>Status:</strong> Token sent to user's email</p>
+                `;
+                await this.sendEmail(this.adminEmail, `✅ Token Generated for ${email}`, adminHtml);
             }
             
             // Auto backup data after token generation
@@ -345,7 +393,8 @@ class TokenManager {
             return { 
                 success: true, 
                 token: token,
-                message: 'Token generated successfully'
+                message: 'Token generated successfully',
+                isFreeToken: isFreeToken
             };
             
         } catch (error) {
@@ -403,6 +452,7 @@ class TokenManager {
         }
     }
 
+    // ===== UPDATED VALIDATE TOKEN WITH EMAIL FUNCTION TO ACCEPT FREE TOKENS =====
     async validateTokenWithEmail(email, token) {
         try {
             console.log(`🔐 Validating token ${token.substring(0, 12)}... for email: ${email}`);
@@ -456,7 +506,8 @@ class TokenManager {
                 };
             }
 
-            if (user.status !== 'approved') {
+            // ACCEPT FREE TOKENS - only check status if it's a paid token
+            if (!tokens[token].freeToken && user.status !== 'approved') {
                 console.log(`❌ User not approved: ${email} - status: ${user.status}`);
                 return { 
                     valid: false, 
@@ -478,7 +529,7 @@ class TokenManager {
             return { 
                 valid: true, 
                 data: tokens[token],
-                message: 'Token is valid for this email'
+                message: tokens[token].freeToken ? 'Free token is valid' : 'Paid token is valid'
             };
             
         } catch (error) {
@@ -511,7 +562,7 @@ class TokenManager {
         }
     }
 
-    // ===== UPDATED UPDATE USER PAYMENT STATUS WITH REVENUE MANAGEMENT =====
+    // ===== UPDATED UPDATE USER PAYMENT STATUS WITH EMAIL NOTIFICATION =====
     async updateUserPaymentStatus(email, paid) {
         try {
             const users = await this.getAllUsers();
@@ -523,8 +574,56 @@ class TokenManager {
                 users[email].paymentUpdated = new Date().toISOString();
                 users[email].lastUpdated = new Date().toISOString();
                 
-                // Update revenue only when changing from not paid to paid
+                // If marking as paid and user has a token, send email
                 if (paid && !wasPaid) {
+                    // Check if user has a token
+                    const tokens = await this.getAllTokens();
+                    let userToken = null;
+                    
+                    for (const [token, data] of Object.entries(tokens)) {
+                        if (data.email === email) {
+                            userToken = token;
+                            // Update token to paid status
+                            tokens[token].paid = true;
+                            tokens[token].freeToken = false;
+                            tokens[token].lastUpdated = new Date().toISOString();
+                            break;
+                        }
+                    }
+                    
+                    // If no token, generate one
+                    if (!userToken) {
+                        const tokenResult = await this.generateTokenForEmail(email, true, false);
+                        if (tokenResult.success) {
+                            userToken = tokenResult.token;
+                        }
+                    }
+                    
+                    // Send payment confirmation email
+                    if (userToken) {
+                        const paymentEmailHtml = `
+                            <h2>✅ Payment Verified - Token Activated!</h2>
+                            <p>Your payment has been verified and your Tracle-Lite token is now active!</p>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                                <h3 style="color: #6366f1; font-family: monospace;">${userToken}</h3>
+                            </div>
+                            <p><strong>Token Details:</strong></p>
+                            <ul>
+                                <li>Status: Active ✅</li>
+                                <li>Type: Paid Token</li>
+                                <li>Activated: ${new Date().toLocaleString()}</li>
+                                <li>Expires: ${new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toLocaleString()}</li>
+                            </ul>
+                            <p>You can now use this token to access all premium features.</p>
+                            <br>
+                            <p>Need help? Contact us:</p>
+                            <p>📧 Email: brenaldmedia@gmail.com</p>
+                            <p>📱 WhatsApp: +2349025303930</p>
+                        `;
+                        
+                        await this.sendEmail(email, '✅ Payment Verified - Tracle-Lite Token Activated', paymentEmailHtml);
+                    }
+                    
                     users[email].paymentDate = new Date().toISOString();
                     users[email].amountPaid = 1000; // Default amount
                     
@@ -532,7 +631,8 @@ class TokenManager {
                     const stats = await this.getStats();
                     const newRevenue = (stats.summary?.revenue || 0) + 1000;
                     
-                    // Save updated users
+                    // Save updated tokens and users
+                    await this.saveTokens(tokens);
                     await this.saveUsers(users);
                     
                     return {
@@ -540,10 +640,10 @@ class TokenManager {
                         paid: paid,
                         revenueUpdated: true,
                         newRevenue: newRevenue,
-                        message: `User marked as paid. Revenue increased by ₦1000`
+                        message: `User marked as paid. Revenue increased by ₦1000. ${userToken ? 'Token email sent.' : ''}`
                     };
                 } else if (!paid && wasPaid) {
-                    // If changing from paid to not paid, decrease revenue
+                    // If changing from paid to not paid
                     const stats = await this.getStats();
                     const newRevenue = Math.max(0, (stats.summary?.revenue || 0) - 1000);
                     
@@ -629,6 +729,10 @@ class TokenManager {
                     users[email].amountPaid = 0;
                     needsUpdate = true;
                 }
+                if (users[email].freeToken === undefined) {
+                    users[email].freeToken = false;
+                    needsUpdate = true;
+                }
             }
             
             if (needsUpdate) {
@@ -644,7 +748,22 @@ class TokenManager {
     async getAllTokens() {
         try {
             const data = await fs.readFile(this.tokensFile, 'utf8');
-            return JSON.parse(data);
+            const tokens = JSON.parse(data);
+            
+            // Ensure all tokens have freeToken field
+            let needsUpdate = false;
+            for (const token in tokens) {
+                if (tokens[token].freeToken === undefined) {
+                    tokens[token].freeToken = !tokens[token].paid;
+                    needsUpdate = true;
+                }
+            }
+            
+            if (needsUpdate) {
+                await this.saveTokens(tokens);
+            }
+            
+            return tokens;
         } catch (error) {
             return {};
         }
@@ -713,6 +832,7 @@ class TokenManager {
             let terminatedUsers = 0;
             let activeUsers = 0;
             let recentUsers = 0;
+            let freeTokenUsers = 0;
             
             const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
             
@@ -729,6 +849,10 @@ class TokenManager {
                     approvedUsers++;
                 } else if (user.status === 'terminated') {
                     terminatedUsers++;
+                }
+                
+                if (user.freeToken === true) {
+                    freeTokenUsers++;
                 }
                 
                 // Check if user was active in last 24 hours
@@ -754,6 +878,8 @@ class TokenManager {
             let validTokens = 0;
             let expiredTokens = 0;
             let expiringSoon = 0;
+            let freeTokens = 0;
+            let paidTokens = 0;
             
             const threeDaysFromNow = Date.now() + (3 * 24 * 60 * 60 * 1000);
             
@@ -773,6 +899,13 @@ class TokenManager {
                     if (tokenData.expires && tokenData.expires > Date.now() && tokenData.expires < threeDaysFromNow) {
                         expiringSoon++;
                     }
+                    
+                    // Count free vs paid tokens
+                    if (tokenData.freeToken === true) {
+                        freeTokens++;
+                    } else if (tokenData.paid === true) {
+                        paidTokens++;
+                    }
                 }
             }
             
@@ -790,6 +923,7 @@ class TokenManager {
                         totalRequests: reqList.length,
                         status: usersObj[email]?.status || 'pending',
                         paid: usersObj[email]?.paid || false,
+                        freeToken: usersObj[email]?.freeToken || false,
                         location: usersObj[email]?.location || 'Unknown',
                         city: usersObj[email]?.city || 'Unknown',
                         country: usersObj[email]?.country || 'Unknown'
@@ -824,6 +958,7 @@ class TokenManager {
                     pending: pendingUsers,
                     approved: approvedUsers,
                     terminated: terminatedUsers,
+                    freeToken: freeTokenUsers,
                     active24h: activeUsers,
                     recent7d: recentUsers
                 },
@@ -833,7 +968,9 @@ class TokenManager {
                     unused: unusedTokens,
                     valid: validTokens,
                     expired: expiredTokens,
-                    expiringSoon: expiringSoon
+                    expiringSoon: expiringSoon,
+                    free: freeTokens,
+                    paid: paidTokens
                 },
                 requests: {
                     total: Object.keys(requestsObj).length,
@@ -851,8 +988,8 @@ class TokenManager {
         } catch (error) {
             console.error('Error getting stats:', error);
             return {
-                users: { total: 0, paid: 0, pending: 0, approved: 0, terminated: 0, active24h: 0, recent7d: 0 },
-                tokens: { total: 0, used: 0, unused: 0, valid: 0, expired: 0, expiringSoon: 0 },
+                users: { total: 0, paid: 0, pending: 0, approved: 0, terminated: 0, freeToken: 0, active24h: 0, recent7d: 0 },
+                tokens: { total: 0, used: 0, unused: 0, valid: 0, expired: 0, expiringSoon: 0, free: 0, paid: 0 },
                 requests: { total: 0, recent: [], activeToday: 0 },
                 summary: { pendingApprovals: 0, revenue: 0, revenueFormatted: '₦0', activeToday: 0, backupStatus: 'unknown' }
             };
@@ -914,6 +1051,7 @@ class TokenManager {
                     email: user.email,
                     status: user.status || 'pending',
                     paid: user.paid || false,
+                    freeToken: user.freeToken || false,
                     tokenBalance: user.tokenBalance || 0,
                     freeTokensGranted: user.freeTokensGranted || 0,
                     amountPaid: user.amountPaid || 0,
@@ -931,7 +1069,8 @@ class TokenManager {
                 requests: userRequests,
                 totalRequests: userRequests.length,
                 hasToken: user.token !== null,
-                isPaid: user.paid || false
+                isPaid: user.paid || false,
+                isFreeToken: user.freeToken || false
             };
         } catch (error) {
             console.error('Error getting user details:', error);
@@ -1002,15 +1141,16 @@ class TokenManager {
             if (free) {
                 users[email].freeTokensGranted += tokenAmount;
                 users[email].lastFreeTokenGrant = new Date().toISOString();
+                users[email].freeToken = true;
             }
             
             users[email].lastUpdated = new Date().toISOString();
             
             await this.saveUsers(users);
             
-            // Generate token for user if they don't have one
+            // Generate free token for user if they don't have one
             if (!users[email].token) {
-                await this.generateTokenForEmail(email, true);
+                await this.generateTokenForEmail(email, true, true);
             }
             
             return {

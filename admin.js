@@ -409,17 +409,51 @@ class AdminManager {
             }
         });
 
-        // Generate token (admin)
+        // ===== NEW: FREE TOKEN GENERATION ENDPOINT =====
+        // Generate free token endpoint
+        app.post('/api/admin/token/generate-free', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email, free } = req.body;
+                
+                const result = await tokenManager.generateTokenForEmail(email, true, free);
+                
+                if (result.success) {
+                    // Update user as approved but not paid for free tokens
+                    if (free) {
+                        const users = await tokenManager.getAllUsers();
+                        if (users[email]) {
+                            users[email].status = 'approved';
+                            users[email].paid = false;
+                            users[email].lastUpdated = new Date().toISOString();
+                            await tokenManager.saveUsers(users);
+                        }
+                    }
+                    
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+                
+            } catch (error) {
+                console.error('Error generating free token:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to generate free token'
+                });
+            }
+        });
+
+        // Update the existing token generation endpoint
         app.post('/api/admin/token/generate', this.verifyAdminToken.bind(this), async (req, res) => {
             try {
-                const { email, paid } = req.body;
+                const { email, paid, free } = req.body;
                 
-                const result = await tokenManager.generateTokenForEmail(email, true);
+                const result = await tokenManager.generateTokenForEmail(email, true, free || !paid);
                 
                 if (result.success) {
                     // Update payment status if specified
                     if (paid !== undefined) {
-                        await tokenManager.updateUserPaymentStatus(email, paid);
+                        await tokenManager.updateUserPaymentStatus(email, paid && !free);
                     }
                 }
                 

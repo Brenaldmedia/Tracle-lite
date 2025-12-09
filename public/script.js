@@ -724,7 +724,7 @@ async function deleteUserSession(userNumber) {
     
     try {
         showModal('Delete Session', 
-            `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data from Backblaze B2.`,
+            `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data .`,
             'Delete',
             async () => {
                 try {

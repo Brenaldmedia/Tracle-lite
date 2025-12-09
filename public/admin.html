@@ -284,13 +284,15 @@
                                     <th>Email</th>
                                     <th>Status</th>
                                     <th>Payment</th>
-                                    <th>Requests</th>
+                                    <th>Revenue</th>
+                                    <th>Token Status</th>
+                                    <th>Location</th>
                                     <th>Last Active</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading users...</td></tr>
+                                <tr><td colspan="8" style="text-align: center; padding: 20px;">Loading users...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -313,12 +315,13 @@
                                     <th>Email</th>
                                     <th>Created</th>
                                     <th>Used</th>
+                                    <th>Type</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading tokens...</td></tr>
+                                <tr><td colspan="7" style="text-align: center; padding: 20px;">Loading tokens...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -342,13 +345,14 @@
                                     <th>Email</th>
                                     <th>IP Address</th>
                                     <th>Location</th>
+                                    <th>Region</th>
                                     <th>Device</th>
                                     <th>Time</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading requests...</td></tr>
+                                <tr><td colspan="7" style="text-align: center; padding: 20px;">Loading requests...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -490,6 +494,7 @@
         </div>
     </div>
 
+    <!-- ===== UPDATED GENERATE TOKEN MODAL ===== -->
     <div class="modal" id="generateTokenModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -502,16 +507,24 @@
                     <input type="email" id="tokenEmail" placeholder="user@gmail.com">
                 </div>
                 <div class="form-group">
-                    <label>Mark as Paid</label>
+                    <label>Token Type</label>
                     <select id="tokenPaymentStatus">
-                        <option value="true">Yes - User has paid</option>
-                        <option value="false">No - Free token</option>
+                        <option value="true">Paid Token (User has paid)</option>
+                        <option value="false" selected>Free Token (Grant without payment)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Add Free Tokens</label>
-                    <input type="number" id="freeTokensAmount" placeholder="0" min="0">
-                    <small>Add free tokens without affecting revenue</small>
+                    <label>Additional Free Tokens (Optional)</label>
+                    <input type="number" id="freeTokensAmount" placeholder="0" min="0" value="0">
+                    <small>Add extra free tokens to user's balance (does not affect revenue)</small>
+                </div>
+                <div class="form-group">
+                    <label>Send Email Notification</label>
+                    <select id="sendEmailNotification">
+                        <option value="true" selected>Yes, send token to user's email</option>
+                        <option value="false">No, don't send email</option>
+                    </select>
+                    <small>Token will always be stored in database</small>
                 </div>
                 <button class="btn-primary" id="generateTokenConfirm">Generate Token</button>
             </div>
