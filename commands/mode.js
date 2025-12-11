@@ -1,53 +1,88 @@
 module.exports = {
-    pattern: 'mode',
-    description: 'Change bot mode (public/private) - Owner only',
-    alias: ['botmode', 'setmode'],
-    execute: async (conn, message, m, { args, q, reply, from, isGroup, groupMetadata, sender, isAdmins, isCreator }) => {
+    pattern: "mode",
+    name: "mode",
+    description: "Set bot mode",
+    tags: ["settings"],
+    ownerOnly: true,
+    
+    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
-            // Check if user is bot owner
-            const botJid = conn.user.id;
-            const messageSenderJid = message.key.participant || message.key.remoteJid;
-            const normalizedBotJid = botJid.includes(':') ? botJid.split(':')[0] + '@s.whatsapp.net' : botJid;
-            
-            const isOwner = messageSenderJid === normalizedBotJid || messageSenderJid.includes(normalizedBotJid.split('@')[0]);
-            
-            if (!isOwner) {
-                return await reply('❌ This command can only be used by the bot owner.');
-            }
-
-            // Get current settings from server
             const server = require('../server');
-            const currentMode = server.BOT_MODE || "public";
+            const { PREFIX, userPrefixes, updateUserSettings, MENU_IMAGE_URL, REPO_LINK } = server;
+            const userSettings = server.getUserSettings(sessionId);
 
+            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+
+            // No args → show help menu
             if (args.length === 0) {
-                return await reply(
-                    `🔧 *BOT MODE SETTINGS*\n\n` +
-                    `Current Mode: *${currentMode}*\n\n` +
-                    `Usage:\n` +
-                    `• .mode public - Set to public mode\n` +
-                    `• .mode private - Set to private mode\n\n` +
-                    `*Public Mode:* Bot responds to everyone\n` +
-                    `*Private Mode:* Bot only responds to owner`
-                );
+                const text = `🔧 *BOT MODE SETTINGS*\n\nCurrent Mode: *${userSettings.botMode}*\n\nUsage:\n• ${userPrefix}mode public - Set to public mode\n• ${userPrefix}mode private - Set to private mode\n\nPublic Mode: Bot responds to everyone\nPrivate Mode: Bot only responds to owner`;
+
+                await reply(text, {
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "🔧 Bot Mode",
+                            body: `Current: ${userSettings.botMode}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1,
+                            renderLargerThumbnail: true
+                        }
+                    }
+                });
+
+                return;
             }
 
+            // Valid modes
             const newMode = args[0].toLowerCase();
+
             if (newMode === 'public' || newMode === 'private') {
-                // Update mode in server
-                server.BOT_MODE = newMode;
-                server.savePersistentData();
-                
-                await reply(
-                    `✅ Bot mode updated to: *${newMode}*\n\n` +
-                    `${newMode === 'public' ? '🤖 Bot will now respond to everyone' : '🔒 Bot will only respond to owner'}`
-                );
-            } else {
-                await reply('❌ Invalid mode. Use "public" or "private"');
+                updateUserSettings(sessionId, { botMode: newMode });
+
+                const text = `✅ Bot mode updated to: *${newMode}*\n\n${newMode === 'public' ? '🤖 Bot will now respond to everyone' : '🔒 Bot will only respond to the owner.'}`;
+
+                await reply(text, {
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "🔧 Mode Updated",
+                            body: `Set to ${newMode}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1,
+                            renderLargerThumbnail: true
+                        }
+                    }
+                });
+
+                return;
             }
+
+            // Invalid input
+            await reply(`❌ Invalid mode. Use 'public' or 'private'`, {
+                contextInfo: {
+                    externalAdReply: {
+                        title: "⚠️ Invalid Mode",
+                        body: "Must be public or private",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            });
+
         } catch (error) {
-            console.error('Error in mode command:', error);
-            await reply('❌ Error changing bot mode');
+            console.error("Error in mode command:", error);
+
+            await reply(`❌ Error: ${error.message}`, {
+                contextInfo: {
+                    externalAdReply: {
+                        title: "❌ Error",
+                        body: error.message,
+                        thumbnailUrl: "https://i.imgur.com/MqQvQhL.png",
+                        mediaType: 1
+                    }
+                }
+            });
         }
-    },
-    tags: ['settings', 'owner']
+    }
 };

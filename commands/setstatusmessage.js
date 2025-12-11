@@ -13,7 +13,7 @@ module.exports = {
 
             if (args.length === 0) {
                 return await reply(
-                    `💬 *SET STATUS REPLY MESSAGE*\n\nUsage:\n• .setstatusreply [your message]\n\nExample: .setstatusreply Your status has been seen by me.`
+                    `💬 *SET STATUS REPLY MESSAGE*\n\nUsage:\n• .setstatusreply [your message]\n\nExample: .setstatusreply Your status has been seen by TRACLE-LITE.`
                 );
             }
 

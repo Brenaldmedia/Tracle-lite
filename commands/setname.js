@@ -1,29 +1,48 @@
-const { updateUserSettings, isBotOwner } = require('../server');
-
 module.exports = {
-    pattern: 'setname',
-    alias: ['setmyname'],
-    description: 'Set your display name',
-    category: 'customization',
-    execute: async (conn, message, m, { args, reply, sessionId }) => {
+    pattern: "setname",
+    name: "setname",
+    description: "Set owner name",
+    tags: ["customization"],
+    ownerOnly: true,
+    
+    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
-            if (!isBotOwner(conn, message)) {
-                return await reply('❌ Owner only command');
-            }
-
+            const { PREFIX, userPrefixes, updateUserSettings } = require('../server');
+            const userSettings = require('../server').getUserSettings(sessionId);
+            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+            
             if (args.length === 0) {
-                return await reply(
-                    `👤 *SET OWNER NAME*\n\nUsage:\n• .setname [new name]\n\nExample: .setname Mark`
-                );
+                await reply(`👤 *SET OWNER NAME*\n\nUsage:\n• ${userPrefix}setname [new name]\n\nExample: ${userPrefix}setname Mark\n\nCurrent: ${userSettings.ownerName || require('../server').OWNER_NAME}`, {
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "👤 Set Owner Name",
+                            body: "Change your display name",
+                            thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                            sourceUrl: require('../server').REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                });
+                return;
             }
 
             const newName = args.join(' ');
             updateUserSettings(sessionId, { ownerName: newName });
             
-            await reply(`✅ Owner name updated to: *${newName}*`);
+            await reply(`✅ Owner name updated to: *${newName}*`, {
+                contextInfo: {
+                    externalAdReply: {
+                        title: "👤 Name Updated",
+                        body: `Set to: ${newName}`,
+                        thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                        sourceUrl: require('../server').REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            });
         } catch (error) {
-            console.error('Error in setname command:', error);
-            await reply('❌ Error updating name');
+            console.error("Error in setname command:", error);
+            await reply(`❌ Error: ${error.message}`);
         }
     }
 };

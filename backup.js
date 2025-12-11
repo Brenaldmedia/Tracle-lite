@@ -1,69 +1,117 @@
-// FILE: backup.js - COMPLETELY UPDATED WITH PROPER CREDS.JSON RESTORATION
-const B2 = require('backblaze-b2');
-const fs = require('fs');
+// FILE: backup.js - UPDATED TO USE SUPABASE
+const fs = require('fs-extra');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
 class BackupManager {
     constructor() {
-        this.b2 = new B2({
-            applicationKeyId: process.env.B2_APPLICATION_KEY_ID,
-            applicationKey: process.env.B2_APPLICATION_KEY
-        });
-        this.b2Authorized = false;
-        this.bucketName = process.env.B2_BUCKET_NAME;
+        this.supabase = null;
+        this.authorized = false;
+        
+        // Supabase configuration
+        this.SUPABASE_URL = process.env.SUPABASE_URL;
+        this.SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
+        this.BUCKET_NAME = process.env.SUPABASE_BUCKET || 'tracle-backups';
+        
+        this.initializeSupabase();
     }
 
-    // Initialize B2 connection
-    async initializeB2() {
+    // Initialize Supabase
+    async initializeSupabase() {
         try {
-            if (!this.b2Authorized) {
-                await this.b2.authorize();
-                this.b2Authorized = true;
-                console.log('✅ Backblaze B2 authorized successfully');
+            if (!this.SUPABASE_URL || !this.SUPABASE_KEY) {
+                console.log('⚠️ Supabase credentials not configured');
+                return;
             }
+
+            this.supabase = createClient(this.SUPABASE_URL, this.SUPABASE_KEY);
+            this.authorized = true;
+            
+            console.log('✅ Supabase authorized successfully');
+            
+            // Ensure bucket exists
+            await this.ensureBucketExists();
+            
         } catch (error) {
-            console.error('❌ Failed to authorize Backblaze B2:', error.message);
+            console.error('❌ Failed to authorize Supabase:', error.message);
             throw error;
         }
     }
 
-    // Check if B2 credentials are configured
+    // Check if Supabase is configured
     isConfigured() {
-        return !!(process.env.B2_APPLICATION_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_BUCKET_NAME);
+        return !!(this.SUPABASE_URL && this.SUPABASE_KEY);
     }
 
-    // 🔄 Check if session exists in Backblaze B2
-    async checkSessionOnB2(sessionId) {
+    // Ensure bucket exists
+    async ensureBucketExists() {
         try {
-            await this.initializeB2();
+            // Check if bucket exists
+            const { data: buckets, error: listError } = await this.supabase
+                .storage
+                .listBuckets();
+                
+            if (listError) throw listError;
+            
+            const bucketExists = buckets.some(bucket => bucket.name === this.BUCKET_NAME);
+            
+            if (!bucketExists) {
+                console.log(`⚠️ Bucket "${this.BUCKET_NAME}" not found, creating...`);
+                
+                const { data, error } = await this.supabase
+                    .storage
+                    .createBucket(this.BUCKET_NAME, {
+                        public: false,
+                        fileSizeLimit: 104857600 // 100MB
+                    });
+                    
+                if (error) throw error;
+                console.log(`✅ Created new bucket: ${this.BUCKET_NAME}`);
+            } else {
+                console.log(`✅ Using existing bucket: ${this.BUCKET_NAME}`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error ensuring bucket exists:', error.message);
+            throw error;
+        }
+    }
+
+    // 🔄 Check if session exists in Supabase Storage
+    async checkSessionOnDrive(sessionId) {
+        try {
+            await this.initializeSupabase();
             
             const fileName = `sessions/${sessionId}/creds.json`;
             
             try {
-                const { data } = await this.b2.getFileInfo({
-                    bucketName: this.bucketName,
-                    fileName: fileName
-                });
-                
-                const sessionExists = !!data;
-                console.log(`📊 Session ${sessionId} exists on Backblaze B2: ${sessionExists}`);
-                return { sessionExists };
-            } catch (error) {
-                if (error.response?.status === 400 || error.response?.status === 404) {
-                    return { sessionExists: false };
+                const { data, error } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .list(`sessions/${sessionId}`);
+                    
+                if (error && error.message !== 'Not Found') {
+                    throw error;
                 }
-                throw error;
+                
+                const sessionExists = data && data.length > 0;
+                console.log(`📊 Session ${sessionId} exists on Supabase: ${sessionExists}`);
+                return { sessionExists };
+                
+            } catch (error) {
+                console.error(`❌ Error checking session ${sessionId} on Supabase:`, error.message);
+                return { sessionExists: false, error: error.message };
             }
         } catch (error) {
-            console.error(`❌ Error checking session ${sessionId} on Backblaze B2:`, error.message);
+            console.error(`❌ Error checking session ${sessionId} on Supabase:`, error.message);
             return { sessionExists: false, error: error.message };
         }
     }
 
-    // 💾 Backup creds.json to Backblaze B2
-    async backupCredsToB2(sessionId) {
+    // 💾 Backup creds.json to Supabase
+    async backupCredsToDrive(sessionId) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
             const sessionDir = path.join(__dirname, "sessions", sessionId);
             const credsPath = path.join(sessionDir, "creds.json");
@@ -74,46 +122,52 @@ class BackupManager {
             }
 
             const fileContent = fs.readFileSync(credsPath);
-            const fileName = `sessions/${sessionId}/creds.json`;
+            const fileName = `creds.json`;
+            const filePath = `sessions/${sessionId}/${fileName}`;
+            
+            // Convert to base64 for Supabase upload
+            const base64Content = fileContent.toString('base64');
+            
+            const { data, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .upload(filePath, fileContent, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
 
-            // Get upload URL
-            const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                bucketId: await this.getBucketId()
-            });
+            if (error) throw error;
 
-            // Upload file
-            const { data } = await this.b2.uploadFile({
-                uploadUrl: uploadUrlData.uploadUrl,
-                uploadAuthToken: uploadUrlData.authorizationToken,
-                fileName: fileName,
-                data: fileContent,
-                contentLength: fileContent.length,
-                mime: 'application/json'
-            });
-
-            console.log(`✅ Backup successful for ${sessionId} to Backblaze B2`);
-            return { success: true, fileId: data.fileId };
+            console.log(`✅ Backup successful for ${sessionId} to Supabase`);
+            return { success: true, fileId: data.path };
 
         } catch (error) {
-            console.error(`❌ Error backing up ${sessionId} to Backblaze B2:`, error.message);
+            console.error(`❌ Error backing up ${sessionId} to Supabase:`, error.message);
             return { success: false, error: error.message };
         }
     }
 
-    // 🔁 Restore creds.json from Backblaze B2 - FIXED VERSION
-    async restoreCredsFromB2(sessionId) {
+    // 🔁 Restore creds.json from Supabase
+    async restoreCredsFromDrive(sessionId) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            const fileName = `sessions/${sessionId}/creds.json`;
+            const fileName = `creds.json`;
+            const filePath = `sessions/${sessionId}/${fileName}`;
             
-            console.log(`🔄 Attempting to restore ${fileName} from Backblaze B2...`);
-            
-            const { data } = await this.b2.downloadFileByName({
-                bucketName: this.bucketName,
-                fileName: fileName,
-                responseType: 'arraybuffer'
-            });
+            // Download the file
+            const { data, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .download(filePath);
+
+            if (error) {
+                if (error.message === 'Not Found' || error.message.includes('404')) {
+                    console.log(`⚠️ No creds.json found on Supabase for ${sessionId}`);
+                    return { success: false, error: 'File not found on Supabase' };
+                }
+                throw error;
+            }
 
             const sessionDir = path.join(__dirname, "sessions", sessionId);
             if (!fs.existsSync(sessionDir)) {
@@ -121,17 +175,24 @@ class BackupManager {
             }
 
             const credsPath = path.join(sessionDir, "creds.json");
-            fs.writeFileSync(credsPath, Buffer.from(data));
             
+            // Convert blob to buffer and save
+            const arrayBuffer = await data.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            fs.writeFileSync(credsPath, buffer);
+
             // Verify the restored file
             if (fs.existsSync(credsPath)) {
-                const restoredCreds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                if (restoredCreds && restoredCreds.registered === true) {
-                    console.log(`✅ Successfully restored creds.json for ${sessionId} from Backblaze B2 (registered: ${restoredCreds.registered})`);
-                    return { success: true, registered: true };
-                } else {
-                    console.log(`⚠️ Restored creds.json for ${sessionId} but not registered`);
-                    return { success: true, registered: false };
+                try {
+                    const restoredCreds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                    console.log(`✅ Successfully restored creds.json for ${sessionId} from Supabase (registered: ${restoredCreds.registered || false})`);
+                    return { 
+                        success: true, 
+                        registered: restoredCreds.registered || false 
+                    };
+                } catch (error) {
+                    console.log(`❌ Error parsing restored creds.json for ${sessionId}`);
+                    return { success: false, error: 'Invalid JSON file' };
                 }
             } else {
                 console.log(`❌ Failed to write creds.json for ${sessionId}`);
@@ -139,153 +200,105 @@ class BackupManager {
             }
 
         } catch (error) {
-            if (error.response?.status === 400 || error.response?.status === 404) {
-                console.log(`⚠️ No creds.json found on Backblaze B2 for ${sessionId}`);
-                return { success: false, error: 'File not found on B2' };
-            } else {
-                console.error(`❌ Restore failed for ${sessionId}:`, error.message);
-                return { success: false, error: error.message };
-            }
-        }
-    }
-
-    // 🔄 Restore all sessions from Backblaze B2 (on startup) - FIXED
-    async restoreAllSessionsFromB2() {
-        try {
-            if (!this.isConfigured()) {
-                console.log('⚠️ Backblaze B2 not configured, skipping restore');
-                return { success: false, error: 'B2 not configured' };
-            }
-
-            await this.initializeB2();
-            console.log("🔄 Fetching sessions list from Backblaze B2...");
-
-            let sessions = [];
-            let nextFileName = null;
-            let hasMore = true;
-
-            while (hasMore) {
-                try {
-                    const { data } = await this.b2.listFileNames({
-                        bucketId: await this.getBucketId(),
-                        prefix: 'sessions/',
-                        startFileName: nextFileName,
-                        maxFileCount: 1000
-                    });
-
-                    sessions.push(...data.files);
-                    hasMore = data.nextFileName !== null;
-                    nextFileName = data.nextFileName;
-                } catch (error) {
-                    console.error('❌ Error listing files from B2:', error.message);
-                    break;
-                }
-            }
-
-            if (sessions.length === 0) {
-                console.log('📭 No sessions found on Backblaze B2');
-                return { success: true, restoredCount: 0 };
-            }
-
-            console.log(`📦 Found ${sessions.length} files on Backblaze B2`);
-
-            let restoredCount = 0;
-            let failedCount = 0;
-            const processedSessions = new Set();
-
-            // Process creds.json files first
-            for (const file of sessions) {
-                if (file.fileName.includes('/creds.json')) {
-                    const sessionId = file.fileName.split('/')[1];
-                    
-                    if (!processedSessions.has(sessionId)) {
-                        processedSessions.add(sessionId);
-                        
-                        try {
-                            console.log(`🔄 Restoring session ${sessionId}...`);
-                            const result = await this.restoreSessionFromB2(sessionId);
-                            
-                            if (result.success) {
-                                restoredCount++;
-                                console.log(`✅ Session ${sessionId} restored successfully`);
-                                
-                                // Also restore settings.json if exists
-                                await this.restoreSettingsFromB2(sessionId);
-                            } else {
-                                failedCount++;
-                                console.log(`❌ Failed to restore session ${sessionId}: ${result.error}`);
-                            }
-                        } catch (error) {
-                            failedCount++;
-                            console.error(`❌ Error restoring session ${sessionId}:`, error.message);
-                        }
-                        
-                        // Small delay to avoid rate limiting
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                }
-            }
-            
-            console.log(`✅ ${restoredCount} sessions restored from Backblaze B2 (${failedCount} failed)`);
-            return { success: true, restoredCount: restoredCount, failedCount: failedCount };
-            
-        } catch (error) {
-            console.error("❌ Failed to restore sessions from Backblaze B2:", error.message);
+            console.error(`❌ Restore failed for ${sessionId}:`, error.message);
             return { success: false, error: error.message };
         }
     }
 
-    // Helper to restore settings.json
-    async restoreSettingsFromB2(sessionId) {
+    // 🔄 Restore all sessions from Supabase (on startup)
+    async restoreAllSessionsFromDrive() {
         try {
-            await this.initializeB2();
-            
-            const fileName = `sessions/${sessionId}/settings.json`;
-            
-            const { data } = await this.b2.downloadFileByName({
-                bucketName: this.bucketName,
-                fileName: fileName,
-                responseType: 'arraybuffer'
-            });
-
-            const sessionDir = path.join(__dirname, "sessions", sessionId);
-            if (!fs.existsSync(sessionDir)) {
-                fs.mkdirSync(sessionDir, { recursive: true });
+            if (!this.isConfigured()) {
+                console.log('⚠️ Supabase not configured, skipping restore');
+                return { success: false, error: 'Supabase not configured' };
             }
 
-            fs.writeFileSync(path.join(sessionDir, "settings.json"), Buffer.from(data));
-            console.log(`✅ Restored settings.json for ${sessionId} from Backblaze B2`);
-            return { success: true };
+            await this.initializeSupabase();
+            console.log("🔄 Fetching sessions list from Supabase...");
 
-        } catch (error) {
-            if (error.response?.status === 400 || error.response?.status === 404) {
-                // settings.json is optional, so this is not an error
-                return { success: false, error: 'File not found on B2' };
-            } else {
-                console.error(`❌ Restore failed for settings.json ${sessionId}:`, error.message);
+            // List all files in the backup folder
+            const { data: folders, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .list('sessions');
+
+            if (error) {
+                console.error('❌ Error listing sessions:', error.message);
                 return { success: false, error: error.message };
             }
+
+            if (!folders || folders.length === 0) {
+                console.log('📭 No sessions found on Supabase');
+                return { success: true, restoredCount: 0 };
+            }
+
+            console.log(`📦 Found ${folders.length} sessions on Supabase`);
+
+            let restoredCount = 0;
+            let failedCount = 0;
+
+            // Restore each session
+            for (const folder of folders) {
+                try {
+                    const sessionId = folder.name;
+                    console.log(`🔄 Restoring session ${sessionId}...`);
+                    
+                    const result = await this.restoreSessionFromDrive(sessionId);
+                    
+                    if (result.success) {
+                        restoredCount++;
+                        console.log(`✅ Session ${sessionId} restored successfully`);
+                    } else {
+                        failedCount++;
+                        console.log(`❌ Failed to restore session ${sessionId}: ${result.error}`);
+                    }
+                    
+                    // Small delay to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                } catch (error) {
+                    failedCount++;
+                    console.error(`❌ Error restoring session:`, error.message);
+                }
+            }
+            
+            console.log(`✅ ${restoredCount} sessions restored from Supabase (${failedCount} failed)`);
+            return { success: true, restoredCount: restoredCount, failedCount: failedCount };
+            
+        } catch (error) {
+            console.error("❌ Failed to restore sessions from Supabase:", error.message);
+            return { success: false, error: error.message };
         }
     }
 
-    // ❌ Delete session from Backblaze B2 + local folder
-    async deleteSessionFromB2(sessionId) {
+    // ❌ Delete session from Supabase + local folder
+    async deleteSessionFromDrive(sessionId) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            const fileName = `sessions/${sessionId}/creds.json`;
+            // Delete all files for this session
+            const { data: files, error: listError } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .list(`sessions/${sessionId}`);
+                
+            if (listError && listError.message !== 'Not Found') {
+                throw listError;
+            }
             
-            // Delete from Backblaze B2
-            try {
-                await this.b2.deleteFileVersion({
-                    fileName: fileName,
-                    fileId: await this.getFileId(fileName)
-                });
-                console.log(`✅ Successfully deleted session ${sessionId} from Backblaze B2`);
-            } catch (error) {
-                if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    console.log(`⚠️ No creds.json found on Backblaze B2 for ${sessionId}:`, error.message);
-                }
+            if (files && files.length > 0) {
+                const filePaths = files.map(file => `sessions/${sessionId}/${file.name}`);
+                
+                const { error: deleteError } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .remove(filePaths);
+                    
+                if (deleteError) throw deleteError;
+                
+                console.log(`✅ Successfully deleted session ${sessionId} from Supabase`);
+            } else {
+                console.log(`⚠️ No files found on Supabase for ${sessionId}`);
             }
 
             // Delete local session directory
@@ -297,42 +310,8 @@ class BackupManager {
 
             return { success: true };
         } catch (error) {
-            console.error(`❌ Error deleting session ${sessionId} from Backblaze B2:`, error.message);
+            console.error(`❌ Error deleting session ${sessionId} from Supabase:`, error.message);
             return { success: false, error: error.message };
-        }
-    }
-
-    // Helper function to get bucket ID
-    async getBucketId() {
-        try {
-            const { data } = await this.b2.listBuckets();
-            const bucket = data.buckets.find(b => b.bucketName === this.bucketName);
-            if (!bucket) {
-                throw new Error(`Bucket ${this.bucketName} not found`);
-            }
-            return bucket.bucketId;
-        } catch (error) {
-            console.error('Error getting bucket ID:', error);
-            throw error;
-        }
-    }
-
-    // Helper function to get file ID
-    async getFileId(fileName) {
-        try {
-            const { data } = await this.b2.listFileNames({
-                bucketId: await this.getBucketId(),
-                prefix: fileName,
-                maxFileCount: 1
-            });
-            
-            if (data.files.length > 0) {
-                return data.files[0].fileId;
-            }
-            throw new Error('File not found');
-        } catch (error) {
-            console.error('Error getting file ID:', error);
-            throw error;
         }
     }
 
@@ -351,7 +330,7 @@ class BackupManager {
                 return { success: false, error: 'No sessions found' };
             }
 
-            console.log(`🔄 Backing up ${sessions.length} sessions to Backblaze B2...`);
+            console.log(`🔄 Backing up ${sessions.length} sessions to Supabase...`);
             
             let backedUpCount = 0;
             let failedCount = 0;
@@ -360,7 +339,7 @@ class BackupManager {
                 try {
                     const credsPath = path.join(sessionsDir, sessionId, "creds.json");
                     if (fs.existsSync(credsPath)) {
-                        const result = await this.backupCredsToB2(sessionId);
+                        const result = await this.backupCredsToDrive(sessionId);
                         if (result && result.success) {
                             backedUpCount++;
                             console.log(`✅ Backed up session ${sessionId}`);
@@ -380,7 +359,7 @@ class BackupManager {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
             
-            console.log(`✅ ${backedUpCount} sessions backed up to Backblaze B2 successfully (${failedCount} failed)`);
+            console.log(`✅ ${backedUpCount} sessions backed up to Supabase successfully (${failedCount} failed)`);
             return { success: true, backedUp: backedUpCount, failed: failedCount };
         } catch (err) {
             console.error("❌ Auto-backup error:", err.message);
@@ -388,10 +367,10 @@ class BackupManager {
         }
     }
 
-    // 💾 Backup full session to Backblaze B2 (creds.json + settings.json)
-    async backupSessionToB2(sessionId) {
+    // 💾 Backup full session to Supabase
+    async backupSessionToDrive(sessionId) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
             const sessionDir = path.join(__dirname, "sessions", sessionId);
             
@@ -408,20 +387,18 @@ class BackupManager {
             if (fs.existsSync(credsPath)) {
                 try {
                     const fileContent = fs.readFileSync(credsPath);
-                    const fileName = `sessions/${sessionId}/creds.json`;
-
-                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                        bucketId: await this.getBucketId()
-                    });
-
-                    await this.b2.uploadFile({
-                        uploadUrl: uploadUrlData.uploadUrl,
-                        uploadAuthToken: uploadUrlData.authorizationToken,
-                        fileName: fileName,
-                        data: fileContent,
-                        contentLength: fileContent.length,
-                        mime: 'application/json'
-                    });
+                    const filePath = `sessions/${sessionId}/creds.json`;
+                    
+                    const { error } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .upload(filePath, fileContent, {
+                            contentType: 'application/json',
+                            upsert: true
+                        });
+                    
+                    if (error) throw error;
+                    
                     console.log(`✅ Backed up creds.json for ${sessionId}`);
                     backedUpFiles++;
                 } catch (error) {
@@ -435,20 +412,18 @@ class BackupManager {
             if (fs.existsSync(settingsPath)) {
                 try {
                     const fileContent = fs.readFileSync(settingsPath);
-                    const fileName = `sessions/${sessionId}/settings.json`;
-
-                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                        bucketId: await this.getBucketId()
-                    });
-
-                    await this.b2.uploadFile({
-                        uploadUrl: uploadUrlData.uploadUrl,
-                        uploadAuthToken: uploadUrlData.authorizationToken,
-                        fileName: fileName,
-                        data: fileContent,
-                        contentLength: fileContent.length,
-                        mime: 'application/json'
-                    });
+                    const filePath = `sessions/${sessionId}/settings.json`;
+                    
+                    const { error } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .upload(filePath, fileContent, {
+                            contentType: 'application/json',
+                            upsert: true
+                        });
+                    
+                    if (error) throw error;
+                    
                     console.log(`✅ Backed up settings.json for ${sessionId}`);
                     backedUpFiles++;
                 } catch (error) {
@@ -462,20 +437,18 @@ class BackupManager {
             if (fs.existsSync(userInfoPath)) {
                 try {
                     const fileContent = fs.readFileSync(userInfoPath);
-                    const fileName = `sessions/${sessionId}/user_info.json`;
-
-                    const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                        bucketId: await this.getBucketId()
-                    });
-
-                    await this.b2.uploadFile({
-                        uploadUrl: uploadUrlData.uploadUrl,
-                        uploadAuthToken: uploadUrlData.authorizationToken,
-                        fileName: fileName,
-                        data: fileContent,
-                        contentLength: fileContent.length,
-                        mime: 'application/json'
-                    });
+                    const filePath = `sessions/${sessionId}/user_info.json`;
+                    
+                    const { error } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .upload(filePath, fileContent, {
+                            contentType: 'application/json',
+                            upsert: true
+                        });
+                    
+                    if (error) throw error;
+                    
                     console.log(`✅ Backed up user_info.json for ${sessionId}`);
                     backedUpFiles++;
                 } catch (error) {
@@ -485,7 +458,7 @@ class BackupManager {
             }
 
             if (backedUpFiles > 0) {
-                console.log(`✅ Complete backup successful for ${sessionId} to Backblaze B2 (${backedUpFiles} files)`);
+                console.log(`✅ Complete backup successful for ${sessionId} to Supabase (${backedUpFiles} files)`);
                 return { success: true, backedUpFiles, errors: errors.length > 0 ? errors : null };
             } else {
                 console.log(`❌ No files backed up for ${sessionId}`);
@@ -493,20 +466,20 @@ class BackupManager {
             }
 
         } catch (error) {
-            console.error(`❌ Error backing up ${sessionId} to Backblaze B2:`, error.message);
+            console.error(`❌ Error backing up ${sessionId} to Supabase:`, error.message);
             return { success: false, error: error.message };
         }
     }
 
-    // 🔁 Restore full session from Backblaze B2 (creds.json + settings.json + user_info.json) - FIXED
-    async restoreSessionFromB2(sessionId) {
+    // 🔁 Restore full session from Supabase
+    async restoreSessionFromDrive(sessionId) {
         try {
             if (!this.isConfigured()) {
-                console.log(`⚠️ Backblaze B2 not configured, cannot restore ${sessionId}`);
-                return { success: false, error: 'B2 not configured' };
+                console.log(`⚠️ Supabase not configured, cannot restore ${sessionId}`);
+                return { success: false, error: 'Supabase not configured' };
             }
 
-            await this.initializeB2();
+            await this.initializeSupabase();
             
             const sessionDir = path.join(__dirname, "sessions", sessionId);
             
@@ -519,76 +492,58 @@ class BackupManager {
             let restoredFiles = 0;
             let errors = [];
 
-            // Restore creds.json (MOST IMPORTANT)
-            const credsFileName = `sessions/${sessionId}/creds.json`;
-            try {
-                console.log(`🔄 Restoring ${credsFileName}...`);
-                const { data } = await this.b2.downloadFileByName({
-                    bucketName: this.bucketName,
-                    fileName: credsFileName,
-                    responseType: 'arraybuffer'
-                });
-
-                const credsContent = Buffer.from(data).toString('utf8');
-                const credsData = JSON.parse(credsContent);
-                
-                // Save the creds.json
-                fs.writeFileSync(path.join(sessionDir, "creds.json"), credsContent);
-                
-                // Verify it was saved
-                if (fs.existsSync(path.join(sessionDir, "creds.json"))) {
-                    console.log(`✅ Restored creds.json for ${sessionId} from Backblaze B2 (registered: ${credsData.registered || false})`);
-                    restoredFiles++;
-                } else {
-                    errors.push('Failed to write creds.json');
-                }
-            } catch (error) {
-                if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    errors.push(`creds.json: ${error.message}`);
-                    console.log(`⚠️ No creds.json found on Backblaze B2 for ${sessionId}`);
-                }
-            }
-
-            // Restore settings.json
-            const settingsFileName = `sessions/${sessionId}/settings.json`;
-            try {
-                const { data } = await this.b2.downloadFileByName({
-                    bucketName: this.bucketName,
-                    fileName: settingsFileName,
-                    responseType: 'arraybuffer'
-                });
-
-                fs.writeFileSync(path.join(sessionDir, "settings.json"), Buffer.from(data));
-                console.log(`✅ Restored settings.json for ${sessionId} from Backblaze B2`);
-                restoredFiles++;
-            } catch (error) {
-                if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    errors.push(`settings.json: ${error.message}`);
-                    console.log(`⚠️ No settings.json found on Backblaze B2 for ${sessionId}`);
-                }
-            }
-
-            // Restore user_info.json
-            const userInfoFileName = `sessions/${sessionId}/user_info.json`;
-            try {
-                const { data } = await this.b2.downloadFileByName({
-                    bucketName: this.bucketName,
-                    fileName: userInfoFileName,
-                    responseType: 'arraybuffer'
-                });
-
-                fs.writeFileSync(path.join(sessionDir, "user_info.json"), Buffer.from(data));
-                console.log(`✅ Restored user_info.json for ${sessionId} from Backblaze B2`);
-                restoredFiles++;
-            } catch (error) {
-                if (error.response?.status !== 400 && error.response?.status !== 404) {
-                    errors.push(`user_info.json: ${error.message}`);
-                    console.log(`⚠️ No user_info.json found on Backblaze B2 for ${sessionId}`);
+            // List of files to restore
+            const filesToRestore = ['creds.json', 'settings.json', 'user_info.json'];
+            
+            for (const fileName of filesToRestore) {
+                try {
+                    console.log(`🔄 Restoring ${fileName} for ${sessionId}...`);
+                    
+                    const filePath = `sessions/${sessionId}/${fileName}`;
+                    
+                    const { data, error } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .download(filePath);
+                        
+                    if (error) {
+                        if (error.message !== 'Not Found') {
+                            throw error;
+                        }
+                        continue; // File doesn't exist, skip
+                    }
+                    
+                    // Convert blob to buffer and save
+                    const arrayBuffer = await data.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    const filePathLocal = path.join(sessionDir, fileName);
+                    
+                    fs.writeFileSync(filePathLocal, buffer);
+                    
+                    // Verify the file was saved
+                    if (fs.existsSync(filePathLocal)) {
+                        console.log(`✅ Restored ${fileName} for ${sessionId} from Supabase`);
+                        restoredFiles++;
+                        
+                        // If it's creds.json, check registration status
+                        if (fileName === 'creds.json') {
+                            try {
+                                const creds = JSON.parse(buffer.toString('utf8'));
+                                console.log(`📊 Creds registered status: ${creds.registered || false}`);
+                            } catch (parseError) {
+                                console.error(`❌ Error parsing restored ${fileName}:`, parseError.message);
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    errors.push(`${fileName}: ${error.message}`);
+                    console.error(`❌ Error restoring ${fileName} for ${sessionId}:`, error.message);
                 }
             }
 
             if (restoredFiles > 0) {
-                console.log(`✅ Complete restore successful for ${sessionId} from Backblaze B2 (${restoredFiles} files)`);
+                console.log(`✅ Complete restore successful for ${sessionId} from Supabase (${restoredFiles} files)`);
                 return { success: true, restoredFiles, errors: errors.length > 0 ? errors : null };
             } else {
                 console.log(`❌ No files restored for ${sessionId}`);
@@ -601,25 +556,25 @@ class BackupManager {
         }
     }
 
-    // 📤 Upload JSON data to B2
-    async uploadToB2(fileName, content) {
+    // 📤 Upload JSON data to Supabase
+    async uploadToDrive(fileName, content) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            const { data: uploadUrlData } = await this.b2.getUploadUrl({
-                bucketId: await this.getBucketId()
-            });
+            const filePath = `data/${fileName}`;
+            const buffer = Buffer.from(content, 'utf8');
+            
+            const { error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .upload(filePath, buffer, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
 
-            await this.b2.uploadFile({
-                uploadUrl: uploadUrlData.uploadUrl,
-                uploadAuthToken: uploadUrlData.authorizationToken,
-                fileName: `data/${fileName}`,
-                data: Buffer.from(content),
-                contentLength: Buffer.from(content).length,
-                mime: 'application/json'
-            });
+            if (error) throw error;
 
-            console.log(`✅ Uploaded ${fileName} to Backblaze B2`);
+            console.log(`✅ Uploaded ${fileName} to Supabase`);
             return { success: true };
 
         } catch (error) {
@@ -628,24 +583,32 @@ class BackupManager {
         }
     }
 
-    // 📥 Download JSON data from B2
-    async downloadFromB2(fileName) {
+    // 📥 Download JSON data from Supabase
+    async downloadFromDrive(fileName) {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            const { data } = await this.b2.downloadFileByName({
-                bucketName: this.bucketName,
-                fileName: `data/${fileName}`,
-                responseType: 'arraybuffer'
-            });
+            const filePath = `data/${fileName}`;
+            
+            const { data, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .download(filePath);
 
-            return Buffer.from(data).toString('utf8');
+            if (error) {
+                if (error.message === 'Not Found') {
+                    console.log(`⚠️ No ${fileName} found on Supabase`);
+                    return null;
+                }
+                throw error;
+            }
+
+            // Convert blob to string
+            const arrayBuffer = await data.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            return buffer.toString('utf8');
 
         } catch (error) {
-            if (error.response?.status === 400 || error.response?.status === 404) {
-                console.log(`⚠️ No ${fileName} found on Backblaze B2`);
-                return null;
-            }
             console.error(`❌ Error downloading ${fileName}:`, error.message);
             return null;
         }
@@ -655,8 +618,8 @@ class BackupManager {
     async backupAllData() {
         try {
             if (!this.isConfigured()) {
-                console.log('⚠️ Backblaze B2 not configured, skipping backup');
-                return { success: false, error: 'B2 not configured' };
+                console.log('⚠️ Supabase not configured, skipping backup');
+                return { success: false, error: 'Supabase not configured' };
             }
 
             console.log('🔄 Starting complete data backup...');
@@ -680,7 +643,7 @@ class BackupManager {
             if (fs.existsSync(usersPath)) {
                 try {
                     const usersContent = fs.readFileSync(usersPath, 'utf8');
-                    await this.uploadToB2('users.json', usersContent);
+                    await this.uploadToDrive('users.json', usersContent);
                     results.users = { success: true };
                 } catch (error) {
                     results.users = { success: false, error: error.message };
@@ -692,7 +655,7 @@ class BackupManager {
             if (fs.existsSync(tokensPath)) {
                 try {
                     const tokensContent = fs.readFileSync(tokensPath, 'utf8');
-                    await this.uploadToB2('tokens.json', tokensContent);
+                    await this.uploadToDrive('tokens.json', tokensContent);
                     results.tokens = { success: true };
                 } catch (error) {
                     results.tokens = { success: false, error: error.message };
@@ -704,7 +667,7 @@ class BackupManager {
             if (fs.existsSync(requestsPath)) {
                 try {
                     const requestsContent = fs.readFileSync(requestsPath, 'utf8');
-                    await this.uploadToB2('requests.json', requestsContent);
+                    await this.uploadToDrive('requests.json', requestsContent);
                     results.requests = { success: true };
                 } catch (error) {
                     results.requests = { success: false, error: error.message };
@@ -726,12 +689,12 @@ class BackupManager {
         }
     }
 
-    // 🔄 Auto restore all data on startup - FIXED
+    // 🔄 Auto restore all data on startup
     async restoreAllData() {
         try {
             if (!this.isConfigured()) {
-                console.log('⚠️ Backblaze B2 not configured, skipping restore');
-                return { success: false, error: 'B2 not configured' };
+                console.log('⚠️ Supabase not configured, skipping restore');
+                return { success: false, error: 'Supabase not configured' };
             }
 
             console.log('🔄 Restoring all data from backup...');
@@ -745,7 +708,7 @@ class BackupManager {
             };
             
             // Restore sessions FIRST
-            const sessionsResult = await this.restoreAllSessionsFromB2();
+            const sessionsResult = await this.restoreAllSessionsFromDrive();
             if (sessionsResult.success) {
                 results.sessions = { 
                     restored: sessionsResult.restoredCount || 0, 
@@ -755,11 +718,11 @@ class BackupManager {
             }
             
             // Restore users.json
-            const usersData = await this.downloadFromB2('users.json');
+            const usersData = await this.downloadFromDrive('users.json');
             if (usersData) {
                 try {
                     fs.writeFileSync(path.join(__dirname, 'users.json'), usersData);
-                    console.log('✅ Restored users.json from Backblaze B2');
+                    console.log('✅ Restored users.json from Supabase');
                     results.users = { success: true };
                     restoredItems++;
                 } catch (error) {
@@ -768,11 +731,11 @@ class BackupManager {
             }
             
             // Restore tokens.json
-            const tokensData = await this.downloadFromB2('tokens.json');
+            const tokensData = await this.downloadFromDrive('tokens.json');
             if (tokensData) {
                 try {
                     fs.writeFileSync(path.join(__dirname, 'tokens.json'), tokensData);
-                    console.log('✅ Restored tokens.json from Backblaze B2');
+                    console.log('✅ Restored tokens.json from Supabase');
                     results.tokens = { success: true };
                     restoredItems++;
                 } catch (error) {
@@ -781,11 +744,11 @@ class BackupManager {
             }
             
             // Restore requests.json
-            const requestsData = await this.downloadFromB2('requests.json');
+            const requestsData = await this.downloadFromDrive('requests.json');
             if (requestsData) {
                 try {
                     fs.writeFileSync(path.join(__dirname, 'requests.json'), requestsData);
-                    console.log('✅ Restored requests.json from Backblaze B2');
+                    console.log('✅ Restored requests.json from Supabase');
                     results.requests = { success: true };
                     restoredItems++;
                 } catch (error) {
@@ -809,38 +772,70 @@ class BackupManager {
         }
     }
 
-    // 📊 Get B2 storage stats
+    // 📊 Get Supabase storage stats
     async getStorageStats() {
         try {
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            const bucketId = await this.getBucketId();
-            const { data } = await this.b2.listFileNames({
-                bucketId: bucketId,
-                prefix: '',
-                maxFileCount: 10000
-            });
+            const { data: folders, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .list();
             
-            const totalFiles = data.files.length;
-            let totalSize = 0;
+            if (error) {
+                console.error('❌ Error getting storage stats:', error.message);
+                return { error: error.message };
+            }
+            
+            let totalFiles = 0;
             let sessionFiles = 0;
             let dataFiles = 0;
+            let totalSize = 0;
             
-            data.files.forEach(file => {
-                totalSize += file.contentLength;
-                if (file.fileName.startsWith('sessions/')) {
-                    sessionFiles++;
-                } else if (file.fileName.startsWith('data/')) {
-                    dataFiles++;
+            // Helper to count files in a folder
+            const countFilesInFolder = async (folderPath) => {
+                const { data: files } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .list(folderPath);
+                return files ? files.length : 0;
+            };
+            
+            // Count session files
+            const sessionFolders = folders?.find(f => f.name === 'sessions');
+            if (sessionFolders) {
+                const { data: sessionSubfolders } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .list('sessions');
+                    
+                if (sessionSubfolders) {
+                    for (const session of sessionSubfolders) {
+                        const fileCount = await countFilesInFolder(`sessions/${session.name}`);
+                        sessionFiles += fileCount;
+                        totalFiles += fileCount;
+                    }
                 }
-            });
+            }
+            
+            // Count data files
+            const dataFolder = folders?.find(f => f.name === 'data');
+            if (dataFolder) {
+                const { data: dataFilesList } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .list('data');
+                    
+                dataFiles = dataFilesList ? dataFilesList.length : 0;
+                totalFiles += dataFiles;
+            }
             
             return {
                 totalFiles,
                 sessionFiles,
                 dataFiles,
                 totalSize: this.formatBytes(totalSize),
-                sessions: Math.floor(sessionFiles / 3) // Each session has 3 files (creds.json + settings.json + user_info.json)
+                sessions: Math.floor(sessionFiles / 3) // Each session has ~3 files
             };
         } catch (error) {
             console.error('❌ Error getting storage stats:', error.message);
@@ -858,127 +853,12 @@ class BackupManager {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
-    // 🔄 Sync session from B2 (check and restore if newer)
-    async syncSessionFromB2(sessionId) {
-        try {
-            await this.initializeB2();
-            
-            const localSessionDir = path.join(__dirname, "sessions", sessionId);
-            const localCredsPath = path.join(localSessionDir, "creds.json");
-            const b2FileName = `sessions/${sessionId}/creds.json`;
-            
-            // Check if file exists on B2
-            let b2FileInfo;
-            try {
-                const { data } = await this.b2.getFileInfo({
-                    bucketName: this.bucketName,
-                    fileName: b2FileName
-                });
-                b2FileInfo = data;
-            } catch (error) {
-                // File doesn't exist on B2
-                return { success: false, error: 'File not found on B2' };
-            }
-            
-            // Check local file modification time
-            let localFileExists = fs.existsSync(localCredsPath);
-            let shouldRestore = false;
-            
-            if (!localFileExists) {
-                // Local file doesn't exist, restore from B2
-                shouldRestore = true;
-            } else {
-                // Compare modification times
-                const localStats = fs.statSync(localCredsPath);
-                const b2ModifiedTime = new Date(b2FileInfo.uploadTimestamp);
-                const localModifiedTime = new Date(localStats.mtime);
-                
-                if (b2ModifiedTime > localModifiedTime) {
-                    // B2 version is newer, restore it
-                    shouldRestore = true;
-                    console.log(`🔄 B2 version is newer for ${sessionId}, restoring...`);
-                }
-            }
-            
-            if (shouldRestore) {
-                return await this.restoreSessionFromB2(sessionId);
-            }
-            
-            return { success: true, message: 'Local version is up to date' };
-            
-        } catch (error) {
-            console.error(`❌ Error syncing session ${sessionId}:`, error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 🔄 Sync all sessions
-    async syncAllSessions() {
-        try {
-            await this.initializeB2();
-            console.log("🔄 Syncing all sessions with Backblaze B2...");
-
-            // Get all sessions from B2
-            let nextFileName = null;
-            let hasMore = true;
-            const b2Sessions = [];
-
-            while (hasMore) {
-                const { data } = await this.b2.listFileNames({
-                    bucketId: await this.getBucketId(),
-                    prefix: 'sessions/',
-                    startFileName: nextFileName,
-                    maxFileCount: 1000
-                });
-
-                b2Sessions.push(...data.files);
-                hasMore = data.nextFileName !== null;
-                nextFileName = data.nextFileName;
-            }
-
-            // Extract unique session IDs from B2
-            const b2SessionIds = new Set();
-            for (const file of b2Sessions) {
-                if (file.fileName.includes('/creds.json')) {
-                    const sessionId = file.fileName.split('/')[1];
-                    b2SessionIds.add(sessionId);
-                }
-            }
-
-            console.log(`📦 Found ${b2SessionIds.size} sessions on Backblaze B2`);
-            
-            let syncedCount = 0;
-            let failedCount = 0;
-            
-            for (const sessionId of b2SessionIds) {
-                try {
-                    const result = await this.syncSessionFromB2(sessionId);
-                    if (result.success) {
-                        syncedCount++;
-                    } else {
-                        failedCount++;
-                    }
-                } catch (error) {
-                    failedCount++;
-                    console.error(`❌ Error syncing session ${sessionId}:`, error.message);
-                }
-            }
-
-            console.log(`✅ Synced ${syncedCount}/${b2SessionIds.size} sessions from Backblaze B2 (${failedCount} failed)`);
-            return { success: true, syncedCount, failedCount };
-
-        } catch (error) {
-            console.error("❌ Failed to sync sessions:", error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
     // ✅ Backup when new user connects
     async backupNewUserSession(sessionId) {
         try {
             if (!this.isConfigured()) {
-                console.log(`⚠️ Backblaze B2 not configured, skipping backup for ${sessionId}`);
-                return { success: false, error: 'B2 not configured' };
+                console.log(`⚠️ Supabase not configured, skipping backup for ${sessionId}`);
+                return { success: false, error: 'Supabase not configured' };
             }
 
             console.log(`🔄 Backing up new user session: ${sessionId}`);
@@ -996,10 +876,10 @@ class BackupManager {
                 return { success: false, error: 'Session not registered' };
             }
             
-            const result = await this.backupSessionToB2(sessionId);
+            const result = await this.backupSessionToDrive(sessionId);
             
             if (result.success) {
-                console.log(`✅ New user session ${sessionId} backed up to Backblaze B2 (${result.backedUpFiles} files)`);
+                console.log(`✅ New user session ${sessionId} backed up to Supabase (${result.backedUpFiles} files)`);
             } else {
                 console.log(`⚠️ Failed to backup new user session ${sessionId}: ${result.error}`);
             }
@@ -1011,22 +891,22 @@ class BackupManager {
         }
     }
 
-    // 🆕 Function to restore and check if session exists on B2
+    // 🆕 Function to restore and check if session exists on Supabase
     async restoreAndCheckSession(sessionId) {
         try {
             if (!this.isConfigured()) {
-                return { exists: false, restored: false, error: 'B2 not configured' };
+                return { exists: false, restored: false, error: 'Supabase not configured' };
             }
 
-            await this.initializeB2();
+            await this.initializeSupabase();
             
-            // Check if session exists on B2
-            const checkResult = await this.checkSessionOnB2(sessionId);
+            // Check if session exists on Supabase
+            const checkResult = await this.checkSessionOnDrive(sessionId);
             
             if (checkResult.sessionExists) {
                 // Try to restore the session
-                console.log(`🔄 Session ${sessionId} exists on B2, attempting restore...`);
-                const restoreResult = await this.restoreSessionFromB2(sessionId);
+                console.log(`🔄 Session ${sessionId} exists on Supabase, attempting restore...`);
+                const restoreResult = await this.restoreSessionFromDrive(sessionId);
                 
                 if (restoreResult.success) {
                     // Verify the restored creds.json
@@ -1052,7 +932,7 @@ class BackupManager {
             return {
                 exists: false,
                 restored: false,
-                error: checkResult.error || 'Session not found on B2'
+                error: checkResult.error || 'Session not found on Supabase'
             };
             
         } catch (error) {
@@ -1072,15 +952,15 @@ const backupManager = new BackupManager();
 // If this file is run directly, start the interactive restore
 if (require.main === module) {
     if (!backupManager.isConfigured()) {
-        console.log('❌ Backblaze B2 not configured. Please set these environment variables:');
-        console.log('   B2_APPLICATION_KEY_ID');
-        console.log('   B2_APPLICATION_KEY');
-        console.log('   B2_BUCKET_NAME');
+        console.log('❌ Supabase not configured. Please set these environment variables:');
+        console.log('   SUPABASE_URL');
+        console.log('   SUPABASE_KEY or SUPABASE_SERVICE_KEY');
+        console.log('   SUPABASE_BUCKET (optional, defaults to "tracle-backups")');
         process.exit(1);
     }
     
     console.log('='.repeat(50));
-    console.log('🔄 TRACLE - LITE BACKBLAZE B2 RESTORE TOOL');
+    console.log('🔄 TRACLE - LITE SUPABASE RESTORE TOOL');
     console.log('='.repeat(50));
     
     // Directly restore all data

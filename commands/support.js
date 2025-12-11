@@ -1,26 +1,30 @@
 module.exports = {
-    pattern: "bank",
-    name: "bank",
-    description: "Show bank details",
-    tags: ["bank"],
+    pattern: "support",
+    name: "support",
+    description: "Show support information",
+    tags: ["support"],
     
     async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
+            const { generateSupportMessage } = require('../server');
             const userSettings = require('../server').getUserSettings(sessionId);
             
-            await reply(`🏦 *BANK ACCOUNT DETAILS*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\nThese are the owner's bank details for transactions.`, {
+            const supportMessage = generateSupportMessage(userSettings);
+            
+            await reply(supportMessage, {
                 contextInfo: {
                     externalAdReply: {
-                        title: "🏦 Bank Details",
-                        body: `${userSettings.bankName} - ${userSettings.accountName}`,
+                        title: "💝 Support TRACLE - LITE",
+                        body: "Help keep features free for everyone",
                         thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
                         sourceUrl: require('../server').REPO_LINK,
-                        mediaType: 1
+                        mediaType: 1,
+                        renderLargerThumbnail: true
                     }
                 }
             });
         } catch (error) {
-            console.error("Error in bank command:", error);
+            console.error("Error in support command:", error);
             await reply(`❌ Error: ${error.message}`);
         }
     }

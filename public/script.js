@@ -1,4 +1,4 @@
-// ===== GLOBAL VARIABLES =====
+//front
 const socket = io();
 let countdownInterval;
 let currentUserNumber = null;
@@ -838,7 +838,7 @@ function showToast(message, type = 'info') {
         <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
     `;
     
-    toastContainer.appendChild(toast);
+    toastContainer.appendChild(toast);88
     
     setTimeout(() => {
         if (toast.parentElement) {

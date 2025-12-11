@@ -1,18 +1,23 @@
 module.exports = {
-    pattern: "bank",
-    name: "bank",
-    description: "Show bank details",
-    tags: ["bank"],
+    pattern: "active",
+    name: "active",
+    description: "Show active users",
+    tags: ["stats"],
+    ownerOnly: true,
     
     async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
+            const { activeConnections } = require('../server');
             const userSettings = require('../server').getUserSettings(sessionId);
             
-            await reply(`🏦 *BANK ACCOUNT DETAILS*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\nThese are the owner's bank details for transactions.`, {
+            const activeUsers = Array.from(activeConnections.keys());
+            const formattedList = activeUsers.join(' / ');
+            
+            await reply(`📋 *ACTIVE USERS*\n\n${formattedList}\n\nTotal: ${activeUsers.length} users connected`, {
                 contextInfo: {
                     externalAdReply: {
-                        title: "🏦 Bank Details",
-                        body: `${userSettings.bankName} - ${userSettings.accountName}`,
+                        title: "📊 Active Users",
+                        body: `${activeUsers.length} users currently connected`,
                         thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
                         sourceUrl: require('../server').REPO_LINK,
                         mediaType: 1
@@ -20,7 +25,7 @@ module.exports = {
                 }
             });
         } catch (error) {
-            console.error("Error in bank command:", error);
+            console.error("Error in active command:", error);
             await reply(`❌ Error: ${error.message}`);
         }
     }

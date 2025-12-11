@@ -1,65 +1,48 @@
-const {
-    getUserSettings,
-    updateUserSettings,
-    isBotOwner
-} = require("../server");
-
 module.exports = {
     pattern: "setaccountname",
-    alias: ["setaccname", "setaccountname"],
-    description: "Set the account holder name for bank details",
-    category: "bank",
-    execute: async (conn, message, m, args, { from, isGroup, sender, sessionId }) => {
+    name: "setaccountname",
+    description: "Set account name",
+    tags: ["bank"],
+    ownerOnly: true,
+    
+    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
-            // Check if user is bot owner
-            if (!isBotOwner(conn, message)) {
-                return await conn.sendMessage(from, { 
-                    text: `❌ Owner only command` 
-                }, { quoted: message });
-            }
-
-            const userSettings = getUserSettings(sessionId);
-
+            const { PREFIX, userPrefixes, updateUserSettings } = require('../server');
+            const userSettings = require('../server').getUserSettings(sessionId);
+            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+            
             if (args.length === 0) {
-                return await conn.sendMessage(from, {
-                    text: `👤 *SET ACCOUNT NAME*\n\nUsage:\n• .setaccountname [account name]\n\nExample: .setaccountname Brenaldmedia\n\nCurrent Account Name: *${userSettings.accountName}*`,
+                await reply(`👤 *SET ACCOUNT NAME*\n\nUsage:\n• ${userPrefix}setaccountname [account name]\n\nExample: ${userPrefix}setaccountname Brenaldmedia\n\nCurrent: ${userSettings.accountName}`, {
                     contextInfo: {
                         externalAdReply: {
                             title: "👤 Set Account Name",
                             body: "Change account holder name",
-                            thumbnailUrl: userSettings.botImage,
-                            sourceUrl: "https://github.com/Brenaldmedia/Tracle",
+                            thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                            sourceUrl: require('../server').REPO_LINK,
                             mediaType: 1
                         }
                     }
-                }, { quoted: message });
+                });
+                return;
             }
 
             const newAccountName = args.join(' ');
-            
-            // Update user settings
             updateUserSettings(sessionId, { accountName: newAccountName });
             
-            await conn.sendMessage(from, {
-                text: `✅ Account name updated to: *${newAccountName}*\n\n🏦 *Updated Bank Details:*\n🏛️ Bank: ${userSettings.bankName}\n📊 Account: ${userSettings.accountNumber}\n👤 Name: ${newAccountName}`,
+            await reply(`✅ Account name updated to: *${newAccountName}*`, {
                 contextInfo: {
                     externalAdReply: {
                         title: "👤 Account Name Updated",
                         body: `Set to: ${newAccountName}`,
-                        thumbnailUrl: userSettings.botImage,
-                        sourceUrl: "https://github.com/Brenaldmedia/Tracle",
+                        thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                        sourceUrl: require('../server').REPO_LINK,
                         mediaType: 1
                     }
                 }
-            }, { quoted: message });
-
-            console.log(`✅ Account name updated for session ${sessionId}: ${newAccountName}`);
-
+            });
         } catch (error) {
             console.error("Error in setaccountname command:", error);
-            await conn.sendMessage(from, { 
-                text: `❌ Error updating account name: ${error.message}` 
-            }, { quoted: message });
+            await reply(`❌ Error: ${error.message}`);
         }
     }
 };

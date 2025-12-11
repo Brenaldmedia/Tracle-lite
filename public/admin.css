@@ -1,4 +1,5 @@
 /* ===== ADMIN DASHBOARD STYLES ===== */
+/* Theme variables - Defined here but overridden by theme classes */
 :root {
     --primary-color: #4f46e5;
     --primary-dark: #3730a3;
@@ -16,76 +17,88 @@
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
     --transition: all 0.3s ease;
+    --border-color: #e5e7eb;
 }
 
+/* IMPORTANT: Theme classes must override :root variables */
 /* Theme 1: Purple (Default) */
 body.theme-purple {
-    --primary-color: #4f46e5;
-    --primary-dark: #3730a3;
-    --secondary-color: #8b5cf6;
+    --primary-color: #4f46e5 !important;
+    --primary-dark: #3730a3 !important;
+    --secondary-color: #8b5cf6 !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 2: Blue */
 body.theme-blue {
-    --primary-color: #3b82f6;
-    --primary-dark: #1e40af;
-    --secondary-color: #60a5fa;
+    --primary-color: #3b82f6 !important;
+    --primary-dark: #1e40af !important;
+    --secondary-color: #60a5fa !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 3: Green */
 body.theme-green {
-    --primary-color: #10b981;
-    --primary-dark: #047857;
-    --secondary-color: #34d399;
+    --primary-color: #10b981 !important;
+    --primary-dark: #047857 !important;
+    --secondary-color: #34d399 !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 4: Orange */
 body.theme-orange {
-    --primary-color: #f59e0b;
-    --primary-dark: #d97706;
-    --secondary-color: #fbbf24;
+    --primary-color: #f59e0b !important;
+    --primary-dark: #d97706 !important;
+    --secondary-color: #fbbf24 !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 5: Red */
 body.theme-red {
-    --primary-color: #ef4444;
-    --primary-dark: #dc2626;
-    --secondary-color: #f87171;
+    --primary-color: #ef4444 !important;
+    --primary-dark: #dc2626 !important;
+    --secondary-color: #f87171 !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 6: Violet */
 body.theme-violet {
-    --primary-color: #8b5cf6;
-    --primary-dark: #7c3aed;
-    --secondary-color: #a78bfa;
+    --primary-color: #8b5cf6 !important;
+    --primary-dark: #7c3aed !important;
+    --secondary-color: #a78bfa !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 7: Pink */
 body.theme-pink {
-    --primary-color: #ec4899;
-    --primary-dark: #db2777;
-    --secondary-color: #f472b6;
+    --primary-color: #ec4899 !important;
+    --primary-dark: #db2777 !important;
+    --secondary-color: #f472b6 !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 8: Teal */
 body.theme-teal {
-    --primary-color: #14b8a6;
-    --primary-dark: #0d9488;
-    --secondary-color: #2dd4bf;
+    --primary-color: #14b8a6 !important;
+    --primary-dark: #0d9488 !important;
+    --secondary-color: #2dd4bf !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 9: Amber */
 body.theme-amber {
-    --primary-color: #f97316;
-    --primary-dark: #ea580c;
-    --secondary-color: #fb923c;
+    --primary-color: #f97316 !important;
+    --primary-dark: #ea580c !important;
+    --secondary-color: #fb923c !important;
+    background-color: #f5f7fa !important;
 }
 
 /* Theme 10: Indigo */
 body.theme-indigo {
-    --primary-color: #6366f1;
-    --primary-dark: #4f46e5;
-    --secondary-color: #818cf8;
+    --primary-color: #6366f1 !important;
+    --primary-dark: #4f46e5 !important;
+    --secondary-color: #818cf8 !important;
+    background-color: #f5f7fa !important;
 }
 
 * {
@@ -100,6 +113,7 @@ body {
     color: var(--dark-color);
     line-height: 1.6;
     overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ===== LOGIN MODAL ===== */
@@ -208,8 +222,8 @@ body {
 .login-btn {
     width: 100%;
     padding: 14px;
-    background: var(--primary-color);
-    color: white;
+    background: var(--primary-color) !important;
+    color: white !important;
     border: none;
     border-radius: var(--border-radius);
     font-size: 16px;
@@ -224,7 +238,7 @@ body {
 }
 
 .login-btn:hover {
-    background: var(--primary-dark);
+    background: var(--primary-dark) !important;
     transform: translateY(-2px);
 }
 
@@ -303,9 +317,9 @@ body {
 }
 
 .hamburger-menu {
-    background: var(--primary-color);
+    background: var(--primary-color) !important;
     border: none;
-    color: white;
+    color: white !important;
     width: 44px;
     height: 44px;
     border-radius: var(--border-radius);
@@ -318,7 +332,7 @@ body {
 }
 
 .hamburger-menu:hover {
-    background: var(--primary-dark);
+    background: var(--primary-dark) !important;
     transform: scale(1.05);
 }
 
@@ -366,7 +380,7 @@ body {
 .admin-avatar {
     width: 50px;
     height: 50px;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -453,8 +467,8 @@ body {
 
 .menu-item.active {
     background: rgba(79, 70, 229, 0.1);
-    color: var(--primary-color);
-    border-left: 4px solid var(--primary-color);
+    color: var(--primary-color) !important;
+    border-left: 4px solid var(--primary-color) !important;
 }
 
 .menu-item i {
@@ -490,6 +504,46 @@ body {
 
 .server-status .online {
     color: var(--success-color);
+}
+
+/* Theme Toggle Button in Sidebar */
+.theme-toggle {
+    cursor: pointer;
+    transition: all 0.3s ease !important;
+    padding: 10px 15px !important;
+    border-radius: 8px !important;
+    background: rgba(79, 70, 229, 0.05) !important;
+    margin: 10px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    border: none !important;
+    text-align: left !important;
+    font-size: 14px !important;
+    color: var(--gray-color) !important;
+}
+
+.theme-toggle:hover {
+    background: rgba(79, 70, 229, 0.1) !important;
+    color: var(--primary-color) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+.theme-toggle i {
+    font-size: 18px;
+    color: var(--primary-color) !important;
+    transition: transform 0.3s ease !important;
+}
+
+.theme-toggle:hover i {
+    transform: rotate(15deg) !important;
+}
+
+.theme-toggle span {
+    font-weight: 500;
+    font-size: 14px;
 }
 
 .version {
@@ -546,7 +600,7 @@ body {
 
 .stat-item i {
     font-size: 24px;
-    color: var(--primary-color);
+    color: var(--primary-color) !important;
 }
 
 .stat-value {
@@ -764,8 +818,8 @@ tr:hover {
 
 /* ===== BUTTONS ===== */
 .btn-primary {
-    background: var(--primary-color);
-    color: white;
+    background: var(--primary-color) !important;
+    color: white !important;
     border: none;
     padding: 10px 20px;
     border-radius: var(--border-radius);
@@ -779,13 +833,13 @@ tr:hover {
 }
 
 .btn-primary:hover {
-    background: var(--primary-dark);
+    background: var(--primary-dark) !important;
     transform: translateY(-2px);
 }
 
 .btn-secondary {
     background: white;
-    color: var(--primary-color);
+    color: var(--primary-color) !important;
     border: 2px solid var(--gray-light);
     padding: 10px 20px;
     border-radius: var(--border-radius);
@@ -799,7 +853,7 @@ tr:hover {
 }
 
 .btn-secondary:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary-color) !important;
     background: #f8fafc;
 }
 
@@ -819,14 +873,14 @@ tr:hover {
 }
 
 .action-btn:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary-color) !important;
     transform: translateY(-5px);
     box-shadow: var(--shadow);
 }
 
 .action-btn i {
     font-size: 24px;
-    color: var(--primary-color);
+    color: var(--primary-color) !important;
 }
 
 .action-btn span {
@@ -956,7 +1010,7 @@ tr:hover {
     display: block;
     font-size: 24px;
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--primary-color) !important;
 }
 
 /* ===== CUSTOM MODAL ===== */
@@ -1059,12 +1113,12 @@ tr:hover {
 }
 
 .custom-modal .modal-btn.primary {
-    background: var(--primary-color);
-    color: white;
+    background: var(--primary-color) !important;
+    color: white !important;
 }
 
 .custom-modal .modal-btn.primary:hover {
-    background: var(--primary-dark);
+    background: var(--primary-dark) !important;
     transform: translateY(-2px);
 }
 
@@ -1325,120 +1379,37 @@ tr:hover {
     width: 100%;
 }
 
-/* ===== THEME CYCLING ===== */
-.theme-toggle {
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-.theme-toggle:hover {
-    color: var(--primary-color);
-    transform: rotate(30deg);
-}
-
-.server-status[style*="cursor: pointer"]:hover {
-    color: var(--primary-color);
-}
-
-.server-status[style*="cursor: pointer"] i {
-    transition: var(--transition);
-}
-
-.server-status[style*="cursor: pointer"]:hover i {
-    transform: scale(1.1);
-}
 /* ===== THEME TOGGLE ENHANCEMENTS ===== */
-.theme-toggle {
-    cursor: pointer;
-    transition: var(--transition);
-    padding: 10px 15px;
-    border-radius: var(--border-radius);
-    background: rgba(79, 70, 229, 0.05);
-    margin: 10px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.theme-toggle:hover {
-    background: rgba(79, 70, 229, 0.1);
-    color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
-}
-
-.theme-toggle i {
-    font-size: 18px;
-    color: var(--primary-color);
-    transition: transform 0.3s ease;
-}
-
-.theme-toggle:hover i {
-    transform: rotate(15deg);
-}
-
-.theme-toggle span {
-    font-weight: 500;
-    font-size: 14px;
-}
+/* Theme toggle is already styled in .sidebar-footer section above */
 
 /* Ensure theme transitions are smooth */
-body {
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-/* Make sure theme classes override everything properly */
 body[class*="theme-"] {
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Theme-specific hover effects */
-body.theme-purple .theme-toggle:hover { background: rgba(79, 70, 229, 0.1); }
-body.theme-blue .theme-toggle:hover { background: rgba(59, 130, 246, 0.1); }
-body.theme-green .theme-toggle:hover { background: rgba(16, 185, 129, 0.1); }
-body.theme-orange .theme-toggle:hover { background: rgba(245, 158, 11, 0.1); }
-body.theme-red .theme-toggle:hover { background: rgba(239, 68, 68, 0.1); }
-body.theme-violet .theme-toggle:hover { background: rgba(139, 92, 246, 0.1); }
-body.theme-pink .theme-toggle:hover { background: rgba(236, 72, 153, 0.1); }
-body.theme-teal .theme-toggle:hover { background: rgba(20, 184, 166, 0.1); }
-body.theme-amber .theme-toggle:hover { background: rgba(249, 115, 22, 0.1); }
-body.theme-indigo .theme-toggle:hover { background: rgba(99, 102, 241, 0.1); }
+body.theme-purple .theme-toggle:hover { background: rgba(79, 70, 229, 0.1) !important; }
+body.theme-blue .theme-toggle:hover { background: rgba(59, 130, 246, 0.1) !important; }
+body.theme-green .theme-toggle:hover { background: rgba(16, 185, 129, 0.1) !important; }
+body.theme-orange .theme-toggle:hover { background: rgba(245, 158, 11, 0.1) !important; }
+body.theme-red .theme-toggle:hover { background: rgba(239, 68, 68, 0.1) !important; }
+body.theme-violet .theme-toggle:hover { background: rgba(139, 92, 246, 0.1) !important; }
+body.theme-pink .theme-toggle:hover { background: rgba(236, 72, 153, 0.1) !important; }
+body.theme-teal .theme-toggle:hover { background: rgba(20, 184, 166, 0.1) !important; }
+body.theme-amber .theme-toggle:hover { background: rgba(249, 115, 22, 0.1) !important; }
+body.theme-indigo .theme-toggle:hover { background: rgba(99, 102, 241, 0.1) !important; }
 
-/* Theme-specific button colors */
-body.theme-purple .btn-primary { background: #4f46e5; }
-body.theme-blue .btn-primary { background: #3b82f6; }
-body.theme-green .btn-primary { background: #10b981; }
-body.theme-orange .btn-primary { background: #f59e0b; }
-body.theme-red .btn-primary { background: #ef4444; }
-body.theme-violet .btn-primary { background: #8b5cf6; }
-body.theme-pink .btn-primary { background: #ec4899; }
-body.theme-teal .btn-primary { background: #14b8a6; }
-body.theme-amber .btn-primary { background: #f97316; }
-body.theme-indigo .btn-primary { background: #6366f1; }
-
-/* Theme-specific hover button colors */
-body.theme-purple .btn-primary:hover { background: #3730a3; }
-body.theme-blue .btn-primary:hover { background: #1e40af; }
-body.theme-green .btn-primary:hover { background: #047857; }
-body.theme-orange .btn-primary:hover { background: #d97706; }
-body.theme-red .btn-primary:hover { background: #dc2626; }
-body.theme-violet .btn-primary:hover { background: #7c3aed; }
-body.theme-pink .btn-primary:hover { background: #db2777; }
-body.theme-teal .btn-primary:hover { background: #0d9488; }
-body.theme-amber .btn-primary:hover { background: #ea580c; }
-body.theme-indigo .btn-primary:hover { background: #4f46e5; }
-
-/* Theme-specific stat item icons */
-body.theme-purple .stat-item i { color: #4f46e5; }
-body.theme-blue .stat-item i { color: #3b82f6; }
-body.theme-green .stat-item i { color: #10b981; }
-body.theme-orange .stat-item i { color: #f59e0b; }
-body.theme-red .stat-item i { color: #ef4444; }
-body.theme-violet .stat-item i { color: #8b5cf6; }
-body.theme-pink .stat-item i { color: #ec4899; }
-body.theme-teal .stat-item i { color: #14b8a6; }
-body.theme-amber .stat-item i { color: #f97316; }
-body.theme-indigo .stat-item i { color: #6366f1; }
+/* Theme-specific button hover colors */
+body.theme-purple .btn-primary:hover { background: #3730a3 !important; }
+body.theme-blue .btn-primary:hover { background: #1e40af !important; }
+body.theme-green .btn-primary:hover { background: #047857 !important; }
+body.theme-orange .btn-primary:hover { background: #d97706 !important; }
+body.theme-red .btn-primary:hover { background: #dc2626 !important; }
+body.theme-violet .btn-primary:hover { background: #7c3aed !important; }
+body.theme-pink .btn-primary:hover { background: #db2777 !important; }
+body.theme-teal .btn-primary:hover { background: #0d9488 !important; }
+body.theme-amber .btn-primary:hover { background: #ea580c !important; }
+body.theme-indigo .btn-primary:hover { background: #4f46e5 !important; }
 
 /* Search box styling */
 .search-box {
@@ -1608,4 +1579,164 @@ body.theme-indigo .stat-item i { color: #6366f1; }
 
 .location-display i {
     color: #3b82f6;
+}
+
+/* Notification styles */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification {
+    background: white;
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    min-width: 300px;
+    max-width: 400px;
+    animation: slideInRight 0.3s ease;
+    border-left: 4px solid var(--primary-color) !important;
+}
+
+.notification.success {
+    border-left-color: #10b981 !important;
+}
+
+.notification.error {
+    border-left-color: #ef4444 !important;
+}
+
+.notification.warning {
+    border-left-color: #f59e0b !important;
+}
+
+.notification.info {
+    border-left-color: #3b82f6 !important;
+}
+
+.notification i {
+    font-size: 20px;
+}
+
+.notification.success i {
+    color: #10b981;
+}
+
+.notification.error i {
+    color: #ef4444;
+}
+
+.notification.warning i {
+    color: #f59e0b;
+}
+
+.notification.info i {
+    color: #3b82f6;
+}
+
+.notification span {
+    flex: 1;
+    font-size: 14px;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.notification-close:hover {
+    color: #1f2937;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Additional theme-specific fixes */
+body.theme-purple .menu-item.active { 
+    background: rgba(79, 70, 229, 0.1) !important; 
+    border-left-color: #4f46e5 !important; 
+}
+
+body.theme-blue .menu-item.active { 
+    background: rgba(59, 130, 246, 0.1) !important; 
+    border-left-color: #3b82f6 !important; 
+}
+
+body.theme-green .menu-item.active { 
+    background: rgba(16, 185, 129, 0.1) !important; 
+    border-left-color: #10b981 !important; 
+}
+
+body.theme-orange .menu-item.active { 
+    background: rgba(245, 158, 11, 0.1) !important; 
+    border-left-color: #f59e0b !important; 
+}
+
+body.theme-red .menu-item.active { 
+    background: rgba(239, 68, 68, 0.1) !important; 
+    border-left-color: #ef4444 !important; 
+}
+
+body.theme-violet .menu-item.active { 
+    background: rgba(139, 92, 246, 0.1) !important; 
+    border-left-color: #8b5cf6 !important; 
+}
+
+body.theme-pink .menu-item.active { 
+    background: rgba(236, 72, 153, 0.1) !important; 
+    border-left-color: #ec4899 !important; 
+}
+
+body.theme-teal .menu-item.active { 
+    background: rgba(20, 184, 166, 0.1) !important; 
+    border-left-color: #14b8a6 !important; 
+}
+
+body.theme-amber .menu-item.active { 
+    background: rgba(249, 115, 22, 0.1) !important; 
+    border-left-color: #f97316 !important; 
+}
+
+body.theme-indigo .menu-item.active { 
+    background: rgba(99, 102, 241, 0.1) !important; 
+    border-left-color: #6366f1 !important; 
+}
+
+/* Force theme colors on specific elements */
+.admin-avatar {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+}
+
+.hamburger-menu {
+    background: var(--primary-color) !important;
+}
+
+.login-modal {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
 }

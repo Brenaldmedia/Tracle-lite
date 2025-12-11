@@ -28,6 +28,123 @@ class AdminDashboard {
         this.initCustomModal();
         this.loadSavedTheme();
         this.addLocationStyles(); // Add location styles
+        this.ensureThemeCSS(); // Ensure theme CSS is loaded
+    }
+
+    ensureThemeCSS() {
+        // Check if theme CSS is already added
+        if (!document.getElementById('theme-css-overrides')) {
+            const style = document.createElement('style');
+            style.id = 'theme-css-overrides';
+            style.textContent = `
+                /* Theme variable overrides - Higher specificity */
+                body.theme-purple {
+                    --primary-color: #4f46e5 !important;
+                    --primary-dark: #3730a3 !important;
+                    --secondary-color: #8b5cf6 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-blue {
+                    --primary-color: #3b82f6 !important;
+                    --primary-dark: #1e40af !important;
+                    --secondary-color: #60a5fa !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-green {
+                    --primary-color: #10b981 !important;
+                    --primary-dark: #047857 !important;
+                    --secondary-color: #34d399 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-orange {
+                    --primary-color: #f59e0b !important;
+                    --primary-dark: #d97706 !important;
+                    --secondary-color: #fbbf24 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-red {
+                    --primary-color: #ef4444 !important;
+                    --primary-dark: #dc2626 !important;
+                    --secondary-color: #f87171 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-violet {
+                    --primary-color: #8b5cf6 !important;
+                    --primary-dark: #7c3aed !important;
+                    --secondary-color: #a78bfa !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-pink {
+                    --primary-color: #ec4899 !important;
+                    --primary-dark: #db2777 !important;
+                    --secondary-color: #f472b6 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-teal {
+                    --primary-color: #14b8a6 !important;
+                    --primary-dark: #0d9488 !important;
+                    --secondary-color: #2dd4bf !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-amber {
+                    --primary-color: #f97316 !important;
+                    --primary-dark: #ea580c !important;
+                    --secondary-color: #fb923c !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                body.theme-indigo {
+                    --primary-color: #6366f1 !important;
+                    --primary-dark: #4f46e5 !important;
+                    --secondary-color: #818cf8 !important;
+                    background-color: #f5f7fa !important;
+                }
+                
+                /* Theme toggle button */
+                .theme-toggle {
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    padding: 10px 15px;
+                    border-radius: 8px;
+                    background: rgba(79, 70, 229, 0.05);
+                    margin: 10px 0;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                
+                .theme-toggle:hover {
+                    background: rgba(79, 70, 229, 0.1);
+                    color: var(--primary-color);
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                }
+                
+                .theme-toggle i {
+                    font-size: 18px;
+                    color: var(--primary-color);
+                    transition: transform 0.3s ease;
+                }
+                
+                .theme-toggle:hover i {
+                    transform: rotate(15deg);
+                }
+                
+                .theme-toggle span {
+                    font-weight: 500;
+                    font-size: 14px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }
 
     // Add this new method for editing revenue
@@ -133,10 +250,25 @@ class AdminDashboard {
             document.body.classList.add(theme.class);
             
             // Update CSS custom properties for consistency
-            document.documentElement.style.setProperty('--primary-color', theme.primary);
-            document.documentElement.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
-            document.documentElement.style.setProperty('--secondary-color', theme.secondary);
+            this.applyThemeColors(theme);
         }
+    }
+
+    applyThemeColors(theme) {
+        document.documentElement.style.setProperty('--primary-color', theme.primary);
+        document.documentElement.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
+        document.documentElement.style.setProperty('--secondary-color', theme.secondary);
+        
+        // Also update any theme-specific elements
+        const root = document.documentElement;
+        root.style.setProperty('--primary-color', theme.primary);
+        root.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
+        root.style.setProperty('--secondary-color', theme.secondary);
+        
+        // Force a repaint to ensure changes take effect
+        document.body.style.display = 'none';
+        document.body.offsetHeight; // Trigger reflow
+        document.body.style.display = '';
     }
 
     initCustomModal() {
@@ -809,14 +941,27 @@ class AdminDashboard {
         // Add the current theme class
         document.body.classList.add(theme.class);
         
-        // Update CSS custom properties for consistency
-        document.documentElement.style.setProperty('--primary-color', theme.primary);
-        document.documentElement.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
-        document.documentElement.style.setProperty('--secondary-color', theme.secondary);
+        // Update CSS custom properties
+        this.applyThemeColors(theme);
         
         localStorage.setItem('admin_theme_index', currentTheme.toString());
         
         this.showNotification(`Theme changed to ${theme.name}`, 'success');
+        
+        // Force a style recalculation
+        this.forceStyleRecalc();
+    }
+
+    forceStyleRecalc() {
+        // Force browser to recalculate styles
+        const root = document.documentElement;
+        const primaryColor = getComputedStyle(root).getPropertyValue('--primary-color').trim();
+        console.log('Current theme primary color:', primaryColor);
+        
+        // Update button colors immediately
+        document.querySelectorAll('.btn-primary').forEach(btn => {
+            btn.style.backgroundColor = primaryColor;
+        });
     }
 
     darkenColor(color, percent) {
@@ -897,6 +1042,7 @@ class AdminDashboard {
             () => {
                 localStorage.removeItem('admin_token');
                 localStorage.removeItem('admin_token_time');
+                localStorage.removeItem('admin_theme_index'); // Remove theme preference
                 this.isAuthenticated = false;
                 this.showLogin();
                 this.closeSidebar();
@@ -2085,6 +2231,41 @@ class AdminDashboard {
                 width: 100%;
                 max-width: 300px;
             }
+            
+            /* Theme toggle button */
+            .theme-toggle {
+                cursor: pointer;
+                transition: all 0.3s ease;
+                padding: 10px 15px;
+                border-radius: 8px;
+                background: rgba(79, 70, 229, 0.05);
+                margin: 10px 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .theme-toggle:hover {
+                background: rgba(79, 70, 229, 0.1);
+                color: var(--primary-color);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            
+            .theme-toggle i {
+                font-size: 18px;
+                color: var(--primary-color);
+                transition: transform 0.3s ease;
+            }
+            
+            .theme-toggle:hover i {
+                transform: rotate(15deg);
+            }
+            
+            .theme-toggle span {
+                font-weight: 500;
+                font-size: 14px;
+            }
         `;
         document.head.appendChild(locationStyle);
     }
@@ -2335,18 +2516,95 @@ style.textContent = `
     }
 }
 
-/* Theme Cycling Styles */
+/* Theme transitions */
+body {
+    transition: background-color 0.3s ease;
+}
+
+/* Theme-specific styles - HIGH PRIORITY */
+body.theme-purple {
+    --primary-color: #4f46e5 !important;
+    --primary-dark: #3730a3 !important;
+    --secondary-color: #8b5cf6 !important;
+}
+
+body.theme-blue {
+    --primary-color: #3b82f6 !important;
+    --primary-dark: #1e40af !important;
+    --secondary-color: #60a5fa !important;
+}
+
+body.theme-green {
+    --primary-color: #10b981 !important;
+    --primary-dark: #047857 !important;
+    --secondary-color: #34d399 !important;
+}
+
+body.theme-orange {
+    --primary-color: #f59e0b !important;
+    --primary-dark: #d97706 !important;
+    --secondary-color: #fbbf24 !important;
+}
+
+body.theme-red {
+    --primary-color: #ef4444 !important;
+    --primary-dark: #dc2626 !important;
+    --secondary-color: #f87171 !important;
+}
+
+body.theme-violet {
+    --primary-color: #8b5cf6 !important;
+    --primary-dark: #7c3aed !important;
+    --secondary-color: #a78bfa !important;
+}
+
+body.theme-pink {
+    --primary-color: #ec4899 !important;
+    --primary-dark: #db2777 !important;
+    --secondary-color: #f472b6 !important;
+}
+
+body.theme-teal {
+    --primary-color: #14b8a6 !important;
+    --primary-dark: #0d9488 !important;
+    --secondary-color: #2dd4bf !important;
+}
+
+body.theme-amber {
+    --primary-color: #f97316 !important;
+    --primary-dark: #ea580c !important;
+    --secondary-color: #fb923c !important;
+}
+
+body.theme-indigo {
+    --primary-color: #6366f1 !important;
+    --primary-dark: #4f46e5 !important;
+    --secondary-color: #818cf8 !important;
+}
+
+/* Theme toggle styling */
 .theme-toggle {
     cursor: pointer;
-    transition: var(--transition);
+    transition: all 0.3s ease;
+    padding: 10px 15px;
+    border-radius: 8px;
+    background: rgba(79, 70, 229, 0.05);
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .theme-toggle:hover {
+    background: rgba(79, 70, 229, 0.1);
     color: var(--primary-color);
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .theme-toggle i {
+    font-size: 18px;
+    color: var(--primary-color);
     transition: transform 0.3s ease;
 }
 
@@ -2354,65 +2612,30 @@ style.textContent = `
     transform: rotate(15deg);
 }
 
-/* Ensure theme classes work properly */
-body.theme-purple {
-    --primary-color: #4f46e5;
-    --primary-dark: #3730a3;
-    --secondary-color: #8b5cf6;
+.theme-toggle span {
+    font-weight: 500;
+    font-size: 14px;
 }
 
-body.theme-blue {
-    --primary-color: #3b82f6;
-    --primary-dark: #1e40af;
-    --secondary-color: #60a5fa;
+/* Ensure buttons use theme colors */
+.btn-primary {
+    background: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
 }
 
-body.theme-green {
-    --primary-color: #10b981;
-    --primary-dark: #047857;
-    --secondary-color: #34d399;
+.btn-primary:hover {
+    background: var(--primary-dark) !important;
+    border-color: var(--primary-dark) !important;
 }
 
-body.theme-orange {
-    --primary-color: #f59e0b;
-    --primary-dark: #d97706;
-    --secondary-color: #fbbf24;
+/* Theme-specific stat item icons */
+.stat-item i {
+    color: var(--primary-color) !important;
 }
 
-body.theme-red {
-    --primary-color: #ef4444;
-    --primary-dark: #dc2626;
-    --secondary-color: #f87171;
-}
-
-body.theme-violet {
-    --primary-color: #8b5cf6;
-    --primary-dark: #7c3aed;
-    --secondary-color: #a78bfa;
-}
-
-body.theme-pink {
-    --primary-color: #ec4899;
-    --primary-dark: #db2777;
-    --secondary-color: #f472b6;
-}
-
-body.theme-teal {
-    --primary-color: #14b8a6;
-    --primary-dark: #0d9488;
-    --secondary-color: #2dd4bf;
-}
-
-body.theme-amber {
-    --primary-color: #f97316;
-    --primary-dark: #ea580c;
-    --secondary-color: #fb923c;
-}
-
-body.theme-indigo {
-    --primary-color: #6366f1;
-    --primary-dark: #4f46e5;
-    --secondary-color: #818cf8;
+/* Theme-specific action button icons */
+.action-btn i {
+    color: var(--primary-color) !important;
 }
 `;
 document.head.appendChild(style);

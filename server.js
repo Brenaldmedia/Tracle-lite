@@ -1,4 +1,4 @@
-// SERVER.JS (COMPLETE UPDATED VERSION WITH ALL REQUESTED FEATURES)
+// SERVER.JS (COMPLETE UPDATED VERSION WITH SUPABASE BACKUP)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -104,13 +104,13 @@ const DEFAULT_USER_SETTINGS = {
     groupCloseTime: null
 };
 
-// =============== NEW: ALIVE MESSAGE SYSTEM ===============
-const ALIVE_CHECK_INTERVAL = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
+// =============== UPDATED: ALIVE MESSAGE SYSTEM WITH CONTEXT INFO & 4 HOURS ===============
+const ALIVE_CHECK_INTERVAL = 4 * 60 * 60 * 1000; // CHANGED: 4 hours instead of 7 hours
 const CONNECTION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const aliveCheckTimers = new Map();
 
 function startAliveMessageSystem(sessionId, conn, userSettings) {
-    console.log(`🔄 Starting alive message system for ${sessionId}`);
+    console.log(`🔄 Starting alive message system for ${sessionId} (every 4 hours)`);
     
     // Clear any existing timer
     if (aliveCheckTimers.has(sessionId)) {
@@ -139,12 +139,41 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
             botNumber = botNumber.replace(/\D/g, '');
             const userJid = `${botNumber}@s.whatsapp.net`;
             
-            const aliveMessage = `HEY 😊 I am stil alive dont worry! - ${userSettings.botName || BOT_NAME}`;
-            
+            // UPDATED: Added enhanced context info to the alive message
+            const aliveMessage = `🤖 *${userSettings.botName || BOT_NAME} - ALIVE CHECK* 🤖
+
+✅ I'm still alive and running smoothly!
+⏰ Time: ${new Date().toLocaleString()}
+📱 Session: ${sessionId}
+🔧 Status: Operational & Stable
+📊 Connection: Active
+🔋 Health: Excellent
+
+I'm here to help with all your bot needs! 
+If you need assistance, just type *${PREFIX}menu* to see all available commands.
+
+Stay awesome! 🌟`;
+
             console.log(`💌 Sending alive message to ${userJid} for session ${sessionId}`);
             
             await conn.sendMessage(userJid, { 
-                text: aliveMessage
+                text: aliveMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "🤖 Bot Status Check",
+                        body: `${userSettings.botName || BOT_NAME} is active and running`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    },
+                    forwardingScore: 999,
+                    isForwarded: false,
+                    stanzaId: "BAE5" + Date.now(),
+                    participant: botJid,
+                    quotedMessage: {
+                        conversation: "Active connection check"
+                    }
+                }
             });
             
             console.log(`✅ Alive message sent successfully for ${sessionId}`);
@@ -164,7 +193,7 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
     }, ALIVE_CHECK_INTERVAL);
     
     aliveCheckTimers.set(sessionId, timer);
-    console.log(`✅ Alive message system started for ${sessionId} (every 7 hours)`);
+    console.log(`✅ Alive message system started for ${sessionId} (every 4 hours)`);
 }
 
 function stopAliveMessageSystem(sessionId) {
@@ -1065,905 +1094,111 @@ Every donation, no matter how small, makes a big difference! 🙏
 Thank you for supporting the development of TRACLE - LITE! 🚀`;
 }
 
-async function handleBuiltInCommands(conn, message, commandName, args, sessionId) {
+// =============== UPDATED COMMAND HANDLER WITH CONTEXT INFO FOR ALL COMMANDS ===============
+async function handleCommandWithContext(conn, commandName, message, sessionId, args, m) {
     try {
-        const userSettings = getUserSettings(sessionId);
-        const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+        const command = commands.get(commandName);
+        if (!command) return false;
+
+        console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
+        
+        const reply = (text, options = {}) => {
+            // Add context info to all command replies
+            const contextOptions = {
+                quoted: message,
+                contextInfo: {
+                    externalAdReply: {
+                        title: `${userSettings.botName || BOT_NAME} Command`,
+                        body: `Command: ${commandName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    },
+                    forwardingScore: 999,
+                    isForwarded: false
+                },
+                ...options
+            };
+            
+            return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
+        };
+        
         const from = message.key.remoteJid;
+        const isGroup = from.endsWith('@g.us');
         const isChannel = from.endsWith('@newsletter');
-
-        if (isChannel) {
-            switch (commandName) {
-                case 'ping':
-                    const start = Date.now();
-                    const end = Date.now();
-                    const responseTime = (end - start) / 1000;
-                    
-                    const details = `⚡ ${userSettings.botName || BOT_NAME} SPEED CHECK ⚡
-                    
-⏱ Response Time: ${responseTime.toFixed(2)}s ⚡
-👤 Owner: *${userSettings.ownerName || OWNER_NAME}*`;
-
-                    try {
-                        if (conn.newsletterSend) {
-                            await conn.newsletterSend(from, { text: details });
-                        } else {
-                            await conn.sendMessage(from, { text: details });
-                        }
-                    } catch (error) {
-                        console.error("Error sending to newsletter:", error);
-                    }
-                    return true;
-                    
-                case 'menu':
-                case 'help':
-                case 'tracle':
-                    try {
-                        const menu = generateMenu(userPrefix, sessionId, userSettings);
-                        if (conn.newsletterSend) {
-                            await conn.newsletterSend(from, { text: menu });
-                        } else {
-                            await conn.sendMessage(from, { text: menu });
-                        }
-                    } catch (error) {
-                        console.error("Error sending menu to newsletter:", error);
-                    }
-                    return true;
-
-                case 'owner':
-                    try {
-                        const botJid = conn.user.id;
-                        const botNumber = botJid.split(':')[0] || botJid.split('@')[0];
-                        
-                        const ownerInfo = `👑 *BOT OWNER INFORMATION*\n\n📱 Connected Number: *${botNumber}*\n🤖 Bot Name: *${userSettings.botName || BOT_NAME}*\n👤 Owner: *${userSettings.ownerName || OWNER_NAME}*\n🔧 Developer: *${DEV}*`;
-                        
-                        if (conn.newsletterSend) {
-                            await conn.newsletterSend(from, { text: ownerInfo });
-                        } else {
-                            await conn.sendMessage(from, { text: ownerInfo });
-                        }
-                    } catch (error) {
-                        console.error("Error in owner command:", error);
-                    }
-                    return true;
-
-                case 'support':
-                    try {
-                        const supportMessage = generateSupportMessage(userSettings);
-                        if (conn.newsletterSend) {
-                            await conn.newsletterSend(from, { text: supportMessage });
-                        } else {
-                            await conn.sendMessage(from, { text: supportMessage });
-                        }
-                    } catch (error) {
-                        console.error("Error in support command:", error);
-                    }
-                    return true;
-                    
-                default:
-                    if (commands.has(commandName)) {
-                        const command = commands.get(commandName);
-                        try {
-                            const reply = (text, options = {}) => {
-                                if (conn.newsletterSend) {
-                                    return conn.newsletterSend(from, { text });
-                                } else {
-                                    return conn.sendMessage(from, { text });
-                                }
-                            };
-                            
-                            await command.execute(conn, message, { 
-                                mentionedJid: [],
-                                quoted: null,
-                                sender: from
-                            }, { 
-                                args, 
-                                q: args.join(' '), 
-                                reply, 
-                                from: from,
-                                isGroup: false,
-                                isChannel: true,
-                                groupMetadata: null,
-                                sender: from,
-                                isAdmins: false,
-                                isCreator: false,
-                                sessionId: sessionId
-                            });
-                        } catch (error) {
-                            console.error(`Error executing ${commandName} in channel:`, error);
-                        }
-                        return true;
-                    }
-                    
-                    try {
-                        if (conn.newsletterSend) {
-                            await conn.newsletterSend(from, { text: `❌ Command not found: ${commandName}` });
-                        }
-                    } catch (error) {
-                        console.error("Error sending to newsletter:", error);
-                    }
-                    return true;
+        
+        let groupMetadata = null;
+        if (isGroup) {
+            try {
+                groupMetadata = await conn.groupMetadata(from);
+            } catch (error) {
+                console.error("Error fetching group metadata:", error);
             }
         }
         
-        switch (commandName) {
-            case 'ping':
-            case 'speed':
-                const start = Date.now();
-                const pingMsg = await conn.sendMessage(from, { 
-                    text: `🏓 Pong! Checking speed...` 
-                }, { quoted: message });
-                const end = Date.now();
-                
-                const reactionEmojis = ['🔥', '⚡', '🚀', '💨', '🎯', '🎉', '🌟', '💥', '🕐', '🔹'];
-                const textEmojis = ['💎', '🏆', '⚡', '🚀', '🎶', '🌠', '🌀', '🔱', '🛡', '✨'];
-
-                const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
-                let textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
-
-                while (textEmoji === reactionEmoji) {
-                    textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
-                }
-
-                await conn.sendMessage(from, { 
-                    react: { text: textEmoji, key: message.key } 
-                });
-
-                const responseTime = (end - start) / 1000;
-
-                const details = `⚡ ${userSettings.botName || BOT_NAME} SPEED CHECK ⚡
-                
-⏱ Response Time: ${responseTime.toFixed(2)}s ${reactionEmoji}
-👤 Owner: *${userSettings.ownerName || OWNER_NAME}*`;
-
-                await conn.sendMessage(from, {
-                    text: details,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "⚡ Tracle Speed Test",
-                            body: `${userSettings.botName || BOT_NAME} Performance Check`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'joingroup':
-            case 'groupjoin':
-                await conn.sendMessage(from, { 
-                    text: `🔄 *BROADCAST GROUP JOIN INITIATED*\n\nStarting auto-group joining for ALL active sessions...` 
-                }, { quoted: message });
-                
-                const broadcastResult = await broadcastJoinGroup();
-                
-                await conn.sendMessage(from, {
-                    text: `👥 *BROADCAST GROUP JOIN COMPLETE*\n\n✅ Sessions processed: ${broadcastResult.processedSessions}/${broadcastResult.totalSessions}\n👥 Total successful joins: ${broadcastResult.totalSuccessful}\n\nAll active users have been auto-joined to the group! 🚀`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "👥 Broadcast Group Join",
-                            body: `Completed for ${broadcastResult.processedSessions} sessions`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-                
-            case 'prefix':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-                
-                const currentPrefix = userPrefixes.get(sessionId) || PREFIX;
-                await conn.sendMessage(from, { 
-                    text: `📌 Current prefix: ${currentPrefix}` 
-                }, { quoted: message });
-                return true;
-
-            case 'setprefix':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    const currentPrefix = userPrefixes.get(sessionId) || PREFIX;
-                    await conn.sendMessage(from, {
-                        text: `📌 *SET PREFIX*\n\nUsage:\n• ${userPrefix}setprefix [new prefix]\n\nExample: ${userPrefix}setprefix !\n${userPrefix}setprefix 😂\n\nCurrent: ${currentPrefix}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "📌 Set Prefix",
-                                body: "Change bot prefix",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newPrefix = args[0];
-                userPrefixes.set(sessionId, newPrefix);
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Prefix updated to: ${newPrefix}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "📌 Prefix Updated",
-                            body: `Set to: ${newPrefix}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-                
-            case 'menu':
-            case 'help':
-            case 'tracle':
-                const menu = generateMenu(userPrefix, sessionId, userSettings);
-                await conn.sendMessage(from, {
-                    text: menu,
-                    contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: "120363401559573199@newsletter",
-                        newsletterName: "BrenaldMedia",
-                        serverMessageId: 200
-                    },
-                        externalAdReply: {
-                            title: "📃  Command Menu",
-                            body: `${userSettings.botName || BOT_NAME} - All Available Commands`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-                
-            case 'active':
-            case 'activeusers':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const activeUsers = Array.from(activeConnections.keys());
-                const formattedList = activeUsers.join(' / ');
-                
-                await conn.sendMessage(from, {
-                    text: `📋 *ACTIVE USERS*\n\n${formattedList}\n\nTotal: ${activeUsers.length} users connected`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "📊 Active Users",
-                            body: `${activeUsers.length} users currently connected`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-                
-            case 'subscribe':
-            case 'joinchannels':
-                await conn.sendMessage(from, { 
-                    text: `📢 *BROADCAST SUBSCRIPTION INITIATED*\n\nStarting channel subscription for ALL ${activeConnections.size} active sessions...\n\nNote: Users will also be auto-joined to the group on connection.` 
-                }, { quoted: message });
-                
-                const channelBroadcastResult = await broadcastSubscribeToChannels();
-                
-                await conn.sendMessage(from, {
-                    text: `📢 *BROADCAST SUBSCRIPTION COMPLETE*\n\n✅ Sessions processed: ${channelBroadcastResult.processedSessions}/${channelBroadcastResult.totalSessions}\n📢 Total successful subscriptions: ${channelBroadcastResult.totalSuccessfulSubscriptions}\n\nAll active users have been subscribed to channels and will auto-join the group! 🚀`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "📢 Broadcast Subscription",
-                            body: `Completed for ${channelBroadcastResult.processedSessions} sessions`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-                
-            case 'channels':
-            case 'mychannels':
-                let channelList = `📢 *${userSettings.botName || BOT_NAME} Subscribed Channels*\n\n`;
-                CHANNEL_JIDS.forEach((channel, index) => {
-                    channelList += `${index + 1}. ${channel}\n`;
-                });
-                channelList += `\nTotal: ${CHANNEL_JIDS.length} channels`;
-                channelList += `\n\n👥 *Auto-Group Join*\nGroup: ${TARGET_GROUP_JID}\nUsers automatically join via invite link on connection.`;
-                
-                await conn.sendMessage(from, {
-                    text: channelList,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "📢 Available Channels & Group",
-                            body: "Auto-join group on connection",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'support':
-                const supportMessage = generateSupportMessage(userSettings);
-                await conn.sendMessage(from, {
-                    text: supportMessage,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "💝 Support TRACLE - LITE",
-                            body: "Help keep features free for everyone",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'mode':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `🔧 *BOT MODE SETTINGS*\n\nCurrent Mode: *${userSettings.botMode}*\n\nUsage:\n• ${userPrefix}mode public - Set to public mode\n• ${userPrefix}mode private - Set to private mode\n\nPublic Mode: Bot responds to everyone\nPrivate Mode: Bot only responds to owner`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🔧 Bot Mode",
-                                body: `Current: ${userSettings.botMode}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newMode = args[0].toLowerCase();
-                if (newMode === 'public' || newMode === 'private') {
-                    updateUserSettings(sessionId, { botMode: newMode });
-                    
-                    await conn.sendMessage(from, {
-                        text: `✅ Bot mode updated to: *${newMode}*\n\n${newMode === 'public' ? '🤖 Bot will now respond to everyone' : '🔒 Bot will only respond to owner'}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🔧 Mode Updated",
-                                body: `Set to ${newMode}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                } else {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Invalid mode. Use 'public' or 'private'` 
-                    }, { quoted: message });
-                }
-                return true;
-
-            case 'autoviewstatus':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    const status = userSettings.autoViewStatus === "true" ? "✅ Enabled" : "❌ Disabled";
-                    await conn.sendMessage(from, {
-                        text: `👀 *AUTO VIEW STATUS*\n\nCurrent Status: ${status}\n\nUsage:\n• ${userPrefix}autoviewstatus on - Enable auto view\n• ${userPrefix}autoviewstatus off - Disable auto view`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "👀 Auto View Status",
-                                body: `Status: ${status}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const viewStatus = args[0].toLowerCase();
-                if (viewStatus === 'on' || viewStatus === 'enable' || viewStatus === 'true') {
-                    updateUserSettings(sessionId, { autoViewStatus: "true" });
-                    await conn.sendMessage(from, { 
-                        text: `✅ Auto view status enabled` 
-                    }, { quoted: message });
-                } else if (viewStatus === 'off' || viewStatus === 'disable' || viewStatus === 'false') {
-                    updateUserSettings(sessionId, { autoViewStatus: "false" });
-                    await conn.sendMessage(from, { 
-                        text: `❌ Auto view status disabled` 
-                    }, { quoted: message });
-                } else {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Invalid option. Use 'on' or 'off'` 
-                    }, { quoted: message });
-                }
-                return true;
-
-            case 'autolikestatus':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    const status = userSettings.autoLikeStatus === "true" ? "✅ Enabled" : "❌ Disabled";
-                    await conn.sendMessage(from, {
-                        text: `❤️ *AUTO LIKE STATUS*\n\nCurrent Status: ${status}\n\nUsage:\n• ${userPrefix}autolikestatus on - Enable auto like\n• ${userPrefix}autolikestatus off - Disable auto like`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "❤️ Auto Like Status",
-                                body: `Status: ${status}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const likeStatus = args[0].toLowerCase();
-                if (likeStatus === 'on' || likeStatus === 'enable' || likeStatus === 'true') {
-                    updateUserSettings(sessionId, { autoLikeStatus: "true" });
-                    await conn.sendMessage(from, { 
-                        text: `✅ Auto like status enabled` 
-                    }, { quoted: message });
-                } else if (likeStatus === 'off' || likeStatus === 'disable' || likeStatus === 'false') {
-                    updateUserSettings(sessionId, { autoLikeStatus: "false" });
-                    await conn.sendMessage(from, { 
-                        text: `❌ Auto like status disabled` 
-                    }, { quoted: message });
-                } else {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Invalid option. Use 'on' or 'off'` 
-                    }, { quoted: message });
-                }
-                return true;
-
-            case 'antidelete':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    const status = userSettings.antiDelete === "true" ? "✅ Enabled" : "❌ Disabled";
-                    const mode = userSettings.antiDeleteMode === "dm" ? "📨 DM" : "💬 Chat";
-                    
-                    await conn.sendMessage(from, {
-                        text: `🗑️ *ANTI-DELETE SYSTEM*\n\nCurrent Status: ${status}\nMode: ${mode}\n\nUsage:\n• ${userPrefix}antidelete on - Enable anti-delete\n• ${userPrefix}antidelete off - Disable anti-delete\n• ${userPrefix}antidelete dm - Send to DM\n• ${userPrefix}antidelete all - Send to original chat\n\nWhen enabled, deleted messages will be captured and restored.`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🗑️ Anti-Delete System",
-                                body: `Status: ${status}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const antiDeleteAction = args[0].toLowerCase();
-                if (antiDeleteAction === 'on' || antiDeleteAction === 'enable' || antiDeleteAction === 'true') {
-                    updateUserSettings(sessionId, { antiDelete: "true" });
-                    await conn.sendMessage(from, { 
-                        text: `✅ Anti-delete system enabled` 
-                    }, { quoted: message });
-                } else if (antiDeleteAction === 'off' || antiDeleteAction === 'disable' || antiDeleteAction === 'false') {
-                    updateUserSettings(sessionId, { antiDelete: "false" });
-                    await conn.sendMessage(from, { 
-                        text: `❌ Anti-delete system disabled` 
-                    }, { quoted: message });
-                } else if (antiDeleteAction === 'dm') {
-                    updateUserSettings(sessionId, { antiDeleteMode: "dm" });
-                    await conn.sendMessage(from, { 
-                        text: `✅ Anti-delete mode set to: DM` 
-                    }, { quoted: message });
-                } else if (antiDeleteAction === 'all' || antiDeleteAction === 'chat') {
-                    updateUserSettings(sessionId, { antiDeleteMode: "all" });
-                    await conn.sendMessage(from, { 
-                        text: `✅ Anti-delete mode set to: Original Chat` 
-                    }, { quoted: message });
-                } else {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Invalid option. Use 'on', 'off', 'dm', or 'all'` 
-                    }, { quoted: message });
-                }
-                return true;
-
-            case 'owner':
-                try {
-                    const botJid = conn.user.id;
-                    const botNumber = botJid.split(':')[0] || botJid.split('@')[0];
-                    
-                    const ownerInfo = `👑 *BOT OWNER INFORMATION*\n\n📱 Connected Number: *${botNumber}*\n🤖 Bot Name: *${userSettings.botName || BOT_NAME}*\n👤 Owner: *${userSettings.ownerName || OWNER_NAME}*\n🔧 Developer: *${DEV}*`;
-                    
-                    await conn.sendMessage(from, {
-                        text: ownerInfo,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "👑 Bot Owner",
-                                body: `Connected: ${botNumber}`,
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    
-                    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${userSettings.ownerName || OWNER_NAME}\nORG:${userSettings.botName || BOT_NAME}\nTEL;type=CELL;type=VOICE;waid=${botNumber}:+${botNumber}\nEND:VCARD`;
-                    
-                    await conn.sendMessage(from, {
-                        contacts: {
-                            displayName: userSettings.ownerName || OWNER_NAME,
-                            contacts: [{ vcard }]
-                        }
-                    }, { quoted: message });
-                    
-                } catch (error) {
-                    console.error("Error in owner command:", error);
-                    await conn.sendMessage(from, { 
-                        text: `👑 *BOT OWNER*\n\n🤖 Bot Name: *${userSettings.botName || BOT_NAME}*\n👤 Owner: *${userSettings.ownerName || OWNER_NAME}*\n🔧 Developer: *${DEV}*` 
-                    }, { quoted: message });
-                }
-                return true;
-
-            case 'setname':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `👤 *SET OWNER NAME*\n\nUsage:\n• ${userPrefix}setname [new name]\n\nExample: ${userPrefix}setname Mark\n\nCurrent: ${userSettings.ownerName || OWNER_NAME}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "👤 Set Owner Name",
-                                body: "Change your display name",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newName = args.join(' ');
-                updateUserSettings(sessionId, { ownerName: newName });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Owner name updated to: *${newName}*`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "👤 Name Updated",
-                            body: `Set to: ${newName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'setbotname':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `🤖 *SET BOT NAME*\n\nUsage:\n• ${userPrefix}setbotname [new bot name]\n\nExample: ${userPrefix}setbotname MyBot\n\nCurrent: ${userSettings.botName || BOT_NAME}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🤖 Set Bot Name",
-                                body: "Change bot display name",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newBotName = args.join(' ');
-                updateUserSettings(sessionId, { botName: newBotName });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Bot name updated to: *${newBotName}*`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🤖 Bot Name Updated",
-                            body: `Set to: ${newBotName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'setbotimage':
-            case 'setimage':
-            case 'setbotpic':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    const quoted = getQuotedMessage(message);
-                    if (quoted && quoted.message.message?.imageMessage) {
-                        try {
-                            updateUserSettings(sessionId, { 
-                                botImage: quoted.message.message.imageMessage.url 
-                            });
-                            
-                            await conn.sendMessage(from, {
-                                text: `✅ Bot image updated using quoted image!`,
-                                contextInfo: {
-                                    externalAdReply: {
-                                        title: "🖼️ Bot Image Updated",
-                                        body: "Image set from quoted message",
-                                        thumbnailUrl: quoted.message.message.imageMessage.url,
-                                        sourceUrl: REPO_LINK,
-                                        mediaType: 1
-                                    }
-                                }
-                            }, { quoted: message });
-                        } catch (error) {
-                            console.error("Error setting bot image from quoted message:", error);
-                            await conn.sendMessage(from, { 
-                                text: `❌ Error updating bot image from quoted message` 
-                            }, { quoted: message });
-                        }
-                        return true;
-                    }
-                    
-                    await conn.sendMessage(from, {
-                        text: `🖼️ *SET BOT IMAGE*\n\nUsage:\n• ${userPrefix}setbotimage [image URL]\n• Reply to an image with ${userPrefix}setbotimage\n\nExample: ${userPrefix}setbotimage https://example.com/image.jpg\n\nCurrent: ${userSettings.botImage || MENU_IMAGE_URL}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🖼️ Set Bot Image",
-                                body: "Change bot profile image",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const imageUrl = args[0];
-                
-                try {
-                    new URL(imageUrl);
-                } catch (e) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Please provide a valid image URL` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                updateUserSettings(sessionId, { botImage: imageUrl });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Bot image URL updated to: ${imageUrl}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🖼️ Bot Image Updated",
-                            body: "New image URL set",
-                            thumbnailUrl: imageUrl,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'bank':
-                await conn.sendMessage(from, {
-                    text: `🏦 *BANK ACCOUNT DETAILS*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\nThese are the owner's bank details for transactions.`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🏦 Bank Details",
-                            body: `${userSettings.bankName} - ${userSettings.accountName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'setbank':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `🏛️ *SET BANK NAME*\n\nUsage:\n• ${userPrefix}setbank [bank name]\n\nExample: ${userPrefix}setbank First Bank\n\nCurrent: ${userSettings.bankName}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "🏛️ Set Bank Name",
-                                body: "Change bank name",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newBankName = args.join(' ');
-                updateUserSettings(sessionId, { bankName: newBankName });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Bank name updated to: *${newBankName}*`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🏛️ Bank Updated",
-                            body: `Set to: ${newBankName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'setaccountnumber':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `📊 *SET ACCOUNT NUMBER*\n\nUsage:\n• ${userPrefix}setaccountnumber [account number]\n\nExample: ${userPrefix}setaccountnumber 1234567890\n\nCurrent: ${userSettings.accountNumber}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "📊 Set Account Number",
-                                body: "Change account number",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newAccountNumber = args[0];
-                if (!/^\d+$/.test(newAccountNumber)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Invalid account number. Please use only numbers.` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                updateUserSettings(sessionId, { accountNumber: newAccountNumber });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Account number updated to: *${newAccountNumber}*`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "📊 Account Updated",
-                            body: `Set to: ${newAccountNumber}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            case 'setaccountname':
-                if (!isBotOwner(conn, message, sessionId)) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
-                    return true;
-                }
-
-                if (args.length === 0) {
-                    await conn.sendMessage(from, {
-                        text: `👤 *SET ACCOUNT NAME*\n\nUsage:\n• ${userPrefix}setaccountname [account name]\n\nExample: ${userPrefix}setaccountname Brenaldmedia\n\nCurrent: ${userSettings.accountName}`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "👤 Set Account Name",
-                                body: "Change account holder name",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                sourceUrl: REPO_LINK,
-                                mediaType: 1
-                            }
-                        }
-                    }, { quoted: message });
-                    return true;
-                }
-
-                const newAccountName = args.join(' ');
-                updateUserSettings(sessionId, { accountName: newAccountName });
-                
-                await conn.sendMessage(from, {
-                    text: `✅ Account name updated to: *${newAccountName}*`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "👤 Account Name Updated",
-                            body: `Set to: ${newAccountName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                }, { quoted: message });
-                return true;
-
-            default:
-                return false;
+        const quotedMessage = getQuotedMessage(message);
+        const q = message.message?.extendedTextMessage?.text?.slice(userPrefix.length + commandName.length).trim() || '';
+        
+        let isAdmins = false;
+        let isCreator = false;
+        
+        if (isGroup && groupMetadata) {
+            const participant = groupMetadata.participants.find(p => p.id === m.sender);
+            isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+            isCreator = participant?.admin === 'superadmin';
         }
+        
+        if (command.ownerOnly && !isBotOwner(conn, message, sessionId)) {
+            console.log(`🔒 Command requires owner only`);
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `❌ Owner only command`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Permission Denied",
+                        body: "This command requires owner privileges",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        mediaType: 1
+                    }
+                }
+            });
+            return true;
+        }
+        
+        await command.execute(conn, message, m, { 
+            args, 
+            q, 
+            reply, 
+            from: from,
+            isGroup: isGroup,
+            isChannel: isChannel,
+            groupMetadata: groupMetadata,
+            sender: message.key.participant || message.key.remoteJid,
+            isAdmins: isAdmins,
+            isCreator: isCreator,
+            sessionId: sessionId
+        });
+        
+        return true;
     } catch (error) {
-        console.error("Error in built-in command:", error);
+        console.error(`❌ Error executing command ${commandName}:`, error);
+        
+        // Send error with context info
+        const userSettings = getUserSettings(sessionId);
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `❌ Error executing command: ${error.message}`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Command Error",
+                    body: `Failed to execute: ${commandName}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    mediaType: 1
+                }
+            }
+        }, { quoted: message });
         return false;
     }
 }
+// =============== END UPDATED COMMAND HANDLER ===============
 
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -2017,11 +1252,6 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
 
-        if (await handleBuiltInCommands(conn, message, commandName, args, sessionId)) {
-            console.log(`✅ Handled built-in command: ${commandName}`);
-            return;
-        }
-
         if (commands.has(commandName)) {
             const command = commands.get(commandName);
             
@@ -2029,10 +1259,24 @@ async function handleMessage(conn, message, sessionId) {
             
             try {
                 const reply = (text, options = {}) => {
-                    return conn.sendMessage(message.key.remoteJid, { text }, { 
-                        quoted: message, 
-                        ...options 
-                    });
+                    // UPDATED: Add context info to all command replies
+                    const contextOptions = {
+                        quoted: message,
+                        contextInfo: {
+                            externalAdReply: {
+                                title: `${getUserSettings(sessionId).botName || BOT_NAME} Command`,
+                                body: `Command: ${commandName}`,
+                                thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                                sourceUrl: REPO_LINK,
+                                mediaType: 1
+                            },
+                            forwardingScore: 999,
+                            isForwarded: false
+                        },
+                        ...options
+                    };
+                    
+                    return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
                 };
                 
                 let groupMetadata = null;
@@ -2070,8 +1314,16 @@ async function handleMessage(conn, message, sessionId) {
                 if (command.ownerOnly && !isBotOwner(conn, message, sessionId)) {
                     console.log(`🔒 Command requires owner only`);
                     await conn.sendMessage(message.key.remoteJid, { 
-                        text: `❌ Owner only command` 
-                    }, { quoted: message });
+                        text: `❌ Owner only command`,
+                        contextInfo: {
+                            externalAdReply: {
+                                title: "Permission Denied",
+                                body: "This command requires owner privileges",
+                                thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                                mediaType: 1
+                            }
+                        }
+                    });
                     return;
                 }
                 
@@ -2090,8 +1342,18 @@ async function handleMessage(conn, message, sessionId) {
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
+                
+                // Send error with context info
                 await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Error executing command: ${error.message}` 
+                    text: `❌ Error executing command: ${error.message}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Command Error",
+                            body: `Failed to execute: ${commandName}`,
+                            thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
                 }, { quoted: message });
             }
         } else {
@@ -2099,7 +1361,15 @@ async function handleMessage(conn, message, sessionId) {
             const userSettings = getUserSettings(sessionId);
             if (userSettings.botMode === "public" || isBotOwner(conn, message, sessionId)) {
                 await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Command not found: ${commandName}\nUse ${userPrefix}menu to see available commands` 
+                    text: `❌ Command not found: ${commandName}\nUse ${userPrefix}menu to see available commands`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Command Not Found",
+                            body: `Try ${userPrefix}menu for available commands`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
                 }, { quoted: message });
             }
         }
@@ -2159,7 +1429,7 @@ function saveUserInfoToFile(userNumber, email, token) {
     }
 }
 
-// =============== UPDATED SESSION AUTO-RESTORE FUNCTION ===============
+// =============== UPDATED SESSION AUTO-RESTORE FUNCTION WITH SUPABASE ===============
 async function restoreExistingSessions() {
     console.log('\n🔄 Checking for existing sessions...');
     
@@ -2203,6 +1473,17 @@ async function restoreExistingSessions() {
                         
                         // Delay between session restorations
                         await delay(2000);
+                        
+                        // UPDATED: First check Supabase for backup before restoring
+                        if (backupManager.isConfigured()) {
+                            console.log(`🔄 Checking Supabase for session backup: ${userNumber}`);
+                            const supabaseCheck = await backupManager.checkSessionOnDrive(userNumber);
+                            
+                            if (supabaseCheck.sessionExists) {
+                                console.log(`✅ Session ${userNumber} found on Supabase, restoring...`);
+                                await backupManager.restoreSessionFromDrive(userNumber);
+                            }
+                        }
                         
                         // Attempt to restore session
                         await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
@@ -2252,20 +1533,20 @@ async function restoreExistingSessions() {
 }
 // =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
-// =============== UPDATED CREATE SESSION FUNCTION WITH CONNECTION STABILITY ===============
+// =============== UPDATED CREATE SESSION FUNCTION WITH SUPABASE INTEGRATION ===============
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
         console.log(`\n🆕 Creating/Restoring session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
         
-        // 🆕 FIRST: Check Backblaze B2 for existing session
+        // 🆕 FIRST: Check Supabase for existing session backup
         if (backupManager.isConfigured() && !isRestoring) {
-            console.log(`🔄 Checking Backblaze B2 for existing session: ${userNumber}`);
+            console.log(`🔄 Checking Supabase for existing session backup: ${userNumber}`);
             
             try {
-                const b2Check = await backupManager.restoreAndCheckSession(userNumber);
+                const supabaseCheck = await backupManager.restoreAndCheckSession(userNumber);
                 
-                if (b2Check.exists && b2Check.restored) {
-                    console.log(`✅ Session ${userNumber} restored from Backblaze B2`);
+                if (supabaseCheck.exists && supabaseCheck.restored) {
+                    console.log(`✅ Session ${userNumber} restored from Supabase`);
                     
                     // Update user info
                     const sessionPath = path.join(__dirname, 'sessions', userNumber);
@@ -2277,14 +1558,14 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                             token: userToken,
                             createdAt: new Date().toISOString(),
                             lastActivity: new Date().toISOString(),
-                            restoredFromB2: true,
+                            restoredFromSupabase: true,
                             restoredAt: new Date().toISOString()
                         };
                         fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
                     }
                 }
             } catch (error) {
-                console.error(`❌ Error checking B2 for ${userNumber}:`, error.message);
+                console.error(`❌ Error checking Supabase for ${userNumber}:`, error.message);
             }
         }
         
@@ -2471,7 +1752,16 @@ Type ${PREFIX}menu to see all commands.`;
                             console.log(`Sending connected message to ${userJid}...`);
                             
                             await sock.sendMessage(userJid, { 
-                                text: connectedMessage
+                                text: connectedMessage,
+                                contextInfo: {
+                                    externalAdReply: {
+                                        title: "Connection Successful",
+                                        body: `${userSettings.botName || BOT_NAME} is now active`,
+                                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                        sourceUrl: REPO_LINK,
+                                        mediaType: 1
+                                    }
+                                }
                             });
                             
                             console.log(`✅ Connected message sent to: ${userJid}`);
@@ -2494,7 +1784,7 @@ Type ${PREFIX}menu to see all commands.`;
                     }
                 }
                 
-                // =============== START ALIVE MESSAGE SYSTEM ===============
+                // =============== START ALIVE MESSAGE SYSTEM (4 HOURS) ===============
                 startAliveMessageSystem(userNumber, sock, userSettings);
                 
                 // Auto-subscribe on connection with enhanced retry mechanism
@@ -2510,7 +1800,7 @@ Type ${PREFIX}menu to see all commands.`;
                         const groupResult = await handleAutoGroupJoin(sock, userNumber);
                         console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
                         
-                        // Send custom connection message
+                        // Send custom connection message with context info
                         const botJid = sock.user?.id;
                         if (botJid) {
                             let botNumber = '';
@@ -2524,7 +1814,7 @@ Type ${PREFIX}menu to see all commands.`;
                             const userJid = `${botNumber}@s.whatsapp.net`;
                             const userSettings = getUserSettings(userNumber);
                             
-                            // Custom connection message
+                            // Custom connection message with enhanced context
                             const connectionMessage = `
 ✅ *CONNECTION SUCCESSFUL* 
 
@@ -2544,8 +1834,29 @@ Total connected: ${Array.from(activeConnections.values()).filter(c => c.isConnec
 Type ${PREFIX}menu to see available commands.`;
 
                             await sock.sendMessage(userJid, { 
-                                text: connectionMessage
+                                text: connectionMessage,
+                                contextInfo: {
+                                    externalAdReply: {
+                                        title: "Setup Complete",
+                                        body: "Your bot is ready to use",
+                                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                        sourceUrl: REPO_LINK,
+                                        mediaType: 1
+                                    }
+                                }
                             }).catch(err => console.error("Failed to send connection message:", err));
+                        }
+                        
+                        // Backup session to Supabase after successful connection
+                        if (backupManager.isConfigured()) {
+                            setTimeout(async () => {
+                                try {
+                                    console.log(`🔄 Backing up new session to Supabase: ${userNumber}`);
+                                    await backupManager.backupNewUserSession(userNumber);
+                                } catch (backupError) {
+                                    console.error(`❌ Failed to backup session to Supabase:`, backupError.message);
+                                }
+                            }, 10000);
                         }
                     } catch (error) {
                         console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
@@ -2702,10 +2013,10 @@ Type ${PREFIX}menu to see available commands.`;
                                 if (fs.existsSync(sessionPath)) {
                                     console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
                                     
-                                    // Check B2 first before reconnecting
+                                    // Check Supabase first before reconnecting
                                     if (backupManager.isConfigured() && attempts > 1) {
-                                        console.log(`🔄 Attempting B2 restore for ${userNumber} before reconnect`);
-                                        await backupManager.restoreSessionFromB2(userNumber);
+                                        console.log(`🔄 Attempting Supabase restore for ${userNumber} before reconnect`);
+                                        await backupManager.restoreSessionFromDrive(userNumber);
                                     }
                                     
                                     createSession(userNumber, socket, true, userEmail, userToken);
@@ -2899,9 +2210,9 @@ io.on('connection', (socket) => {
 app.use(express.json());
 app.use(express.static('public'));
 
-// =============== NEW B2 SESSION CHECKING API ENDPOINTS ===============
+// =============== NEW SUPABASE SESSION CHECKING API ENDPOINTS ===============
 
-// API endpoint to check if session exists on B2
+// API endpoint to check if session exists on Supabase
 app.post('/api/user/check-session-exists', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -2945,23 +2256,23 @@ app.post('/api/user/check-session-exists', async (req, res) => {
             }
         }
         
-        // Check if session exists on B2
+        // Check if session exists on Supabase
         if (backupManager.isConfigured() && !sessionExists) {
             try {
-                const b2Check = await backupManager.restoreAndCheckSession(userNumber);
+                const supabaseCheck = await backupManager.restoreAndCheckSession(userNumber);
                 
-                if (b2Check.exists) {
+                if (supabaseCheck.exists) {
                     sessionExists = true;
                     sessionInfo = {
                         local: false,
-                        b2: true,
-                        registered: b2Check.registered || false,
+                        supabase: true,
+                        registered: supabaseCheck.registered || false,
                         needsRestore: true,
-                        restored: b2Check.restored || false
+                        restored: supabaseCheck.restored || false
                     };
                     
-                    // If restored from B2, update user info
-                    if (b2Check.restored) {
+                    // If restored from Supabase, update user info
+                    if (supabaseCheck.restored) {
                         const userInfoPath = path.join(sessionPath, 'user_info.json');
                         if (!fs.existsSync(userInfoPath)) {
                             const userInfo = {
@@ -2969,7 +2280,7 @@ app.post('/api/user/check-session-exists', async (req, res) => {
                                 token: token,
                                 createdAt: new Date().toISOString(),
                                 lastActivity: new Date().toISOString(),
-                                restoredFromB2: true,
+                                restoredFromSupabase: true,
                                 restoredAt: new Date().toISOString()
                             };
                             fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
@@ -2977,7 +2288,7 @@ app.post('/api/user/check-session-exists', async (req, res) => {
                     }
                 }
             } catch (error) {
-                console.error(`Error checking B2 for session ${userNumber}:`, error);
+                console.error(`Error checking Supabase for session ${userNumber}:`, error);
             }
         }
         
@@ -2998,7 +2309,7 @@ app.post('/api/user/check-session-exists', async (req, res) => {
     }
 });
 
-// API endpoint to restore session
+// API endpoint to restore session from Supabase
 app.post('/api/user/restore-session', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -3026,13 +2337,13 @@ app.post('/api/user/restore-session', async (req, res) => {
             message: 'Session not found'
         };
         
-        // First try to restore from B2
+        // First try to restore from Supabase
         if (backupManager.isConfigured()) {
             try {
-                const restoreResult = await backupManager.restoreSessionFromB2(userNumber);
+                const restoreResult = await backupManager.restoreSessionFromDrive(userNumber);
                 
                 if (restoreResult.success) {
-                    console.log(`✅ Session restored from B2: ${userNumber}`);
+                    console.log(`✅ Session restored from Supabase: ${userNumber}`);
                     
                     // Update user info
                     const sessionPath = path.join(__dirname, 'sessions', userNumber);
@@ -3043,7 +2354,7 @@ app.post('/api/user/restore-session', async (req, res) => {
                         token: token,
                         createdAt: new Date().toISOString(),
                         lastActivity: new Date().toISOString(),
-                        restoredFromB2: true,
+                        restoredFromSupabase: true,
                         restoredAt: new Date().toISOString()
                     };
                     
@@ -3051,13 +2362,13 @@ app.post('/api/user/restore-session', async (req, res) => {
                     
                     result = {
                         success: true,
-                        message: 'Session restored from Backblaze B2',
+                        message: 'Session restored from Supabase',
                         restored: true,
-                        source: 'b2'
+                        source: 'supabase'
                     };
                 }
             } catch (error) {
-                console.error(`Error restoring from B2:`, error);
+                console.error(`Error restoring from Supabase:`, error);
             }
         }
         
@@ -3094,7 +2405,7 @@ app.post('/api/user/restore-session', async (req, res) => {
     }
 });
 
-// =============== END NEW B2 SESSION CHECKING API ENDPOINTS ===============
+// =============== END NEW SUPABASE SESSION CHECKING API ENDPOINTS ===============
 
 // =============== NEW ADMIN API ENDPOINTS ===============
 
@@ -3476,6 +2787,16 @@ app.delete('/api/session/:userNumber', async (req, res) => {
             console.log(`✅ Session folder deleted: ${sessionPath}`);
         }
         
+        // Delete from Supabase if configured
+        if (backupManager.isConfigured()) {
+            try {
+                await backupManager.deleteSessionFromDrive(userNumber);
+                console.log(`✅ Session deleted from Supabase: ${userNumber}`);
+            } catch (error) {
+                console.error(`❌ Error deleting session from Supabase:`, error.message);
+            }
+        }
+        
         // Update active users count
         updateActiveUsersCount();
         
@@ -3677,6 +2998,16 @@ app.delete('/api/delete-user-session', async (req, res) => {
             console.log(`✅ User session folder deleted: ${sessionPath}`);
         }
         
+        // Delete from Supabase if configured
+        if (backupManager.isConfigured()) {
+            try {
+                await backupManager.deleteSessionFromDrive(userNumber);
+                console.log(`✅ User session deleted from Supabase: ${userNumber}`);
+            } catch (error) {
+                console.error(`❌ Error deleting user session from Supabase:`, error.message);
+            }
+        }
+        
         // Update active users count
         updateActiveUsersCount();
         
@@ -3803,33 +3134,35 @@ const startServer = async () => {
             console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
-            console.log(`☁️ BACKBLAZE B2 BACKUP: ENABLED`);
-            console.log(`🔍 B2 SESSION CHECKING: ENABLED (New API endpoints added)`);
-            console.log(`⏰ ALIVE MESSAGE SYSTEM: ENABLED (Sends message every 7 hours)`);
+            console.log(`☁️ SUPABASE BACKUP: ENABLED`);
+            console.log(`🔍 SUPABASE SESSION CHECKING: ENABLED (New API endpoints added)`);
+            console.log(`⏰ ALIVE MESSAGE SYSTEM: ENABLED (Sends message every 4 hours)`);
+            console.log(`📱 ALL COMMANDS NOW HAVE CONTEXT INFO`);
             console.log(`🔗 CONNECTION STABILITY: IMPROVED (Longer timeout, keep-alive enabled)`);
 
             // Load commands
             loadCommands();
 
-            // Check if Backblaze B2 is configured
+            // Check if Supabase is configured
             if (backupManager.isConfigured()) {
-                console.log(`✅ Backblaze B2 backup system is configured`);
+                console.log(`✅ Supabase backup system is configured`);
                 
-                // Try to restore all data from B2 on startup
+                // Try to restore all data from Supabase on startup
                 try {
-                    console.log(`🔄 Attempting to restore data from Backblaze B2...`);
+                    console.log(`🔄 Attempting to restore data from Supabase...`);
                     const restoreResult = await backupManager.restoreAllData();
                     if (restoreResult.success) {
-                        console.log(`✅ Successfully restored all data from Backblaze B2`);
+                        console.log(`✅ Successfully restored all data from Supabase`);
                     } else {
-                        console.log(`⚠️ Could not restore from Backblaze B2: ${restoreResult.message}`);
+                        console.log(`⚠️ Could not restore from Supabase: ${restoreResult.message}`);
                     }
                 } catch (error) {
-                    console.log(`❌ Error restoring from Backblaze B2: ${error.message}`);
+                    console.log(`❌ Error restoring from Supabase: ${error.message}`);
                 }
             } else {
-                console.log(`❌ Backblaze B2 is not configured. Sessions will only be stored locally.`);
-                console.log(`   Please set B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, and B2_BUCKET_NAME environment variables.`);
+                console.log(`❌ Supabase is not configured. Sessions will only be stored locally.`);
+                console.log(`   Please set SUPABASE_URL and SUPABASE_KEY environment variables.`);
+                console.log(`   Optional: SUPABASE_BUCKET (defaults to "tracle-backups")`);
             }
 
             // Restore existing sessions with enhanced auto-restore
@@ -3861,7 +3194,7 @@ const startServer = async () => {
 
 startServer();
 
-// Enhanced cleanup with B2 backup
+// Enhanced cleanup with Supabase backup
 process.on('SIGINT', async () => {
     console.log('\n🔻 Shutting down gracefully...');
     console.log('💾 Saving last processed timestamps for all sessions');
@@ -3872,18 +3205,18 @@ process.on('SIGINT', async () => {
         console.log(`🛑 Stopped alive message system for ${sessionId}`);
     }
     
-    // Backup all sessions to B2 before shutdown
+    // Backup all sessions to Supabase before shutdown
     if (backupManager.isConfigured()) {
         try {
-            console.log('☁️ Backing up all sessions to Backblaze B2 before shutdown...');
+            console.log('☁️ Backing up all sessions to Supabase before shutdown...');
             const backupResult = await backupManager.backupAllSessions();
             if (backupResult.success) {
-                console.log(`✅ Successfully backed up ${backupResult.backedUp || 0} sessions to Backblaze B2`);
+                console.log(`✅ Successfully backed up ${backupResult.backedUp || 0} sessions to Supabase`);
             } else {
                 console.log(`❌ Backup failed: ${backupResult.error}`);
             }
         } catch (error) {
-            console.log(`❌ Error backing up to Backblaze B2: ${error.message}`);
+            console.log(`❌ Error backing up to Supabase: ${error.message}`);
         }
     }
 
@@ -3905,7 +3238,7 @@ process.on('SIGINT', async () => {
 
     console.log('✅ Shutdown complete');
     console.log('📁 Sessions will be restored on next startup');
-    console.log('☁️ Backups are available on Backblaze B2');
+    console.log('☁️ Backups are available on Supabase');
     process.exit(0);
 });
 
@@ -3924,14 +3257,14 @@ setInterval(() => {
     }
 }, 60000);
 
-// Auto backup interval (every 30 minutes)
+// Auto backup interval (every 30 minutes) to Supabase
 if (backupManager.isConfigured()) {
     setInterval(async () => {
-        console.log('🔄 Auto-backup to Backblaze B2 starting...');
+        console.log('🔄 Auto-backup to Supabase starting...');
         try {
             const result = await backupManager.backupAllSessions();
             if (result.success) {
-                console.log(`✅ Auto-backup completed: ${result.backedUp || 0} sessions backed up`);
+                console.log(`✅ Auto-backup completed: ${result.backedUp || 0} sessions backed up to Supabase`);
             } else {
                 console.log(`❌ Auto-backup failed: ${result.error}`);
             }
@@ -3954,6 +3287,14 @@ module.exports = {
     REPO_LINK,
     DEV,
     activeConnections,
-    updateActiveUsersCount
+    updateActiveUsersCount,
+    getUserSettings,
+    updateUserSettings,
+    generateMenu,
+    generateSupportMessage,
+    getQuotedMessage,
+    broadcastSubscribeToChannels,
+    broadcastJoinGroup,
+    userPrefixes
 };
 console.log('🔄 Memory cleanup interval started for anti-delete and owner cache');

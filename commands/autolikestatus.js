@@ -1,53 +1,45 @@
 module.exports = {
-    pattern: 'autolikestatus',
-    description: 'Toggle auto like status feature - Owner only',
-    alias: ['autolike', 'likestatus'],
-    execute: async (conn, message, m, { args, q, reply, from, isGroup, groupMetadata, sender, isAdmins, isCreator }) => {
+    pattern: "autolikestatus",
+    name: "autolikestatus",
+    description: "Auto like status settings",
+    tags: ["settings"],
+    ownerOnly: true,
+    
+    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
-            // Check if user is bot owner
-            const botJid = conn.user.id;
-            const messageSenderJid = message.key.participant || message.key.remoteJid;
-            const normalizedBotJid = botJid.includes(':') ? botJid.split(':')[0] + '@s.whatsapp.net' : botJid;
+            const { PREFIX, userPrefixes, updateUserSettings } = require('../server');
+            const userSettings = require('../server').getUserSettings(sessionId);
+            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
             
-            const isOwner = messageSenderJid === normalizedBotJid || messageSenderJid.includes(normalizedBotJid.split('@')[0]);
-            
-            if (!isOwner) {
-                return await reply('❌ This command can only be used by the bot owner.');
-            }
-
-            // Get current settings from server
-            const server = require('../server');
-            const currentStatus = server.AUTO_LIKE_STATUS || "false";
-
             if (args.length === 0) {
-                const status = currentStatus === "true" ? "✅ Enabled" : "❌ Disabled";
-                return await reply(
-                    `❤️ *AUTO LIKE STATUS*\n\n` +
-                    `Current Status: ${status}\n\n` +
-                    `Usage:\n` +
-                    `• .autolikestatus on - Enable auto like\n` +
-                    `• .autolikestatus off - Disable auto like\n\n` +
-                    `When enabled, the bot will automatically react to status updates with random emojis.`
-                );
+                const status = userSettings.autoLikeStatus === "true" ? "✅ Enabled" : "❌ Disabled";
+                await reply(`❤️ *AUTO LIKE STATUS*\n\nCurrent Status: ${status}\n\nUsage:\n• ${userPrefix}autolikestatus on - Enable auto like\n• ${userPrefix}autolikestatus off - Disable auto like`, {
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "❤️ Auto Like Status",
+                            body: `Status: ${status}`,
+                            thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                            sourceUrl: require('../server').REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                });
+                return;
             }
 
-            const action = args[0].toLowerCase();
-            
-            if (action === 'on' || action === 'enable' || action === 'true') {
-                server.AUTO_LIKE_STATUS = "true";
-                server.savePersistentData();
-                await reply('✅ Auto like status enabled');
-            } else if (action === 'off' || action === 'disable' || action === 'false') {
-                server.AUTO_LIKE_STATUS = "false";
-                server.savePersistentData();
-                await reply('❌ Auto like status disabled');
+            const likeStatus = args[0].toLowerCase();
+            if (likeStatus === 'on' || likeStatus === 'enable' || likeStatus === 'true') {
+                updateUserSettings(sessionId, { autoLikeStatus: "true" });
+                await reply(`✅ Auto like status enabled`);
+            } else if (likeStatus === 'off' || likeStatus === 'disable' || likeStatus === 'false') {
+                updateUserSettings(sessionId, { autoLikeStatus: "false" });
+                await reply(`❌ Auto like status disabled`);
             } else {
-                await reply('❌ Invalid option. Use "on" or "off"');
+                await reply(`❌ Invalid option. Use 'on' or 'off'`);
             }
         } catch (error) {
-            console.error('Error in autolikestatus command:', error);
-            await reply('❌ Error toggling auto like status');
+            console.error("Error in autolikestatus command:", error);
+            await reply(`❌ Error: ${error.message}`);
         }
-    },
-    tags: ['settings', 'owner']
+    }
 };

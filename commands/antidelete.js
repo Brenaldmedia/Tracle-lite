@@ -1,48 +1,53 @@
 module.exports = {
-    pattern: 'antidelete',
-    alias: ['antidel', 'undelete'],
-    description: 'Configure anti-delete system',
-    category: 'security',
-    execute: async (conn, message, m, { args, reply, sessionId }) => {
+    pattern: "antidelete",
+    name: "antidelete",
+    description: "Anti-delete settings",
+    tags: ["security"],
+    ownerOnly: true,
+    
+    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
         try {
+            const { PREFIX, userPrefixes, updateUserSettings } = require('../server');
             const userSettings = require('../server').getUserSettings(sessionId);
-            const prefix = require('../server').PREFIX;
-            const { isBotOwner, updateUserSettings } = require('../server');
-
-            // Check if user is bot owner
-            if (!isBotOwner(conn, message)) {
-                return await reply(`❌ Owner only command`);
-            }
-
+            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+            
             if (args.length === 0) {
                 const status = userSettings.antiDelete === "true" ? "✅ Enabled" : "❌ Disabled";
                 const mode = userSettings.antiDeleteMode === "dm" ? "📨 DM" : "💬 Chat";
                 
-                return await reply(
-                    `🗑️ *ANTI-DELETE SYSTEM*\n\nCurrent Status: ${status}\nMode: ${mode}\n\nUsage:\n• ${prefix}antidelete on - Enable anti-delete\n• ${prefix}antidelete off - Disable anti-delete\n• ${prefix}antidelete dm - Send deleted messages to DM\n• ${prefix}antidelete all - Send to original chat\n\nFeatures:\n• Captures text, images, videos, status updates\n• Shows group name for group messages\n• Sends media with captions\n• Works silently`
-                );
+                await reply(`🗑️ *ANTI-DELETE SYSTEM*\n\nCurrent Status: ${status}\nMode: ${mode}\n\nUsage:\n• ${userPrefix}antidelete on - Enable anti-delete\n• ${userPrefix}antidelete off - Disable anti-delete\n• ${userPrefix}antidelete dm - Send to DM\n• ${userPrefix}antidelete all - Send to original chat\n\nWhen enabled, deleted messages will be captured and restored.`, {
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "🗑️ Anti-Delete System",
+                            body: `Status: ${status}`,
+                            thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
+                            sourceUrl: require('../server').REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                });
+                return;
             }
 
-            const action = args[0].toLowerCase();
-
-            if (action === 'on' || action === 'enable' || action === 'true') {
+            const antiDeleteAction = args[0].toLowerCase();
+            if (antiDeleteAction === 'on' || antiDeleteAction === 'enable' || antiDeleteAction === 'true') {
                 updateUserSettings(sessionId, { antiDelete: "true" });
                 await reply(`✅ Anti-delete system enabled`);
-            } else if (action === 'off' || action === 'disable' || action === 'false') {
+            } else if (antiDeleteAction === 'off' || antiDeleteAction === 'disable' || antiDeleteAction === 'false') {
                 updateUserSettings(sessionId, { antiDelete: "false" });
                 await reply(`❌ Anti-delete system disabled`);
-            } else if (action === 'dm') {
+            } else if (antiDeleteAction === 'dm') {
                 updateUserSettings(sessionId, { antiDeleteMode: "dm" });
-                await reply(`✅ Anti-delete mode set to: DM\n\nDeleted messages will be sent to your DM.`);
-            } else if (action === 'all' || action === 'chat') {
+                await reply(`✅ Anti-delete mode set to: DM`);
+            } else if (antiDeleteAction === 'all' || antiDeleteAction === 'chat') {
                 updateUserSettings(sessionId, { antiDeleteMode: "all" });
-                await reply(`✅ Anti-delete mode set to: Original Chat\n\nDeleted messages will be sent back to the original chat.`);
+                await reply(`✅ Anti-delete mode set to: Original Chat`);
             } else {
                 await reply(`❌ Invalid option. Use 'on', 'off', 'dm', or 'all'`);
             }
         } catch (error) {
-            console.error('Error in antidelete command:', error);
-            await reply('❌ Error processing antidelete command');
+            console.error("Error in antidelete command:", error);
+            await reply(`❌ Error: ${error.message}`);
         }
     }
 };

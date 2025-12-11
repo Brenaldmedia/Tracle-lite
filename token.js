@@ -1,4 +1,4 @@
-// FILE: token.js (UPDATED VERSION WITH ENHANCED LOCATION, FREE TOKENS, AND REVENUE MANAGEMENT)
+// FILE: token.js (UPDATED VERSION WITH SUPABASE BACKUP)
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
@@ -1166,36 +1166,38 @@ class TokenManager {
         }
     }
 
-    async backupToB2() {
+    // ===== UPDATED: BACKUP TO SUPABASE =====
+    async backupToDrive() {
         try {
             const backupManager = require('./backup');
             if (backupManager.isConfigured()) {
-                console.log('🔄 Backing up token data to Backblaze B2...');
+                console.log('🔄 Backing up token data to Supabase...');
                 
                 // Backup tokens
                 const tokens = await this.getAllTokens();
                 const tokensData = JSON.stringify(tokens, null, 2);
-                const tokensResult = await backupManager.uploadToB2('tokens.json', tokensData);
+                const tokensResult = await backupManager.uploadToDrive('tokens.json', tokensData);
                 
                 // Backup users
                 const users = await this.getAllUsers();
                 const usersData = JSON.stringify(users, null, 2);
-                const usersResult = await backupManager.uploadToB2('users.json', usersData);
+                const usersResult = await backupManager.uploadToDrive('users.json', usersData);
                 
                 // Backup requests
                 const requests = await this.getAllRequests();
                 const requestsData = JSON.stringify(requests, null, 2);
-                const requestsResult = await backupManager.uploadToB2('requests.json', requestsData);
+                const requestsResult = await backupManager.uploadToDrive('requests.json', requestsData);
                 
                 // Send email notification
                 if (tokensResult.success && usersResult.success && requestsResult.success) {
                     await this.sendEmail(
                         this.adminEmail,
-                        '✅ Tracle-Lite Backup Completed',
+                        '✅ Tracle-Lite Backup Completed (Supabase)',
                         `<h2>✅ Backup Successful</h2>
-                        <p>All Tracle-Lite data has been backed up to Backblaze B2.</p>
+                        <p>All Tracle-Lite data has been backed up to Supabase.</p>
                         <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                        <p><strong>Backup Location:</strong> ${process.env.B2_BUCKET_NAME || 'tracle-new-backup'}</p>
+                        <p><strong>Backup Location:</strong> Supabase Storage</p>
+                        <p><strong>Bucket:</strong> ${process.env.SUPABASE_BUCKET || 'tracle-backups'}</p>
                         <p><strong>Items backed up:</strong></p>
                         <ul>
                             <li>Users: ${Object.keys(users).length}</li>
@@ -1207,7 +1209,7 @@ class TokenManager {
                         <p>You can restore this backup anytime from the admin dashboard.</p>`
                     );
                     
-                    console.log('✅ Token data backup completed successfully');
+                    console.log('✅ Token data backup to Supabase completed successfully');
                     return { 
                         success: true, 
                         message: 'Backup completed and email sent',
@@ -1217,7 +1219,7 @@ class TokenManager {
                         timestamp: new Date().toISOString()
                     };
                 } else {
-                    console.log('❌ Token data backup partially failed');
+                    console.log('❌ Token data backup to Supabase partially failed');
                     return { 
                         success: false, 
                         message: 'Partial backup failure',
@@ -1227,67 +1229,69 @@ class TokenManager {
                     };
                 }
             }
-            console.log('❌ Backblaze B2 not configured');
-            return { success: false, message: 'Backblaze B2 not configured' };
+            console.log('❌ Supabase not configured');
+            return { success: false, message: 'Supabase not configured' };
         } catch (error) {
-            console.error('Error backing up to B2:', error);
+            console.error('Error backing up to Supabase:', error);
             return { success: false, message: error.message };
         }
     }
 
-    async restoreFromB2() {
+    // ===== UPDATED: RESTORE FROM SUPABASE =====
+    async restoreFromDrive() {
         try {
             const backupManager = require('./backup');
             if (backupManager.isConfigured()) {
-                console.log('🔄 Restoring token data from Backblaze B2...');
+                console.log('🔄 Restoring token data from Supabase...');
                 
                 let restoredCount = 0;
                 let restoreDetails = [];
                 
                 // Restore tokens
-                const tokensData = await backupManager.downloadFromB2('tokens.json');
+                const tokensData = await backupManager.downloadFromDrive('tokens.json');
                 if (tokensData) {
                     await fs.writeFile(this.tokensFile, tokensData);
                     const tokens = JSON.parse(tokensData);
-                    console.log(`✅ Restored tokens.json from Backblaze B2 (${Object.keys(tokens).length} tokens)`);
+                    console.log(`✅ Restored tokens.json from Supabase (${Object.keys(tokens).length} tokens)`);
                     restoredCount++;
                     restoreDetails.push(`Tokens: ${Object.keys(tokens).length}`);
                 } else {
-                    console.log('⚠️ No tokens.json found on Backblaze B2');
+                    console.log('⚠️ No tokens.json found on Supabase');
                 }
                 
                 // Restore users
-                const usersData = await backupManager.downloadFromB2('users.json');
+                const usersData = await backupManager.downloadFromDrive('users.json');
                 if (usersData) {
                     await fs.writeFile(this.usersFile, usersData);
                     const users = JSON.parse(usersData);
-                    console.log(`✅ Restored users.json from Backblaze B2 (${Object.keys(users).length} users)`);
+                    console.log(`✅ Restored users.json from Supabase (${Object.keys(users).length} users)`);
                     restoredCount++;
                     restoreDetails.push(`Users: ${Object.keys(users).length}`);
                 } else {
-                    console.log('⚠️ No users.json found on Backblaze B2');
+                    console.log('⚠️ No users.json found on Supabase');
                 }
                 
                 // Restore requests
-                const requestsData = await backupManager.downloadFromB2('requests.json');
+                const requestsData = await backupManager.downloadFromDrive('requests.json');
                 if (requestsData) {
                     await fs.writeFile(this.requestsFile, requestsData);
                     const requests = JSON.parse(requestsData);
-                    console.log(`✅ Restored requests.json from Backblaze B2 (${Object.keys(requests).length} requests)`);
+                    console.log(`✅ Restored requests.json from Supabase (${Object.keys(requests).length} requests)`);
                     restoredCount++;
                     restoreDetails.push(`Requests: ${Object.keys(requests).length}`);
                 } else {
-                    console.log('⚠️ No requests.json found on Backblaze B2');
+                    console.log('⚠️ No requests.json found on Supabase');
                 }
                 
                 // Send email notification
                 await this.sendEmail(
                     this.adminEmail,
-                    '🔄 Tracle-Lite Restore Completed',
+                    '🔄 Tracle-Lite Restore Completed (Supabase)',
                     `<h2>🔄 Restore Successful</h2>
-                    <p>Tracle-Lite data has been restored from Backblaze B2 backup.</p>
+                    <p>Tracle-Lite data has been restored from Supabase backup.</p>
                     <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                    <p><strong>Restore Source:</strong> ${process.env.B2_BUCKET_NAME || 'tracle-new-backup'}</p>
+                    <p><strong>Restore Source:</strong> Supabase Storage</p>
+                    <p><strong>Bucket:</strong> ${process.env.SUPABASE_BUCKET || 'tracle-backups'}</p>
                     <p><strong>Items restored:</strong></p>
                     <ul>
                         ${restoreDetails.map(detail => `<li>${detail}</li>`).join('')}
@@ -1297,7 +1301,7 @@ class TokenManager {
                     <p>All restored data is now active and available in the system.</p>`
                 );
                 
-                console.log(`✅ Token data restore completed successfully (${restoredCount}/3 files)`);
+                console.log(`✅ Token data restore from Supabase completed successfully (${restoredCount}/3 files)`);
                 return { 
                     success: true, 
                     message: 'Restore completed and email sent',
@@ -1306,14 +1310,15 @@ class TokenManager {
                     timestamp: new Date().toISOString()
                 };
             }
-            console.log('❌ Backblaze B2 not configured');
-            return { success: false, message: 'Backblaze B2 not configured' };
+            console.log('❌ Supabase not configured');
+            return { success: false, message: 'Supabase not configured' };
         } catch (error) {
-            console.error('Error restoring from B2:', error);
+            console.error('Error restoring from Supabase:', error);
             return { success: false, message: error.message };
         }
     }
 
+    // ===== UPDATED: GET BACKUP STATUS =====
     async getBackupStatus() {
         try {
             const backupManager = require('./backup');
@@ -1321,10 +1326,10 @@ class TokenManager {
                 return 'not_configured';
             }
             
-            // Check if backup files exist on B2
-            const tokensData = await backupManager.downloadFromB2('tokens.json');
-            const usersData = await backupManager.downloadFromB2('users.json');
-            const requestsData = await backupManager.downloadFromB2('requests.json');
+            // Check if backup files exist on Supabase
+            const tokensData = await backupManager.downloadFromDrive('tokens.json');
+            const usersData = await backupManager.downloadFromDrive('users.json');
+            const requestsData = await backupManager.downloadFromDrive('requests.json');
             
             if (tokensData && usersData && requestsData) {
                 return 'available';
@@ -1348,11 +1353,11 @@ class TokenManager {
                 // Use setTimeout to avoid blocking the main thread
                 setTimeout(async () => {
                     try {
-                        const result = await this.backupToB2();
+                        const result = await this.backupToDrive();
                         if (result.success) {
-                            console.log(`✅ Auto-backup completed after ${action}`);
+                            console.log(`✅ Auto-backup to Supabase completed after ${action}`);
                         } else {
-                            console.log(`⚠️ Auto-backup failed after ${action}: ${result.message}`);
+                            console.log(`⚠️ Auto-backup to Supabase failed after ${action}: ${result.message}`);
                         }
                     } catch (error) {
                         console.error(`❌ Auto-backup error after ${action}:`, error.message);
