@@ -1530,7 +1530,7 @@ async function handleMessage(conn, message, sessionId) {
         
         // BANK COMMAND with context info
         if (commandName === 'bank') {
-            const bankMessage = `🏦 *Bank Details*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\n💡 Use ${userPrefix}setbank to change bank details`;
+            const bankMessage = `🏦 *Bank Details*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\n These are my account details`;
             
             await conn.sendMessage(message.key.remoteJid, { 
                 text: bankMessage,
@@ -1877,25 +1877,25 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
         
-        // ACTIVE COMMAND with context info
-        if (commandName === 'active') {
-            const connectedSessions = Array.from(activeConnections.values())
-                .filter(data => data.isConnected).length;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `📊 *Active Sessions*\n\n• Total Sessions: ${activeConnections.size}\n• Connected: ${connectedSessions}\n• Commands Loaded: ${commands.size}\n• Uptime: ${Math.floor(process.uptime() / 60)} minutes`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Active Sessions",
-                        body: `${connectedSessions} connected | ${activeConnections.size} total`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1
-                    }
-                }
-            }, { quoted: message });
-            return;
+    // ACTIVE COMMAND with context info 
+if (commandName === 'active' || commandName === 'activeusers') {
+    const activeUsers = Array.from(activeConnections.keys());
+    const formattedList = activeUsers.join(' / ');
+    
+    await conn.sendMessage(message.key.remoteJid, {
+        text: `📋 *ACTIVE USERS*\n\n${formattedList}\n\nTotal: ${activeUsers.length} users connected`,
+        contextInfo: {
+            externalAdReply: {
+                title: "📊 Active Users",
+                body: `${activeUsers.length} users currently connected`,
+                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                sourceUrl: REPO_LINK,
+                mediaType: 1
+            }
         }
+    }, { quoted: message });
+    return;
+}
         
         // CHANNELS COMMAND with context info
         if (commandName === 'channels') {
