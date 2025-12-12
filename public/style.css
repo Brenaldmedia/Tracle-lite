@@ -1,47 +1,47 @@
-/* ===== DARK THEME VARIABLES ===== */
+/* ===== THEME VARIABLES ===== */
 :root {
-    /* Dark Theme Colors */
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --accent-primary: #8b5cf6;
-    --accent-secondary: #6366f1;
-    --accent-success: #10b981;
-    --accent-warning: #f59e0b;
-    --accent-danger: #ef4444;
-    --accent-info: #3b82f6;
-    
-    /* Gradient Colors */
-    --gradient-start: #7c3aed;
-    --gradient-end: #4f46e5;
-    
-    /* Borders */
-    --border-color: #475569;
-    --border-radius: 12px;
-    
-    /* Shadows */
-    --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
-    --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-    
-    /* Transitions */
-    --transition: all 0.3s ease;
-}
-
-/* Light Theme Variables */
-body:not(.dark-theme) {
+    /* Light Theme Colors (Default) */
     --bg-primary: #ffffff;
     --bg-secondary: #f8fafc;
     --bg-tertiary: #e2e8f0;
     --text-primary: #1e293b;
     --text-secondary: #475569;
     --text-muted: #64748b;
+    --accent-primary: #8b5cf6;
+    --accent-secondary: #6366f1;
+    --accent-success: #10b981;
+    --accent-warning: #f59e0b;
+    --accent-danger: #ef4444;
+    --accent-info: #3b82f6;
     --border-color: #cbd5e1;
+    
+    /* Gradient Colors */
+    --gradient-start: #7c3aed;
+    --gradient-end: #4f46e5;
+    
+    /* Borders */
+    --border-radius: 12px;
+    
+    /* Shadows */
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+    --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    
+    /* Transitions */
+    --transition: all 0.3s ease;
+}
+
+/* Dark Theme Variables */
+body.dark-theme {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-color: #475569;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
 /* ===== BASE STYLES ===== */
@@ -299,6 +299,11 @@ body {
     transition: var(--transition);
     color: var(--text-secondary);
     margin: 5px 0;
+    text-decoration: none;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: inherit;
 }
 
 .nav-item:hover {

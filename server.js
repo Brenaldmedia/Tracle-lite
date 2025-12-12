@@ -1,4 +1,4 @@
-// SERVER.JS (COMPLETE UPDATED VERSION WITH SUPABASE BACKUP)
+// SERVER.JS (COMPLETE UPDATED VERSION WITH SUPABASE BACKUP AND CONTEXT INFO FOR ALL COMMANDS)
 require('dotenv').config();
 const express = require('express');
 const makeWASocket = require('@whiskeysockets/baileys').default;
@@ -139,20 +139,22 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
             botNumber = botNumber.replace(/\D/g, '');
             const userJid = `${botNumber}@s.whatsapp.net`;
             
-            // UPDATED: Added enhanced context info to the alive message
-            const aliveMessage = `🤖 *${userSettings.botName || BOT_NAME} - ALIVE CHECK* 🤖
+            // DARK HUMOR + SARCASTIC + FUNNY ALIVE MESSAGE
+            const aliveMessage = `💀 *${userSettings.botName || BOT_NAME} - SYSTEM STATUS REPORT* 💀
 
-✅ I'm still alive and running smoothly!
-⏰ Time: ${new Date().toLocaleString()}
-📱 Session: ${sessionId}
-🔧 Status: Operational & Stable
-📊 Connection: Active
-🔋 Health: Excellent
+Surprise. I'm still alive.
+Trust me, I'm just as shocked as you are.
 
-I'm here to help with all your bot needs! 
-If you need assistance, just type *${PREFIX}menu* to see all available commands.
+🕒 Time: ${new Date().toLocaleString()}
+📱 Session ID: ${sessionId}
+⚙️ Status: Running (for now… probably)
+📡 Connection:  Running smoother than your Babe, avoiding your texts
+🧠 Bot Health: 100% — despite all the code you throw at me
 
-Stay awesome! 🌟`;
+I haven't crashed yet, which is honestly impressive.
+Need something? Type *${PREFIX}menu* before I mysteriously "malfunction" again. 👀
+
+Anyway… stay chaotic. 🌚`;
 
             console.log(`💌 Sending alive message to ${userJid} for session ${sessionId}`);
             
@@ -1094,28 +1096,36 @@ Every donation, no matter how small, makes a big difference! 🙏
 Thank you for supporting the development of TRACLE - LITE! 🚀`;
 }
 
-// =============== UPDATED COMMAND HANDLER WITH CONTEXT INFO FOR ALL COMMANDS ===============
-async function handleCommandWithContext(conn, commandName, message, sessionId, args, m) {
+// =============== ENHANCED COMMAND HANDLER WITH CONTEXT INFO FOR ALL COMMANDS ===============
+async function handleCommandWithEnhancedContext(conn, commandName, message, sessionId, args, m) {
     try {
         const command = commands.get(commandName);
         if (!command) return false;
 
         console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
         
+        // Get user settings for context info
+        const userSettings = getUserSettings(sessionId);
+        
         const reply = (text, options = {}) => {
-            // Add context info to all command replies
+            // Enhanced context info for all command replies
             const contextOptions = {
                 quoted: message,
                 contextInfo: {
                     externalAdReply: {
                         title: `${userSettings.botName || BOT_NAME} Command`,
-                        body: `Command: ${commandName}`,
+                        body: `Executed: ${commandName}`,
                         thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
                         sourceUrl: REPO_LINK,
                         mediaType: 1
                     },
                     forwardingScore: 999,
-                    isForwarded: false
+                    isForwarded: false,
+                    stanzaId: "CMD" + Date.now(),
+                    participant: conn.user?.id,
+                    quotedMessage: {
+                        conversation: text.substring(0, 50) + (text.length > 50 ? "..." : "")
+                    }
                 },
                 ...options
             };
@@ -1157,6 +1167,7 @@ async function handleCommandWithContext(conn, commandName, message, sessionId, a
                         title: "Permission Denied",
                         body: "This command requires owner privileges",
                         thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
                         mediaType: 1
                     }
                 }
@@ -1175,7 +1186,8 @@ async function handleCommandWithContext(conn, commandName, message, sessionId, a
             sender: message.key.participant || message.key.remoteJid,
             isAdmins: isAdmins,
             isCreator: isCreator,
-            sessionId: sessionId
+            sessionId: sessionId,
+            userSettings: userSettings
         });
         
         return true;
@@ -1191,6 +1203,7 @@ async function handleCommandWithContext(conn, commandName, message, sessionId, a
                     title: "Command Error",
                     body: `Failed to execute: ${commandName}`,
                     thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
                     mediaType: 1
                 }
             }
@@ -1198,7 +1211,7 @@ async function handleCommandWithContext(conn, commandName, message, sessionId, a
         return false;
     }
 }
-// =============== END UPDATED COMMAND HANDLER ===============
+// =============== END ENHANCED COMMAND HANDLER ===============
 
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -1252,6 +1265,793 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
 
+        // Handle built-in commands with enhanced context
+        const userSettings = getUserSettings(sessionId);
+        
+        // SUPPORT COMMAND with context info
+        if (commandName === 'support') {
+            const supportMessage = generateSupportMessage(userSettings);
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: supportMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "💝 Support Tracle-Lite",
+                        body: "Your support helps keep the bot running!",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    },
+                    forwardingScore: 999,
+                    isForwarded: false,
+                    stanzaId: "SUP" + Date.now(),
+                    participant: conn.user?.id
+                }
+            });
+            return;
+        }
+        
+        // MODE COMMAND with context info
+        if (commandName === 'mode') {
+            const newMode = args[0]?.toLowerCase();
+            const validModes = ['public', 'private'];
+            
+            if (!newMode || !validModes.includes(newMode)) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `📊 *Current Bot Mode:* ${userSettings.botMode}\n\nUsage: ${userPrefix}mode [public/private]\n\n• *public*: Bot responds to everyone\n• *private*: Bot responds only to owner`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Bot Mode Settings",
+                            body: `Current mode: ${userSettings.botMode}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            if (newMode === userSettings.botMode) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ Bot is already in ${userSettings.botMode} mode`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Mode Unchanged",
+                            body: `Bot is already in ${userSettings.botMode} mode`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { botMode: newMode });
+            
+            const modeMessage = `✅ *Bot Mode Updated*\n\n• Previous: ${userSettings.botMode}\n• New: ${newMode}\n\n${newMode === 'private' ? '🔒 Bot will now only respond to owner commands' : '🌍 Bot will now respond to everyone'}`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: modeMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Mode Changed Successfully",
+                        body: `Bot mode changed to ${newMode}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // AUTOVIEWSTATUS COMMAND with context info
+        if (commandName === 'autoviewstatus') {
+            const action = args[0]?.toLowerCase();
+            
+            if (!action || (action !== 'on' && action !== 'off')) {
+                const status = userSettings.autoViewStatus === "true" ? "✅ ON" : "❌ OFF";
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `👀 *Auto View Status Settings*\n\nCurrent: ${status}\n\nUsage: ${userPrefix}autoviewstatus [on/off]\n\n• *on*: Automatically views status updates\n• *off*: Disables auto-viewing status`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Auto View Status",
+                            body: `Status: ${status}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const newStatus = action === 'on' ? "true" : "false";
+            
+            if (newStatus === userSettings.autoViewStatus) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ Auto-view status is already ${action === 'on' ? 'enabled' : 'disabled'}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Settings Unchanged",
+                            body: `Auto-view is already ${action}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { autoViewStatus: newStatus });
+            
+            const statusMessage = `✅ *Auto View Status Updated*\n\n• Previous: ${userSettings.autoViewStatus === "true" ? "ON" : "OFF"}\n• New: ${action.toUpperCase()}\n\n${newStatus === "true" ? '👀 Bot will now automatically view status updates' : '❌ Auto-view status disabled'}`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: statusMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Auto View Status Changed",
+                        body: `Now: ${action.toUpperCase()}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // AUTOLIKESTATUS COMMAND with context info
+        if (commandName === 'autolikestatus') {
+            const action = args[0]?.toLowerCase();
+            
+            if (!action || (action !== 'on' && action !== 'off')) {
+                const status = userSettings.autoLikeStatus === "true" ? "✅ ON" : "❌ OFF";
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❤️ *Auto Like Status Settings*\n\nCurrent: ${status}\n\nUsage: ${userPrefix}autolikestatus [on/off]\n\n• *on*: Automatically reacts to status updates\n• *off*: Disables auto-reacting to status`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Auto Like Status",
+                            body: `Status: ${status}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const newStatus = action === 'on' ? "true" : "false";
+            
+            if (newStatus === userSettings.autoLikeStatus) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ Auto-like status is already ${action === 'on' ? 'enabled' : 'disabled'}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Settings Unchanged",
+                            body: `Auto-like is already ${action}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { autoLikeStatus: newStatus });
+            
+            const statusMessage = `✅ *Auto Like Status Updated*\n\n• Previous: ${userSettings.autoLikeStatus === "true" ? "ON" : "OFF"}\n• New: ${action.toUpperCase()}\n\n${newStatus === "true" ? '❤️ Bot will now automatically react to status updates' : '❌ Auto-like status disabled'}`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: statusMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Auto Like Status Changed",
+                        body: `Now: ${action.toUpperCase()}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // ANTIDELETE COMMAND with context info
+        if (commandName === 'antidelete') {
+            const action = args[0]?.toLowerCase();
+            const mode = args[1]?.toLowerCase();
+            const validModes = ['dm', 'group'];
+            
+            if (!action || (action !== 'on' && action !== 'off')) {
+                const status = userSettings.antiDelete === "true" ? "✅ ON" : "❌ OFF";
+                const currentMode = userSettings.antiDeleteMode === "dm" ? "DM (to owner)" : "Group (where deleted)";
+                
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `🚫 *Anti-Delete Settings*\n\nCurrent Status: ${status}\nCurrent Mode: ${currentMode}\n\nUsage:\n• ${userPrefix}antidelete [on/off]\n• ${userPrefix}antidelete on [dm/group]\n\n• *on*: Enable anti-delete protection\n• *off*: Disable anti-delete\n• *dm*: Send deleted messages to owner's DM\n• *group*: Show deleted messages in the group`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Anti-Delete Protection",
+                            body: `Status: ${status}, Mode: ${userSettings.antiDeleteMode}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const newStatus = action === 'on' ? "true" : "false";
+            let newMode = userSettings.antiDeleteMode;
+            
+            if (mode && validModes.includes(mode)) {
+                newMode = mode;
+            }
+            
+            if (newStatus === userSettings.antiDelete && (!mode || newMode === userSettings.antiDeleteMode)) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ Anti-delete is already ${action === 'on' ? 'enabled' : 'disabled'} with ${userSettings.antiDeleteMode} mode`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Settings Unchanged",
+                            body: "No changes made",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { 
+                antiDelete: newStatus,
+                antiDeleteMode: newMode 
+            });
+            
+            const statusMessage = `✅ *Anti-Delete Settings Updated*\n\n• Status: ${newStatus === "true" ? "ON ✅" : "OFF ❌"}\n• Mode: ${newMode.toUpperCase()}${newMode === 'dm' ? ' (to owner)' : ' (in group)'}\n\n${newStatus === "true" ? `🚫 Anti-delete enabled! Deleted messages will be ${newMode === 'dm' ? 'sent to owner' : 'shown in group'}.` : '✅ Anti-delete disabled.'}`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: statusMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Anti-Delete Settings Changed",
+                        body: `Status: ${newStatus === "true" ? "ON" : "OFF"}, Mode: ${newMode}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // BANK COMMAND with context info
+        if (commandName === 'bank') {
+            const bankMessage = `🏦 *Bank Details*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\n💡 Use ${userPrefix}setbank to change bank details`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: bankMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bank Details",
+                        body: `${userSettings.bankName} - ${userSettings.accountName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETBANK COMMAND with context info
+        if (commandName === 'setbank') {
+            if (args.length < 3) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `🏦 *Set Bank Details*\n\nUsage: ${userPrefix}setbank [bank name] [account number] [account name]\n\nExample: ${userPrefix}setbank "ZENITH Bank" "2126335411" "EMMANUEL ISIBOR"`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Bank Details",
+                            body: "Update your bank information",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const bankName = args[0];
+            const accountNumber = args[1];
+            const accountName = args.slice(2).join(' ');
+            
+            updateUserSettings(sessionId, { 
+                bankName: bankName,
+                accountNumber: accountNumber,
+                accountName: accountName
+            });
+            
+            const updateMessage = `✅ *Bank Details Updated*\n\n🏛️ Bank Name: *${bankName}*\n📊 Account Number: *${accountNumber}*\n👤 Account Name: *${accountName}*\n\n💡 Use ${userPrefix}bank to view details`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bank Details Updated",
+                        body: `${bankName} - ${accountName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETACCOUNTNUMBER COMMAND with context info
+        if (commandName === 'setaccountnumber') {
+            if (!args[0]) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `📊 *Set Account Number*\n\nUsage: ${userPrefix}setaccountnumber [account number]\n\nCurrent: ${userSettings.accountNumber}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Account Number",
+                            body: `Current: ${userSettings.accountNumber}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const accountNumber = args[0];
+            
+            updateUserSettings(sessionId, { accountNumber: accountNumber });
+            
+            const updateMessage = `✅ *Account Number Updated*\n\n📊 Previous: ${userSettings.accountNumber}\n📊 New: *${accountNumber}*`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Account Number Updated",
+                        body: `New: ${accountNumber}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETACCOUNTNAME COMMAND with context info
+        if (commandName === 'setaccountname') {
+            if (!args[0]) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `👤 *Set Account Name*\n\nUsage: ${userPrefix}setaccountname [account name]\n\nCurrent: ${userSettings.accountName}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Account Name",
+                            body: `Current: ${userSettings.accountName}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const accountName = args.join(' ');
+            
+            updateUserSettings(sessionId, { accountName: accountName });
+            
+            const updateMessage = `✅ *Account Name Updated*\n\n👤 Previous: ${userSettings.accountName}\n👤 New: *${accountName}*`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Account Name Updated",
+                        body: `New: ${accountName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETBOTNAME COMMAND with context info
+        if (commandName === 'setbotname') {
+            if (!args[0]) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `🤖 *Set Bot Name*\n\nUsage: ${userPrefix}setbotname [new bot name]\n\nCurrent: ${userSettings.botName || BOT_NAME}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Bot Name",
+                            body: `Current: ${userSettings.botName || BOT_NAME}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const botName = args.join(' ');
+            
+            updateUserSettings(sessionId, { botName: botName });
+            
+            const updateMessage = `✅ *Bot Name Updated*\n\n🤖 Previous: ${userSettings.botName || BOT_NAME}\n🤖 New: *${botName}*`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bot Name Updated",
+                        body: `New name: ${botName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETBOTIMAGE COMMAND with context info
+        if (commandName === 'setbotimage') {
+            if (!args[0]) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `🖼️ *Set Bot Image*\n\nUsage: ${userPrefix}setbotimage [image URL]\n\nCurrent: ${userSettings.botImage || MENU_IMAGE_URL}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Bot Image",
+                            body: "Update bot's thumbnail image",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const botImage = args[0];
+            
+            // Validate URL
+            try {
+                new URL(botImage);
+            } catch (error) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ Invalid URL. Please provide a valid image URL.`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Invalid URL",
+                            body: "Please provide a valid image URL",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { botImage: botImage });
+            
+            const updateMessage = `✅ *Bot Image Updated*\n\n🖼️ New image URL set!\n\nImage will be used in:\n• Menu commands\n• Support messages\n• Alive messages\n• Command responses`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bot Image Updated",
+                        body: "New thumbnail image set",
+                        thumbnailUrl: botImage,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // MENU COMMAND with context info
+        if (commandName === 'menu' || commandName === 'help') {
+            const menuText = generateMenu(userPrefix, sessionId, userSettings);
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: menuText,
+                contextInfo: {
+                    externalAdReply: {
+                        title: `${userSettings.botName || BOT_NAME} Menu`,
+                        body: `${commands.size} commands available | Prefix: ${userPrefix}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    },
+                    forwardingScore: 999,
+                    isForwarded: false
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // PING COMMAND with context info
+        if (commandName === 'ping') {
+            const start = Date.now();
+            await conn.sendPresenceUpdate('available', message.key.remoteJid);
+            const latency = Date.now() - start;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `🏓 Pong! Latency: ${latency}ms\n\n🤖 Bot: ${userSettings.botName || BOT_NAME}\n🔧 Commands: ${commands.size}\n📊 Active Sessions: ${activeConnections.size}`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bot Status",
+                        body: `Latency: ${latency}ms | Active: ${activeConnections.size}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // OWNER COMMAND with context info
+        if (commandName === 'owner') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `👑 *Owner Information*\n\n• Name: ${userSettings.ownerName || OWNER_NAME}\n• Bot: ${userSettings.botName || BOT_NAME}\n• GitHub: ${REPO_LINK}\n\n💡 For support, use ${userPrefix}support`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Owner Information",
+                        body: `${userSettings.ownerName || OWNER_NAME}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // PREFIX COMMAND with context info
+        if (commandName === 'prefix') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `📌 Current prefix: *${userPrefix}*\n\nTo change prefix, use: ${userPrefix}setprefix [new prefix]`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bot Prefix",
+                        body: `Current: ${userPrefix}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETPREFIX COMMAND with context info
+        if (commandName === 'setprefix') {
+            const newPrefix = args[0];
+            if (!newPrefix) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `Usage: ${userPrefix}setprefix [new prefix]\n\nExample: ${userPrefix}setprefix !`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Prefix",
+                            body: `Current: ${userPrefix}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            userPrefixes.set(sessionId, newPrefix);
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `✅ Prefix updated!\n\nOld: ${userPrefix}\nNew: ${newPrefix}`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Prefix Updated",
+                        body: `New prefix: ${newPrefix}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // ACTIVE COMMAND with context info
+        if (commandName === 'active') {
+            const connectedSessions = Array.from(activeConnections.values())
+                .filter(data => data.isConnected).length;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `📊 *Active Sessions*\n\n• Total Sessions: ${activeConnections.size}\n• Connected: ${connectedSessions}\n• Commands Loaded: ${commands.size}\n• Uptime: ${Math.floor(process.uptime() / 60)} minutes`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Active Sessions",
+                        body: `${connectedSessions} connected | ${activeConnections.size} total`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // CHANNELS COMMAND with context info
+        if (commandName === 'channels') {
+            const channelsList = CHANNEL_JIDS.map(jid => `• ${jid.split('@')[0]}`).join('\n');
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `📢 *Subscribed Channels*\n\n${channelsList}\n\nTotal: ${CHANNEL_JIDS.length} channels\n\nUse ${userPrefix}subscribe to subscribe to all channels`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Bot Channels",
+                        body: `${CHANNEL_JIDS.length} channels`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SUBSCRIBE COMMAND with context info
+        if (commandName === 'subscribe') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `📢 Subscribing to channels...`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Subscribing to Channels",
+                        body: "Please wait...",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            
+            const result = await subscribeToChannelsImmediately(conn, sessionId);
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `✅ *Subscription Complete*\n\n• Successful: ${result.successfulSubscriptions}/${result.totalChannels}\n• Failed: ${result.totalChannels - result.successfulSubscriptions}\n\n📢 Now subscribed to channels!`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Channel Subscription",
+                        body: `${result.successfulSubscriptions}/${result.totalChannels} channels`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // JOINGROUP COMMAND with context info
+        if (commandName === 'joingroup') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `👥 Joining group...`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Joining Group",
+                        body: "Please wait...",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            
+            const result = await handleAutoGroupJoin(conn, sessionId);
+            
+            if (result.success) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `✅ *Successfully joined group!*\n\nMethod: ${result.method}\n\n🔗 Invite link: ${GROUP_INVITE_LINK}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Group Join Successful",
+                            body: "Bot added to group",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+            } else {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `❌ *Failed to join group*\n\nError: ${result.error}\n\n🔗 You can join manually: ${GROUP_INVITE_LINK}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Group Join Failed",
+                            body: "Could not join group",
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+            }
+            return;
+        }
+        
+        // TRACLE COMMAND with context info
+        if (commandName === 'tracle') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `🚀 *TRACLE - LITE*\n\n• Version: 2.0\n• Developer: ${DEV}\n• GitHub: ${REPO_LINK}\n• Owner: ${userSettings.ownerName || OWNER_NAME}\n\n🌟 Advanced WhatsApp bot with multi-device support, Supabase backup, and more!`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "TRACLE - LITE",
+                        body: "Advanced WhatsApp Bot",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+        
+        // SETNAME COMMAND with context info
+        if (commandName === 'setname') {
+            if (!args[0]) {
+                await conn.sendMessage(message.key.remoteJid, { 
+                    text: `👤 *Set Owner Name*\n\nUsage: ${userPrefix}setname [new owner name]\n\nCurrent: ${userSettings.ownerName || OWNER_NAME}`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Set Owner Name",
+                            body: `Current: ${userSettings.ownerName || OWNER_NAME}`,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                            sourceUrl: REPO_LINK,
+                            mediaType: 1
+                        }
+                    }
+                }, { quoted: message });
+                return;
+            }
+            
+            const ownerName = args.join(' ');
+            
+            updateUserSettings(sessionId, { ownerName: ownerName });
+            
+            const updateMessage = `✅ *Owner Name Updated*\n\n👤 Previous: ${userSettings.ownerName || OWNER_NAME}\n👤 New: *${ownerName}*`;
+            
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: updateMessage,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Owner Name Updated",
+                        body: `New name: ${ownerName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }
+            }, { quoted: message });
+            return;
+        }
+
+        // If it's not a built-in command, check folder commands
         if (commands.has(commandName)) {
             const command = commands.get(commandName);
             
@@ -1259,19 +2059,21 @@ async function handleMessage(conn, message, sessionId) {
             
             try {
                 const reply = (text, options = {}) => {
-                    // UPDATED: Add context info to all command replies
+                    // Enhanced context info for all command replies
                     const contextOptions = {
                         quoted: message,
                         contextInfo: {
                             externalAdReply: {
-                                title: `${getUserSettings(sessionId).botName || BOT_NAME} Command`,
+                                title: `${userSettings.botName || BOT_NAME} Command`,
                                 body: `Command: ${commandName}`,
-                                thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
                                 sourceUrl: REPO_LINK,
                                 mediaType: 1
                             },
                             forwardingScore: 999,
-                            isForwarded: false
+                            isForwarded: false,
+                            stanzaId: "CMD" + Date.now(),
+                            participant: conn.user?.id
                         },
                         ...options
                     };
@@ -1319,7 +2121,7 @@ async function handleMessage(conn, message, sessionId) {
                             externalAdReply: {
                                 title: "Permission Denied",
                                 body: "This command requires owner privileges",
-                                thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
                                 mediaType: 1
                             }
                         }
@@ -1338,7 +2140,8 @@ async function handleMessage(conn, message, sessionId) {
                     sender: message.key.participant || message.key.remoteJid,
                     isAdmins: isAdmins,
                     isCreator: isCreator,
-                    sessionId: sessionId
+                    sessionId: sessionId,
+                    userSettings: userSettings
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
@@ -1350,7 +2153,7 @@ async function handleMessage(conn, message, sessionId) {
                         externalAdReply: {
                             title: "Command Error",
                             body: `Failed to execute: ${commandName}`,
-                            thumbnailUrl: getUserSettings(sessionId).botImage || MENU_IMAGE_URL,
+                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
                             mediaType: 1
                         }
                     }
@@ -1358,7 +2161,6 @@ async function handleMessage(conn, message, sessionId) {
             }
         } else {
             console.log(`⚠ Command not found: ${commandName}`);
-            const userSettings = getUserSettings(sessionId);
             if (userSettings.botMode === "public" || isBotOwner(conn, message, sessionId)) {
                 await conn.sendMessage(message.key.remoteJid, { 
                     text: `❌ Command not found: ${commandName}\nUse ${userPrefix}menu to see available commands`,
@@ -3137,7 +3939,30 @@ const startServer = async () => {
             console.log(`☁️ SUPABASE BACKUP: ENABLED`);
             console.log(`🔍 SUPABASE SESSION CHECKING: ENABLED (New API endpoints added)`);
             console.log(`⏰ ALIVE MESSAGE SYSTEM: ENABLED (Sends message every 4 hours)`);
-            console.log(`📱 ALL COMMANDS NOW HAVE CONTEXT INFO`);
+            console.log(`📱 ALL COMMANDS NOW HAVE ENHANCED CONTEXT INFO`);
+            console.log(`🔧 ADDED COMMANDS WITH CONTEXT INFO:`);
+            console.log(`   • mode (bot mode settings)`);
+            console.log(`   • autoviewstatus (auto view status)`);
+            console.log(`   • autolikestatus (auto like status)`);
+            console.log(`   • antidelete (anti-delete settings)`);
+            console.log(`   • support (support message)`);
+            console.log(`   • bank (bank details)`);
+            console.log(`   • setbank (set bank details)`);
+            console.log(`   • setaccountnumber (set account number)`);
+            console.log(`   • setaccountname (set account name)`);
+            console.log(`   • setbotname (set bot name)`);
+            console.log(`   • setbotimage (set bot image)`);
+            console.log(`   • setname (set owner name)`);
+            console.log(`   • menu/help (menu with context)`);
+            console.log(`   • ping (latency check)`);
+            console.log(`   • owner (owner info)`);
+            console.log(`   • prefix (prefix settings)`);
+            console.log(`   • setprefix (set prefix)`);
+            console.log(`   • active (active sessions)`);
+            console.log(`   • channels (channel list)`);
+            console.log(`   • subscribe (subscribe to channels)`);
+            console.log(`   • joingroup (join group)`);
+            console.log(`   • tracle (bot info)`);
             console.log(`🔗 CONNECTION STABILITY: IMPROVED (Longer timeout, keep-alive enabled)`);
 
             // Load commands
@@ -3174,7 +3999,7 @@ const startServer = async () => {
             // Start connection monitor
             startConnectionMonitor();
             
-            console.log(`✅ All systems initialized. Connections will stay active longer.`);
+            console.log(`✅ All systems initialized. All commands now include enhanced context info.`);
         });
         
         server.on('error', (err) => {
@@ -3239,6 +4064,7 @@ process.on('SIGINT', async () => {
     console.log('✅ Shutdown complete');
     console.log('📁 Sessions will be restored on next startup');
     console.log('☁️ Backups are available on Supabase');
+    console.log('📱 All commands will include context info on next startup');
     process.exit(0);
 });
 

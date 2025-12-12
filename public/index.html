@@ -74,7 +74,8 @@
                 <span>Admin Login</span>
             </div>
 
-            <div class="nav-item" onclick="toggleTheme()">
+            <!-- FIXED: Changed from onclick to data-section -->
+            <div class="nav-item" data-section="theme">
                 <i class="fas fa-moon"></i>
                 <span>Toggle Theme</span>
             </div>
@@ -242,12 +243,36 @@
                 </div>
 
                 <div class="features-grid">
-                    <div class="feature-card"><i class="fas fa-eye"></i><h3>Auto View</h3></div>
-                    <div class="feature-card"><i class="fas fa-heart"></i><h3>Auto Like</h3></div>
-                    <div class="feature-card"><i class="fas fa-trash-restore"></i><h3>Anti Delete</h3></div>
-                    <div class="feature-card"><i class="fas fa-rss"></i><h3>Auto Subscription</h3></div>
-                    <div class="feature-card"><i class="fas fa-cloud-upload-alt"></i><h3>Cloud Backup</h3></div>
-                    <div class="feature-card"><i class="fas fa-code"></i><h3>Custom Commands</h3></div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-eye"></i></div>
+                        <h3>Auto View</h3>
+                        <p>Automatically view stories and status updates</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-heart"></i></div>
+                        <h3>Auto Like</h3>
+                        <p>Automatically like posts and messages</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-trash-restore"></i></div>
+                        <h3>Anti Delete</h3>
+                        <p>Prevent message deletion in chats</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-rss"></i></div>
+                        <h3>Auto Subscription</h3>
+                        <p>Automatically subscribe to channels</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <h3>Cloud Backup</h3>
+                        <p>Backup your chats and media to cloud</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-code"></i></div>
+                        <h3>Custom Commands</h3>
+                        <p>Create custom commands and automation</p>
+                    </div>
                 </div>
             </section>
 

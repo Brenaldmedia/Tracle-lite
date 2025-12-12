@@ -7,17 +7,33 @@ class AdminDashboard {
         this.currentTab = 'dashboard';
         this.charts = {};
         this.themes = [
-            { primary: '#4f46e5', secondary: '#8b5cf6', name: 'Purple', class: 'theme-purple' },
-            { primary: '#3b82f6', secondary: '#60a5fa', name: 'Blue', class: 'theme-blue' },
-            { primary: '#10b981', secondary: '#34d399', name: 'Green', class: 'theme-green' },
-            { primary: '#f59e0b', secondary: '#fbbf24', name: 'Orange', class: 'theme-orange' },
-            { primary: '#ef4444', secondary: '#f87171', name: 'Red', class: 'theme-red' },
-            { primary: '#8b5cf6', secondary: '#a78bfa', name: 'Violet', class: 'theme-violet' },
-            { primary: '#ec4899', secondary: '#f472b6', name: 'Pink', class: 'theme-pink' },
-            { primary: '#14b8a6', secondary: '#2dd4bf', name: 'Teal', class: 'theme-teal' },
-            { primary: '#f97316', secondary: '#fb923c', name: 'Amber', class: 'theme-amber' },
-            { primary: '#6366f1', secondary: '#818cf8', name: 'Indigo', class: 'theme-indigo' }
+            { 
+                primary: '#7c3aed', 
+                secondary: '#4f46e5', 
+                name: 'Light Mode', 
+                class: 'theme-light',
+                sidebarBg: 'linear-gradient(180deg, #7c3aed 0%, #4f46e5 100%)'
+            },
+            { 
+                primary: '#8b5cf6', 
+                secondary: '#6366f1', 
+                name: 'Dark Mode', 
+                class: 'theme-dark',
+                sidebarBg: 'linear-gradient(180deg, #111827 0%, #000000 100%)'
+            }
         ];
+        
+        // Status colors mapping
+        this.statusColors = {
+            'paid': '#10b981',
+            'pending': '#f59e0b',
+            'free': '#8b5cf6',
+            'approved': '#3b82f6',
+            'terminated': '#ef4444',
+            'active': '#06b6d4',
+            'expired': '#6b7280',
+            'revoked': '#991b1b'
+        };
         
         this.init();
     }
@@ -27,8 +43,9 @@ class AdminDashboard {
         this.checkAuth();
         this.initCustomModal();
         this.loadSavedTheme();
-        this.addLocationStyles(); // Add location styles
-        this.ensureThemeCSS(); // Ensure theme CSS is loaded
+        this.addLocationStyles();
+        this.ensureThemeCSS();
+        this.updateLoginModal();
     }
 
     ensureThemeCSS() {
@@ -38,112 +55,140 @@ class AdminDashboard {
             style.id = 'theme-css-overrides';
             style.textContent = `
                 /* Theme variable overrides - Higher specificity */
-                body.theme-purple {
-                    --primary-color: #4f46e5 !important;
-                    --primary-dark: #3730a3 !important;
-                    --secondary-color: #8b5cf6 !important;
-                    background-color: #f5f7fa !important;
+                body.theme-light {
+                    --primary-color: #7c3aed !important;
+                    --secondary-color: #4f46e5 !important;
+                    --gradient-start: #7c3aed !important;
+                    --gradient-end: #4f46e5 !important;
+                    --dark-color: #1f2937 !important;
+                    --light-color: #ffffff !important;
+                    --gray-color: #6b7280 !important;
+                    --gray-light: #f3f4f6 !important;
+                    --border-color: #e5e7eb !important;
+                    --card-bg: #ffffff !important;
+                    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+                    color: #1f2937 !important;
                 }
                 
-                body.theme-blue {
-                    --primary-color: #3b82f6 !important;
-                    --primary-dark: #1e40af !important;
-                    --secondary-color: #60a5fa !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-green {
-                    --primary-color: #10b981 !important;
-                    --primary-dark: #047857 !important;
-                    --secondary-color: #34d399 !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-orange {
-                    --primary-color: #f59e0b !important;
-                    --primary-dark: #d97706 !important;
-                    --secondary-color: #fbbf24 !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-red {
-                    --primary-color: #ef4444 !important;
-                    --primary-dark: #dc2626 !important;
-                    --secondary-color: #f87171 !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-violet {
+                body.theme-dark {
                     --primary-color: #8b5cf6 !important;
-                    --primary-dark: #7c3aed !important;
-                    --secondary-color: #a78bfa !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-pink {
-                    --primary-color: #ec4899 !important;
-                    --primary-dark: #db2777 !important;
-                    --secondary-color: #f472b6 !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-teal {
-                    --primary-color: #14b8a6 !important;
-                    --primary-dark: #0d9488 !important;
-                    --secondary-color: #2dd4bf !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-amber {
-                    --primary-color: #f97316 !important;
-                    --primary-dark: #ea580c !important;
-                    --secondary-color: #fb923c !important;
-                    background-color: #f5f7fa !important;
-                }
-                
-                body.theme-indigo {
-                    --primary-color: #6366f1 !important;
-                    --primary-dark: #4f46e5 !important;
-                    --secondary-color: #818cf8 !important;
-                    background-color: #f5f7fa !important;
+                    --secondary-color: #6366f1 !important;
+                    --gradient-start: #8b5cf6 !important;
+                    --gradient-end: #6366f1 !important;
+                    --dark-color: #f9fafb !important;
+                    --light-color: #111827 !important;
+                    --gray-color: #9ca3af !important;
+                    --gray-light: #1f2937 !important;
+                    --border-color: #374151 !important;
+                    --card-bg: #1f2937 !important;
+                    background: linear-gradient(135deg, #111827 0%, #1f2937 100%) !important;
+                    color: #f9fafb !important;
                 }
                 
                 /* Theme toggle button */
                 .theme-toggle {
                     cursor: pointer;
                     transition: all 0.3s ease;
-                    padding: 10px 15px;
-                    border-radius: 8px;
-                    background: rgba(79, 70, 229, 0.05);
-                    margin: 10px 0;
+                    padding: 14px 20px;
+                    border-radius: 12px;
+                    background: rgba(255, 255, 255, 0.1);
+                    margin: 15px 0;
                     display: flex;
                     align-items: center;
-                    gap: 10px;
+                    gap: 15px;
+                    width: 100%;
+                    border: none;
+                    text-align: left;
+                    font-size: 15px;
+                    color: rgba(255, 255, 255, 0.9);
+                    backdrop-filter: blur(10px);
                 }
                 
                 .theme-toggle:hover {
-                    background: rgba(79, 70, 229, 0.1);
-                    color: var(--primary-color);
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                    background: rgba(255, 255, 255, 0.2);
+                    color: white;
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
                 }
                 
                 .theme-toggle i {
-                    font-size: 18px;
-                    color: var(--primary-color);
+                    font-size: 20px;
+                    color: white;
                     transition: transform 0.3s ease;
                 }
                 
                 .theme-toggle:hover i {
-                    transform: rotate(15deg);
+                    transform: rotate(30deg);
                 }
                 
                 .theme-toggle span {
-                    font-weight: 500;
-                    font-size: 14px;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                
+                /* Status color overrides */
+                .status-paid { 
+                    background: linear-gradient(135deg, #10b981, #059669) !important;
+                    color: white !important;
+                    border: 2px solid #10b981 !important;
+                }
+                .status-pending { 
+                    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+                    color: white !important;
+                    border: 2px solid #f59e0b !important;
+                }
+                .status-free { 
+                    background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+                    color: white !important;
+                    border: 2px solid #8b5cf6 !important;
+                }
+                .status-approved { 
+                    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+                    color: white !important;
+                    border: 2px solid #3b82f6 !important;
+                }
+                .status-terminated { 
+                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                    color: white !important;
+                    border: 2px solid #ef4444 !important;
+                }
+                .status-active { 
+                    background: linear-gradient(135deg, #06b6d4, #0891b2) !important;
+                    color: white !important;
+                    border: 2px solid #06b6d4 !important;
+                }
+                .status-expired { 
+                    background: linear-gradient(135deg, #6b7280, #4b5563) !important;
+                    color: white !important;
+                    border: 2px solid #6b7280 !important;
+                }
+                .status-revoked { 
+                    background: linear-gradient(135deg, #991b1b, #7f1d1d) !important;
+                    color: white !important;
+                    border: 2px solid #991b1b !important;
                 }
             `;
             document.head.appendChild(style);
+        }
+    }
+
+    updateLoginModal() {
+        // Update login modal with gradient styling
+        const loginModal = document.querySelector('.login-modal');
+        if (loginModal) {
+            loginModal.style.background = 'linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%)';
+        }
+        
+        // Add logo to login header if not exists
+        const loginHeader = document.querySelector('.login-header');
+        if (loginHeader && !loginHeader.querySelector('.logo')) {
+            loginHeader.innerHTML = `
+                <div class="logo">
+                    <i class="fas fa-lock"></i>
+                </div>
+                <h2>Admin Dashboard</h2>
+                <p>Secure access to management console</p>
+            `;
         }
     }
 
@@ -177,10 +222,10 @@ class AdminDashboard {
                 'Edit Revenue',
                 `<div class="form-group">
                     <label>Email:</label>
-                    <input type="email" id="editRevenueEmail" value="${email}" readonly style="background: #f5f5f5;">
+                    <input type="email" id="editRevenueEmail" value="${email}" readonly style="background: var(--gray-light);">
                 </div>
                 <div class="form-group">
-                    <label>Current Revenue: <strong>₦${currentRevenue.toLocaleString()}</strong></label>
+                    <label>Current Revenue: <strong style="color: var(--status-paid);">₦${currentRevenue.toLocaleString()}</strong></label>
                 </div>
                 <div class="form-group">
                     <label>New Revenue Amount (₦):</label>
@@ -190,9 +235,9 @@ class AdminDashboard {
                     <label>Adjustment Reason:</label>
                     <input type="text" id="editRevenueNote" placeholder="e.g., Manual adjustment, payment correction">
                 </div>
-                <div class="warning-box" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 10px 0;">
-                    <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
-                    <small>Note: This will override the current revenue amount. Use negative values to decrease revenue.</small>
+                <div class="warning-box" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); border: 2px solid var(--status-pending); padding: 12px; border-radius: 8px; margin: 15px 0;">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--status-pending);"></i>
+                    <small style="color: var(--gray-color);">Note: This will override the current revenue amount. Use negative values to decrease revenue.</small>
                 </div>`,
                 async () => {
                     try {
@@ -256,14 +301,15 @@ class AdminDashboard {
 
     applyThemeColors(theme) {
         document.documentElement.style.setProperty('--primary-color', theme.primary);
-        document.documentElement.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
         document.documentElement.style.setProperty('--secondary-color', theme.secondary);
+        document.documentElement.style.setProperty('--gradient-start', theme.primary);
+        document.documentElement.style.setProperty('--gradient-end', theme.secondary);
         
-        // Also update any theme-specific elements
-        const root = document.documentElement;
-        root.style.setProperty('--primary-color', theme.primary);
-        root.style.setProperty('--primary-dark', this.darkenColor(theme.primary, 20));
-        root.style.setProperty('--secondary-color', theme.secondary);
+        // Update sidebar background
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+            sidebar.style.background = theme.sidebarBg;
+        }
         
         // Force a repaint to ensure changes take effect
         document.body.style.display = 'none';
@@ -302,6 +348,11 @@ class AdminDashboard {
         const confirmBtn = document.getElementById('adminModalConfirm');
         
         titleEl.textContent = title;
+        titleEl.style.background = 'linear-gradient(135deg, var(--gradient-start), var(--gradient-end))';
+        titleEl.style.webkitBackgroundClip = 'text';
+        titleEl.style.webkitTextFillColor = 'transparent';
+        titleEl.style.backgroundClip = 'text';
+        
         bodyEl.innerHTML = message;
         confirmBtn.textContent = confirmText;
         
@@ -400,15 +451,16 @@ class AdminDashboard {
             const sidebarFooter = document.querySelector('.sidebar-footer');
             if (sidebarFooter) {
                 const themeBtn = document.createElement('div');
-                themeBtn.className = 'server-status theme-toggle';
+                themeBtn.className = 'theme-toggle';
+                themeBtn.id = 'themeToggleBtn';
                 themeBtn.style.cursor = 'pointer';
                 themeBtn.style.marginTop = '10px';
                 themeBtn.innerHTML = `
-                    <i class="fas fa-palette"></i>
-                    <span>Change Theme</span>
+                    <i class="fas fa-moon"></i>
+                    <span>Toggle Dark/Light</span>
                 `;
                 themeBtn.addEventListener('click', () => this.cycleTheme());
-                sidebarFooter.appendChild(themeBtn);
+                sidebarFooter.insertBefore(themeBtn, sidebarFooter.querySelector('.version'));
             }
         } else {
             themeToggleBtn.addEventListener('click', () => this.cycleTheme());
@@ -444,8 +496,8 @@ class AdminDashboard {
                 noResultsRow.className = 'no-results-row';
                 noResultsRow.innerHTML = `
                     <td colspan="8" style="text-align: center; padding: 40px; color: var(--gray-color);">
-                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; display: block; color: var(--gray-light);"></i>
-                        <h4>No users found</h4>
+                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; display: block; color: var(--primary-color); opacity: 0.5;"></i>
+                        <h4 style="color: var(--dark-color);">No users found</h4>
                         <p>No users match "${query}"</p>
                     </td>
                 `;
@@ -561,7 +613,7 @@ class AdminDashboard {
             'Edit User',
             `<div class="form-group">
                 <label>Email:</label>
-                <input type="email" id="editUserEmail" value="${email}" readonly style="background: #f5f5f5;">
+                <input type="email" id="editUserEmail" value="${email}" readonly style="background: var(--gray-light);">
             </div>
             <div class="form-group">
                 <label>Status:</label>
@@ -628,20 +680,25 @@ class AdminDashboard {
         const content = document.getElementById('userDetailsContent');
         
         if (!userDetails || !userDetails.user) {
-            content.innerHTML = '<p>Error loading user details</p>';
+            content.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--gray-color);">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 20px; color: var(--status-terminated);"></i>
+                    <h4 style="color: var(--dark-color);">Error loading user details</h4>
+                </div>
+            `;
             modal.classList.add('active');
             return;
         }
         
         const user = userDetails.user;
         
-        // Get token status
+        // Get token status with vibrant colors
         let tokenStatus = 'No Token';
         let tokenStatusClass = 'status-pending';
         let tokenType = 'No Token';
+        let tokenIcon = 'fa-key';
         
         if (user.token) {
-            // Check if it's a free token
             const isFreeToken = userDetails.tokens && userDetails.tokens.length > 0 ? 
                 userDetails.tokens[0].freeToken || !userDetails.tokens[0].paid : 
                 user.freeToken || !user.paid;
@@ -649,6 +706,7 @@ class AdminDashboard {
             tokenStatus = isFreeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
             tokenStatusClass = isFreeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
             tokenType = isFreeToken ? 'Free Token' : (user.paid ? 'Paid Token' : 'Pending Token');
+            tokenIcon = isFreeToken ? 'fa-gift' : (user.paid ? 'fa-credit-card' : 'fa-clock');
         }
         
         // Parse location
@@ -662,63 +720,75 @@ class AdminDashboard {
         content.innerHTML = `
             <div class="user-details">
                 <div class="detail-item">
-                    <label><i class="fas fa-envelope"></i> Email:</label>
-                    <span class="text-truncate" title="${user.email}">${user.email}</span>
+                    <label><i class="fas fa-envelope" style="color: var(--primary-color);"></i> Email:</label>
+                    <span class="text-truncate" title="${user.email}" style="font-weight: 600; color: var(--dark-color);">${user.email}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-info-circle"></i> Status:</label>
-                    <span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span>
+                    <label><i class="fas fa-info-circle" style="color: var(--primary-color);"></i> Status:</label>
+                    <span class="status-badge status-${user.status || 'pending'}">
+                        <i class="fas fa-${user.status === 'approved' ? 'check-circle' : user.status === 'pending' ? 'clock' : 'ban'}" style="margin-right: 6px;"></i>
+                        ${user.status || 'pending'}
+                    </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-money-bill"></i> Payment Status:</label>
+                    <label><i class="fas fa-money-bill" style="color: var(--primary-color);"></i> Payment Status:</label>
                     <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
+                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}" style="margin-right: 6px;"></i>
                         ${user.paid ? 'Paid' : 'Not Paid'}
                     </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-key"></i> Token Status:</label>
-                    <span class="status-badge ${tokenStatusClass}">${tokenType}</span>
+                    <label><i class="fas fa-key" style="color: var(--primary-color);"></i> Token Status:</label>
+                    <span class="status-badge ${tokenStatusClass}">
+                        <i class="fas ${tokenIcon}" style="margin-right: 6px;"></i>
+                        ${tokenType}
+                    </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-coins"></i> Revenue Generated:</label>
-                    <span style="color: #10b981; font-weight: 600;">₦${(user.amountPaid || 0).toLocaleString()}</span>
+                    <label><i class="fas fa-coins" style="color: var(--status-paid);"></i> Revenue Generated:</label>
+                    <span style="color: var(--status-paid); font-weight: 800; font-size: 20px;">₦${(user.amountPaid || 0).toLocaleString()}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-key"></i> Token Balance:</label>
-                    <span>${user.tokenBalance || 0} tokens</span>
+                    <label><i class="fas fa-database" style="color: var(--primary-color);"></i> Token Balance:</label>
+                    <span style="color: var(--dark-color); font-weight: 700; font-size: 18px;">${user.tokenBalance || 0} tokens</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-map-marker-alt"></i> Location:</label>
+                    <label><i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i> Location:</label>
                     <div class="location-details">
-                        <div><strong>City:</strong> ${city}</div>
-                        <div><strong>Region:</strong> ${region}</div>
-                        <div><strong>Country:</strong> ${country}</div>
-                        <div><strong>IP:</strong> <code>${ip}</code></div>
-                        <div><strong>Timezone:</strong> ${timezone}</div>
+                        <div><strong>City:</strong> <span style="color: var(--dark-color); font-weight: 500;">${city}</span></div>
+                        <div><strong>Region:</strong> <span style="color: var(--dark-color); font-weight: 500;">${region}</span></div>
+                        <div><strong>Country:</strong> <span style="color: var(--dark-color); font-weight: 500;">${country}</span></div>
+                        <div><strong>IP:</strong> <code style="background: var(--gray-light); padding: 4px 10px; border-radius: 8px; color: var(--dark-color); font-family: monospace; border: 1px solid var(--border-color);">${ip}</code></div>
+                        <div><strong>Timezone:</strong> <span style="color: var(--dark-color); font-weight: 500;">${timezone}</span></div>
                     </div>
                 </div>
                 
                 <div class="detail-item">
-                    <label><i class="fas fa-history"></i> First Request:</label>
-                    <span>${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
+                    <label><i class="fas fa-history" style="color: var(--primary-color);"></i> First Request:</label>
+                    <span style="color: var(--dark-color); font-weight: 500; background: var(--gray-light); padding: 4px 10px; border-radius: 6px;">${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-chart-line"></i> Total Requests:</label>
-                    <span>${userDetails.totalRequests || 0}</span>
+                    <label><i class="fas fa-chart-line" style="color: var(--primary-color);"></i> Total Requests:</label>
+                    <span style="color: var(--dark-color); font-weight: 800; font-size: 20px; background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); padding: 6px 14px; border-radius: 8px; display: inline-block;">${userDetails.totalRequests || 0}</span>
                 </div>
                 
-                <div class="token-controls" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                    <h4 style="margin-bottom: 10px;"><i class="fas fa-gift"></i> Token Management</h4>
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <input type="number" id="grantTokenAmount" placeholder="Amount" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" min="1" value="1">
-                        <button class="btn-primary small" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
+                <div class="token-controls">
+                    <h4><i class="fas fa-gift"></i> Token Management</h4>
+                    <div style="display: flex; gap: 12px; margin-bottom: 15px;">
+                        <input type="number" id="grantTokenAmount" placeholder="Amount" 
+                               style="flex: 1; padding: 12px 16px; border: 2px solid var(--border-color); 
+                                      border-radius: 12px; background: var(--card-bg); color: var(--dark-color);" 
+                               min="1" value="1">
+                        <button class="btn-primary" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
                             <i class="fas fa-gift"></i> Grant Free Tokens
                         </button>
                     </div>
-                    <small style="color: #666;"><i class="fas fa-info-circle"></i> Free tokens work immediately without payment</small>
+                    <small style="color: var(--gray-color); display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-info-circle"></i> Free tokens work immediately without payment
+                    </small>
                 </div>
                 
-                <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 20px;">
+                <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 25px; padding-top: 20px; border-top: 2px solid var(--border-color);">
                     <button class="btn-primary" onclick="admin.togglePaymentStatus('${user.email}', ${!user.paid})">
                         <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
                         ${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}
@@ -753,7 +823,15 @@ class AdminDashboard {
         
         if (!users || Object.keys(users).length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="8" style="text-align: center; padding: 20px;">No users found</td>';
+            row.innerHTML = `
+                <td colspan="8" style="text-align: center; padding: 40px;">
+                    <div style="color: var(--gray-color);">
+                        <i class="fas fa-users" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
+                        <h4 style="margin-bottom: 10px; color: var(--dark-color);">No users found</h4>
+                        <p>Start by adding your first user</p>
+                    </div>
+                </td>
+            `;
             tableBody.appendChild(row);
             return;
         }
@@ -767,31 +845,83 @@ class AdminDashboard {
             // Get revenue amount
             const revenue = user.amountPaid || 0;
             
-            // Get token status - check if it's a free token
+            // Get token status with vibrant colors
             let tokenStatus = 'No Token';
             let tokenStatusClass = 'status-pending';
+            let tokenIcon = 'fa-key';
+            
             if (user.token) {
-                // Check if it's a free token
-                tokenStatus = user.freeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
-                tokenStatusClass = user.freeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
+                if (user.freeToken) {
+                    tokenStatus = 'Free';
+                    tokenStatusClass = 'status-free';
+                    tokenIcon = 'fa-gift';
+                } else if (user.paid) {
+                    tokenStatus = 'Paid';
+                    tokenStatusClass = 'status-paid';
+                    tokenIcon = 'fa-credit-card';
+                } else {
+                    tokenStatus = 'Pending';
+                    tokenStatusClass = 'status-pending';
+                    tokenIcon = 'fa-clock';
+                }
+            }
+            
+            // User status with icon
+            let userStatusIcon = 'fa-user';
+            switch(user.status) {
+                case 'approved': userStatusIcon = 'fa-check-circle'; break;
+                case 'pending': userStatusIcon = 'fa-clock'; break;
+                case 'terminated': userStatusIcon = 'fa-ban'; break;
             }
             
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="text-truncate" style="max-width: 150px;" title="${email}">${email}</td>
-                <td><span class="status-badge status-${user.status || 'pending'}">${user.status || 'pending'}</span></td>
-                <td><span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">${user.paid ? 'Paid' : 'Pending'}</span></td>
-                <td>${revenue > 0 ? `₦${revenue.toLocaleString()}` : '₦0'}</td>
-                <td><span class="status-badge ${tokenStatusClass}">${tokenStatus}</span></td>
-                <td>${city}, ${country}</td>
-                <td>${user.lastRequest ? new Date(user.lastRequest).toLocaleString() : 'Never'}</td>
+                <td class="text-truncate" style="max-width: 200px;" title="${email}">
+                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                    ${email}
+                </td>
+                <td>
+                    <span class="status-badge status-${user.status || 'pending'}">
+                        <i class="fas ${userStatusIcon}" style="margin-right: 6px;"></i>
+                        ${user.status || 'pending'}
+                    </span>
+                </td>
+                <td>
+                    <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
+                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}" style="margin-right: 6px;"></i>
+                        ${user.paid ? 'Paid' : 'Pending'}
+                    </span>
+                </td>
+                <td class="revenue-cell ${revenue === 0 ? 'zero' : ''}" style="font-weight: 800; color: ${revenue > 0 ? 'var(--status-paid)' : 'var(--gray-color)'}; font-size: 16px;">
+                    <i class="fas fa-coins" style="margin-right: 8px; color: ${revenue > 0 ? 'var(--status-paid)' : 'var(--gray-color)'};"></i>
+                    ₦${revenue.toLocaleString()}
+                </td>
+                <td>
+                    <span class="status-badge ${tokenStatusClass}">
+                        <i class="fas ${tokenIcon}" style="margin-right: 6px;"></i>
+                        ${tokenStatus}
+                    </span>
+                </td>
+                <td>
+                    <div class="location-display">
+                        <i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i>
+                        ${city || 'Unknown'}, ${country || 'Unknown'}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--gray-color);">
+                        <i class="fas fa-history"></i>
+                        ${user.lastRequest ? new Date(user.lastRequest).toLocaleDateString() : 'Never'}
+                    </div>
+                </td>
                 <td>
                     <div class="action-buttons d-flex gap-10 flex-wrap">
-                        <button class="btn-secondary small" onclick="admin.viewUserDetails('${email}')" title="View Details">
+                        <button class="btn-secondary small success" onclick="admin.viewUserDetails('${email}')" title="View Details">
                             <i class="fas fa-eye"></i>
                         </button>
                         <button class="btn-secondary small ${user.paid ? 'danger' : 'success'}" 
-                                onclick="admin.togglePaymentStatus('${email}', ${!user.paid})" title="${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}">
+                                onclick="admin.togglePaymentStatus('${email}', ${!user.paid})" 
+                                title="${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}">
                             <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
                         </button>
                         <button class="btn-secondary small warning" onclick="admin.editRevenue('${email}')" title="Edit Revenue">
@@ -819,14 +949,14 @@ class AdminDashboard {
             const adminEmail = document.getElementById('adminEmail').value || this.adminEmail;
             
             const reminderHtml = `
-                <h2>🔐 Admin Password Reminder</h2>
+                <h2 style="color: var(--primary-color);">🔐 Admin Password Reminder</h2>
                 <p>Your admin credentials for Tracle-Lite:</p>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
-                    <p><strong>Email:</strong> ${adminEmail}</p>
-                    <p><strong>Password:</strong> ${this.adminPassword}</p>
+                <div style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid var(--border-color);">
+                    <p><strong style="color: var(--dark-color);">Email:</strong> ${adminEmail}</p>
+                    <p><strong style="color: var(--dark-color);">Password:</strong> ${this.adminPassword}</p>
                 </div>
-                <p><strong>Login URL:</strong> <a href="${window.location.origin}/admin.html">${window.location.origin}/admin.html</a></p>
-                <p><i>If you didn't request this reminder, please ignore this email.</i></p>
+                <p><strong>Login URL:</strong> <a href="${window.location.origin}/admin.html" style="color: var(--primary-color);">${window.location.origin}/admin.html</a></p>
+                <p><i style="color: var(--gray-color);">If you didn't request this reminder, please ignore this email.</i></p>
             `;
             
             // Use token manager to send email
@@ -956,11 +1086,10 @@ class AdminDashboard {
         // Force browser to recalculate styles
         const root = document.documentElement;
         const primaryColor = getComputedStyle(root).getPropertyValue('--primary-color').trim();
-        console.log('Current theme primary color:', primaryColor);
         
         // Update button colors immediately
         document.querySelectorAll('.btn-primary').forEach(btn => {
-            btn.style.backgroundColor = primaryColor;
+            btn.style.background = `linear-gradient(135deg, var(--gradient-start), var(--gradient-end))`;
         });
     }
 
@@ -1111,6 +1240,11 @@ class AdminDashboard {
         };
         
         document.getElementById('pageTitle').textContent = titles[tabName];
+        document.getElementById('pageTitle').style.background = 'linear-gradient(135deg, var(--gradient-start), var(--gradient-end))';
+        document.getElementById('pageTitle').style.webkitBackgroundClip = 'text';
+        document.getElementById('pageTitle').style.webkitTextFillColor = 'transparent';
+        document.getElementById('pageTitle').style.backgroundClip = 'text';
+        
         document.getElementById('pageSubtitle').textContent = 'Admin Control Panel';
         
         // Close sidebar on mobile
@@ -1190,6 +1324,8 @@ class AdminDashboard {
             // Calculate total revenue from paid users
             const totalRevenue = stats.summary?.revenue || 0;
             document.getElementById('totalRevenue').textContent = `₦${totalRevenue.toLocaleString()}`;
+            document.getElementById('totalRevenue').style.color = 'var(--status-paid)';
+            document.getElementById('totalRevenue').style.fontWeight = '800';
         }
         if (document.getElementById('totalUsers')) {
             document.getElementById('totalUsers').textContent = stats.users?.total || 0;
@@ -1200,37 +1336,44 @@ class AdminDashboard {
             document.getElementById('pendingCount').textContent = stats.users?.pending || 0;
         }
         
-        // Update dashboard stats
+        // Update dashboard stats with vibrant colors
         if (document.getElementById('approvedCount')) {
             document.getElementById('approvedCount').textContent = stats.users?.approved || 0;
+            document.getElementById('approvedCount').style.color = 'var(--status-approved)';
         }
         if (document.getElementById('pendingUsersCount')) {
             document.getElementById('pendingUsersCount').textContent = stats.users?.pending || 0;
+            document.getElementById('pendingUsersCount').style.color = 'var(--status-pending)';
         }
         if (document.getElementById('terminatedCount')) {
             const terminated = (stats.users?.total || 0) - (stats.users?.approved || 0) - (stats.users?.pending || 0);
             document.getElementById('terminatedCount').textContent = terminated > 0 ? terminated : 0;
+            document.getElementById('terminatedCount').style.color = 'var(--status-terminated)';
         }
         if (document.getElementById('activeTokens')) {
             document.getElementById('activeTokens').textContent = stats.tokens?.unused || 0;
+            document.getElementById('activeTokens').style.color = 'var(--primary-color)';
         }
         
         // Update revenue reports with accurate data
         if (document.getElementById('revenueToday')) {
-            // For today's revenue, you might want to calculate differently
-            const todayRevenue = Math.floor((stats.summary?.revenue || 0) / 30); // Example: monthly average
+            const todayRevenue = Math.floor((stats.summary?.revenue || 0) / 30);
             document.getElementById('revenueToday').textContent = `₦${todayRevenue.toLocaleString()}`;
+            document.getElementById('revenueToday').style.color = 'var(--status-paid)';
         }
         if (document.getElementById('revenueWeek')) {
-            const weekRevenue = (stats.summary?.revenue || 0) * 7 / 30; // Example calculation
+            const weekRevenue = (stats.summary?.revenue || 0) * 7 / 30;
             document.getElementById('revenueWeek').textContent = `₦${Math.floor(weekRevenue).toLocaleString()}`;
+            document.getElementById('revenueWeek').style.color = 'var(--status-paid)';
         }
         if (document.getElementById('revenueMonth')) {
             document.getElementById('revenueMonth').textContent = `₦${(stats.summary?.revenue || 0).toLocaleString()}`;
+            document.getElementById('revenueMonth').style.color = 'var(--status-paid)';
         }
         if (document.getElementById('revenueTotal')) {
-            const totalRevenue = (stats.summary?.revenue || 0) * 3; // Example: 3 months total
+            const totalRevenue = (stats.summary?.revenue || 0) * 3;
             document.getElementById('revenueTotal').textContent = `₦${totalRevenue.toLocaleString()}`;
+            document.getElementById('revenueTotal').style.color = 'var(--status-paid)';
         }
     }
 
@@ -1243,7 +1386,7 @@ class AdminDashboard {
         
         if (stats.requests.recent.length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="4" style="text-align: center; padding: 20px;">No recent requests</td>';
+            row.innerHTML = '<td colspan="4" style="text-align: center; padding: 20px; color: var(--gray-color);">No recent requests</td>';
             tableBody.appendChild(row);
             return;
         }
@@ -1251,8 +1394,14 @@ class AdminDashboard {
         stats.requests.recent.forEach(request => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="text-truncate" style="max-width: 150px;" title="${request.email}">${request.email}</td>
-                <td>${request.lastRequest ? new Date(request.lastRequest).toLocaleString() : 'N/A'}</td>
+                <td class="text-truncate" style="max-width: 150px;" title="${request.email}">
+                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                    ${request.email}
+                </td>
+                <td style="color: var(--gray-color);">
+                    <i class="fas fa-calendar" style="margin-right: 8px;"></i>
+                    ${request.lastRequest ? new Date(request.lastRequest).toLocaleString() : 'N/A'}
+                </td>
                 <td><span class="status-badge status-${request.status || 'pending'}">${request.status || 'pending'}</span></td>
                 <td>
                     <button class="btn-secondary small" onclick="admin.viewUserDetails('${request.email}')">
@@ -1340,7 +1489,7 @@ class AdminDashboard {
         }
     }
 
-    // Update the renderTokensTable to show better token status
+    // Update the renderTokensTable to show better token status with vibrant colors
     renderTokensTable(tokens) {
         const tableBody = document.querySelector('#tokensTable tbody');
         if (!tableBody) return;
@@ -1349,35 +1498,80 @@ class AdminDashboard {
         
         if (!tokens || Object.keys(tokens).length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="7" style="text-align: center; padding: 20px;">No tokens found</td>';
+            row.innerHTML = `
+                <td colspan="7" style="text-align: center; padding: 40px;">
+                    <div style="color: var(--gray-color);">
+                        <i class="fas fa-key" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
+                        <h4 style="margin-bottom: 10px; color: var(--dark-color);">No tokens found</h4>
+                        <p>Generate your first token</p>
+                    </div>
+                </td>
+            `;
             tableBody.appendChild(row);
             return;
         }
         
         Object.entries(tokens).forEach(([token, data]) => {
-            // Determine token status
+            // Determine token status with vibrant colors
             let status = 'Active';
             let statusClass = 'status-active';
+            let statusIcon = 'fa-check-circle';
             
             if (data.used) {
                 status = 'Used';
                 statusClass = 'status-terminated';
+                statusIcon = 'fa-check';
             } else if (data.expires && data.expires < Date.now()) {
                 status = 'Expired';
-                statusClass = 'status-terminated';
+                statusClass = 'status-expired';
+                statusIcon = 'fa-clock';
             } else if (data.revoked) {
                 status = 'Revoked';
-                statusClass = 'status-terminated';
+                statusClass = 'status-revoked';
+                statusIcon = 'fa-ban';
             }
+            
+            // Token type with color
+            let tokenTypeClass = data.freeToken ? 'status-free' : (data.paid ? 'status-paid' : 'status-pending');
+            let tokenTypeText = data.freeToken ? 'Free' : (data.paid ? 'Paid' : 'Pending');
+            let tokenTypeIcon = data.freeToken ? 'fa-gift' : (data.paid ? 'fa-credit-card' : 'fa-clock');
             
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td><code class="text-truncate" style="max-width: 200px;" title="${token}">${token}</code></td>
-                <td class="text-truncate" style="max-width: 150px;" title="${data.email}">${data.email}</td>
-                <td>${data.createdAt ? new Date(data.createdAt).toLocaleString() : 'Unknown'}</td>
-                <td>${data.used ? 'Yes' : 'No'}</td>
-                <td><span class="status-badge ${data.freeToken ? 'status-free' : (data.paid ? 'status-paid' : 'status-pending')}">${data.freeToken ? 'Free' : (data.paid ? 'Paid' : 'Pending')}</span></td>
-                <td><span class="status-badge ${statusClass}">${status}</span></td>
+                <td>
+                    <code class="text-truncate" style="max-width: 250px; display: block; padding: 10px 14px; 
+                           background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); 
+                           border-radius: 10px; color: var(--dark-color); border: 2px solid var(--border-color);" 
+                           title="${token}">${token}</code>
+                </td>
+                <td class="text-truncate" style="max-width: 180px;" title="${data.email}">
+                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                    ${data.email}
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--dark-color); background: var(--gray-light); padding: 6px 12px; border-radius: 8px;">
+                        <i class="fas fa-calendar-alt" style="color: var(--primary-color);"></i>
+                        ${data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'}
+                    </div>
+                </td>
+                <td>
+                    <span class="status-badge ${data.used ? 'status-terminated' : 'status-active'}">
+                        <i class="fas ${data.used ? 'fa-check' : 'fa-circle'}" style="margin-right: 6px;"></i>
+                        ${data.used ? 'Yes' : 'No'}
+                    </span>
+                </td>
+                <td>
+                    <span class="status-badge ${tokenTypeClass}">
+                        <i class="fas ${tokenTypeIcon}" style="margin-right: 6px;"></i>
+                        ${tokenTypeText}
+                    </span>
+                </td>
+                <td>
+                    <span class="status-badge ${statusClass}">
+                        <i class="fas ${statusIcon}" style="margin-right: 6px;"></i>
+                        ${status}
+                    </span>
+                </td>
                 <td>
                     <button class="btn-secondary small" onclick="admin.copyToken('${token}')" title="Copy Token">
                         <i class="fas fa-copy"></i> Copy
@@ -1426,7 +1620,7 @@ class AdminDashboard {
         }
     }
 
-    // Update the renderRequestsTable to show better location
+    // Update the renderRequestsTable to show better location with vibrant colors
     renderRequestsTable(requests) {
         const tableBody = document.querySelector('#requestsTable tbody');
         if (!tableBody) return;
@@ -1435,7 +1629,12 @@ class AdminDashboard {
         
         if (!requests || Object.keys(requests).length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="7" style="text-align: center; padding: 20px;">No requests found</td>';
+            row.innerHTML = `
+                <td colspan="7" style="text-align: center; padding: 40px; color: var(--gray-color);">
+                    <i class="fas fa-network-wired" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
+                    <h4 style="color: var(--dark-color);">No requests found</h4>
+                </td>
+            `;
             tableBody.appendChild(row);
             return;
         }
@@ -1449,12 +1648,28 @@ class AdminDashboard {
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="text-truncate" style="max-width: 150px;" title="${email}">${email}</td>
-                    <td><code>${lastRequest.ip || 'Unknown'}</code></td>
-                    <td>${city}, ${countryName}</td>
-                    <td>${lastRequest.region || 'Unknown'}</td>
-                    <td class="text-truncate" style="max-width: 200px;" title="${lastRequest.userAgent || 'Unknown'}">${this.truncateString(lastRequest.userAgent || 'Unknown', 50)}</td>
-                    <td>${lastRequest.timestamp ? new Date(lastRequest.timestamp).toLocaleString() : 'Unknown'}</td>
+                    <td class="text-truncate" style="max-width: 150px;" title="${email}">
+                        <i class="fas fa-user" style="margin-right: 8px; color: var(--primary-color);"></i>
+                        ${email}
+                    </td>
+                    <td>
+                        <code style="background: var(--gray-light); padding: 6px 10px; border-radius: 6px; color: var(--dark-color); border: 1px solid var(--border-color);">${lastRequest.ip || 'Unknown'}</code>
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i>
+                            ${city}, ${countryName}
+                        </div>
+                    </td>
+                    <td style="color: var(--gray-color);">${lastRequest.region || 'Unknown'}</td>
+                    <td class="text-truncate" style="max-width: 200px; color: var(--dark-color);" title="${lastRequest.userAgent || 'Unknown'}">
+                        <i class="fas fa-desktop" style="margin-right: 8px; color: var(--primary-color);"></i>
+                        ${this.truncateString(lastRequest.userAgent || 'Unknown', 50)}
+                    </td>
+                    <td style="color: var(--gray-color);">
+                        <i class="fas fa-clock" style="margin-right: 8px;"></i>
+                        ${lastRequest.timestamp ? new Date(lastRequest.timestamp).toLocaleString() : 'Unknown'}
+                    </td>
                     <td><span class="status-badge status-${lastRequest.status || 'pending'}">${lastRequest.status || 'pending'}</span></td>
                 `;
                 tableBody.appendChild(row);
@@ -1503,7 +1718,7 @@ class AdminDashboard {
     renderCharts(stats) {
         if (!stats) return;
         
-        // User Distribution Chart
+        // User Distribution Chart with vibrant colors
         const userCtx = document.getElementById('userDistributionChart')?.getContext('2d');
         if (userCtx) {
             // Destroy existing chart if it exists
@@ -1522,11 +1737,16 @@ class AdminDashboard {
                     datasets: [{
                         data: [approved, pending, terminated > 0 ? terminated : 0],
                         backgroundColor: [
-                            '#10b981',
+                            'rgba(59, 130, 246, 0.8)',  // Blue for approved
+                            'rgba(245, 158, 11, 0.8)',  // Orange for pending
+                            'rgba(239, 68, 68, 0.8)'    // Red for terminated
+                        ],
+                        borderColor: [
+                            '#3b82f6',
                             '#f59e0b',
                             '#ef4444'
                         ],
-                        borderWidth: 1
+                        borderWidth: 2
                     }]
                 },
                 options: {
@@ -1537,15 +1757,23 @@ class AdminDashboard {
                             position: 'bottom',
                             labels: {
                                 padding: 20,
-                                usePointStyle: true
+                                usePointStyle: true,
+                                color: 'var(--dark-color)'
                             }
+                        },
+                        tooltip: {
+                            backgroundColor: 'var(--card-bg)',
+                            titleColor: 'var(--dark-color)',
+                            bodyColor: 'var(--dark-color)',
+                            borderColor: 'var(--border-color)',
+                            borderWidth: 1
                         }
                     }
                 }
             });
         }
         
-        // Daily Activity Chart
+        // Daily Activity Chart with gradient
         const activityCtx = document.getElementById('dailyActivityChart')?.getContext('2d');
         if (activityCtx) {
             // Destroy existing chart if it exists
@@ -1557,6 +1785,11 @@ class AdminDashboard {
             const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
             const activityData = days.map(() => Math.floor(Math.random() * 50) + 10);
             
+            // Create gradient
+            const gradient = activityCtx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(124, 58, 237, 0.4)');
+            gradient.addColorStop(1, 'rgba(124, 58, 237, 0.1)');
+            
             this.charts.dailyActivity = new Chart(activityCtx, {
                 type: 'line',
                 data: {
@@ -1564,11 +1797,15 @@ class AdminDashboard {
                     datasets: [{
                         label: 'Requests',
                         data: activityData,
-                        borderColor: '#4f46e5',
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        borderWidth: 2,
+                        borderColor: 'var(--primary-color)',
+                        backgroundColor: gradient,
+                        borderWidth: 3,
                         tension: 0.4,
-                        fill: true
+                        fill: true,
+                        pointBackgroundColor: 'var(--primary-color)',
+                        pointBorderColor: 'white',
+                        pointBorderWidth: 2,
+                        pointRadius: 6
                     }]
                 },
                 options: {
@@ -1579,18 +1816,27 @@ class AdminDashboard {
                             beginAtZero: true,
                             grid: {
                                 color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                                color: 'var(--dark-color)'
                             }
                         },
                         x: {
                             grid: {
                                 color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                                color: 'var(--dark-color)'
                             }
                         }
                     },
                     plugins: {
                         legend: {
                             display: true,
-                            position: 'top'
+                            position: 'top',
+                            labels: {
+                                color: 'var(--dark-color)'
+                            }
                         }
                     }
                 }
@@ -1639,7 +1885,7 @@ class AdminDashboard {
     async togglePaymentStatus(email, paid) {
         this.showCustomModal(
             'Update Payment Status',
-            `Are you sure you want to mark user <strong>${email}</strong> as <strong>${paid ? 'paid' : 'not paid'}</strong>?`,
+            `Are you sure you want to mark user <strong style="color: var(--primary-color);">${email}</strong> as <strong style="color: ${paid ? 'var(--status-paid)' : 'var(--status-pending)'};">${paid ? 'paid' : 'not paid'}</strong>?`,
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -1690,8 +1936,8 @@ class AdminDashboard {
     async deleteUser(email) {
         this.showCustomModal(
             'Delete User',
-            `Are you sure you want to delete user <strong>${email}</strong>?<br><br>
-             <span style="color: var(--danger-color); font-weight: 600;">
+            `Are you sure you want to delete user <strong style="color: var(--primary-color);">${email}</strong>?<br><br>
+             <span style="color: var(--status-terminated); font-weight: 600;">
                 <i class="fas fa-exclamation-triangle"></i> This action cannot be undone!
              </span>`,
             async () => {
@@ -1761,9 +2007,9 @@ class AdminDashboard {
         
         this.showCustomModal(
             'Generate Token',
-            `Generate a token for user <strong>${email}</strong>?<br>
-             Payment status: <strong>${paid ? 'Paid' : 'Free'}</strong><br>
-             ${freeTokensAmount > 0 ? `Free tokens to add: <strong>${freeTokensAmount}</strong><br>` : ''}`,
+            `Generate a token for user <strong style="color: var(--primary-color);">${email}</strong>?<br>
+             Payment status: <strong style="color: ${paid ? 'var(--status-paid)' : 'var(--status-free)'};">${paid ? 'Paid' : 'Free'}</strong><br>
+             ${freeTokensAmount > 0 ? `Free tokens to add: <strong style="color: var(--status-free);">${freeTokensAmount}</strong><br>` : ''}`,
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -1892,7 +2138,7 @@ class AdminDashboard {
     async restoreBackup() {
         this.showCustomModal(
             'Restore Backup',
-            '⚠️ <strong>WARNING:</strong> Are you sure you want to restore from backup?<br><br><span style="color: var(--danger-color);">This will overwrite current data!<br>All existing users, tokens, and requests will be replaced with backup data.</span>',
+            '⚠️ <strong style="color: var(--status-terminated);">WARNING:</strong> Are you sure you want to restore from backup?<br><br><span style="color: var(--dark-color);">This will overwrite current data!<br>All existing users, tokens, and requests will be replaced with backup data.</span>',
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -2018,14 +2264,14 @@ class AdminDashboard {
         if (usersTable) {
             usersTable.innerHTML = `
                 <tr>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Payment</th>
-                    <th>Revenue</th>
-                    <th>Token Status</th>
-                    <th>Location</th>
-                    <th>Last Active</th>
-                    <th>Actions</th>
+                    <th><i class="fas fa-envelope"></i> Email</th>
+                    <th><i class="fas fa-info-circle"></i> Status</th>
+                    <th><i class="fas fa-money-bill"></i> Payment</th>
+                    <th><i class="fas fa-coins"></i> Revenue</th>
+                    <th><i class="fas fa-key"></i> Token Status</th>
+                    <th><i class="fas fa-map-marker-alt"></i> Location</th>
+                    <th><i class="fas fa-history"></i> Last Active</th>
+                    <th><i class="fas fa-cogs"></i> Actions</th>
                 </tr>
             `;
         }
@@ -2035,157 +2281,125 @@ class AdminDashboard {
     addLocationStyles() {
         const locationStyle = document.createElement('style');
         locationStyle.textContent = `
-            /* Location details styling */
-            .location-details {
-                background: #f8f9fa;
-                padding: 10px;
-                border-radius: 8px;
-                margin-top: 5px;
-                font-size: 13px;
-            }
-            
-            .location-details div {
-                margin-bottom: 3px;
-                display: flex;
-                justify-content: space-between;
-            }
-            
-            .location-details div:last-child {
-                margin-bottom: 0;
-            }
-            
-            .location-details strong {
-                color: #495057;
-                min-width: 80px;
-            }
-            
-            /* Status badge improvements */
+            /* Enhanced Status Badges */
             .status-badge {
-                padding: 4px 10px;
-                border-radius: 12px;
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-                display: inline-block;
-                letter-spacing: 0.5px;
-            }
-            
-            .status-active { background: #10b981; color: white; }
-            .status-pending { background: #f59e0b; color: white; }
-            .status-approved { background: #3b82f6; color: white; }
-            .status-terminated { background: #ef4444; color: white; }
-            .status-paid { background: #8b5cf6; color: white; }
-            .status-free { background: #14b8a6; color: white; }  /* NEW: Free token color */
-            .status-revoked { background: #6b7280; color: white; }
-            .status-expired { background: #9ca3af; color: white; }
-            
-            /* Button styling */
-            .btn-secondary.warning {
-                background: #f59e0b;
-                color: white;
-                border: none;
-            }
-            
-            .btn-secondary.warning:hover {
-                background: #d97706;
-            }
-            
-            /* Revenue display */
-            .revenue-display {
-                color: #10b981;
-                font-weight: 700;
-                font-size: 14px;
-            }
-            
-            /* Table improvements */
-            #usersTable th, #tokensTable th, #requestsTable th {
-                white-space: nowrap;
-                font-weight: 600;
-                color: #374151;
-            }
-            
-            #usersTable td, #tokensTable td, #requestsTable td {
-                vertical-align: middle;
-            }
-            
-            /* Revenue edit modal styles */
-            .warning-box {
-                background: #fff3cd;
-                border: 1px solid #ffeaa7;
-                padding: 12px;
-                border-radius: 6px;
-                margin: 15px 0;
+                padding: 8px 18px;
+                border-radius: 20px;
                 font-size: 13px;
-                color: #856404;
+                font-weight: 700;
+                white-space: nowrap;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                display: inline-flex;
+                align-items: center;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             }
             
-            .warning-box i {
-                margin-right: 8px;
+            .status-badge:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
             }
             
-            /* Revenue display in table */
+            /* Button enhancements */
+            .btn-primary {
+                position: relative;
+                overflow: hidden;
+            }
+            
+            .btn-primary::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+                transition: 0.5s;
+            }
+            
+            .btn-primary:hover::before {
+                left: 100%;
+            }
+            
+            /* Card animations */
+            .card {
+                transition: all 0.3s ease;
+            }
+            
+            .card:hover {
+                transform: translateY(-8px);
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            }
+            
+            /* Table row hover effect */
+            tr {
+                transition: all 0.2s ease;
+            }
+            
+            tr:hover {
+                background: linear-gradient(90deg, rgba(124, 58, 237, 0.05), transparent) !important;
+            }
+            
+            /* Animated status indicators */
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+            
+            .status-indicator {
+                animation: pulse 2s infinite;
+            }
+            
+            /* Location display */
+            .location-display {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--dark-color);
+                background: var(--gray-light);
+                padding: 6px 12px;
+                border-radius: 8px;
+                border: 1px solid var(--border-color);
+            }
+            
+            /* Revenue cell styling */
             .revenue-cell {
-                font-weight: 600;
-                color: #10b981;
+                font-weight: 700 !important;
+                font-size: 16px !important;
             }
             
             .revenue-cell.zero {
-                color: #6b7280;
-            }
-            
-            /* Location chip styling */
-            .location-chip {
-                display: inline-flex;
-                align-items: center;
-                gap: 5px;
-                background: #e9ecef;
-                padding: 4px 10px;
-                border-radius: 20px;
-                font-size: 12px;
-                color: #495057;
-            }
-            
-            .location-chip i {
-                font-size: 11px;
-                color: #6c757d;
+                color: var(--gray-color) !important;
             }
             
             /* Action buttons spacing */
             .action-buttons {
                 display: flex;
                 gap: 8px;
-                flex-wrap: nowrap;
+                flex-wrap: wrap;
             }
             
             .action-buttons button {
-                min-width: 32px;
-                height: 32px;
+                min-width: 36px;
+                height: 36px;
                 padding: 0;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                border-radius: 10px;
+                transition: all 0.3s ease;
+            }
+            
+            .action-buttons button:hover {
+                transform: translateY(-2px);
             }
             
             .action-buttons button i {
                 font-size: 14px;
             }
             
-            /* Responsive table adjustments */
-            @media (max-width: 1200px) {
-                #usersTable td:nth-child(6),
-                #usersTable th:nth-child(6) {
-                    display: none;
-                }
-            }
-            
-            @media (max-width: 992px) {
-                #usersTable td:nth-child(5),
-                #usersTable th:nth-child(5) {
-                    display: none;
-                }
-            }
-            
-            /* Filter buttons for location */
+            /* Filter buttons */
             .filter-buttons {
                 display: flex;
                 gap: 10px;
@@ -2193,78 +2407,30 @@ class AdminDashboard {
             }
             
             .filter-btn {
-                padding: 6px 12px;
-                border: 1px solid #ddd;
-                background: white;
-                border-radius: 6px;
+                padding: 10px 20px;
+                border: 2px solid var(--border-color);
+                background: var(--card-bg);
+                border-radius: 12px;
                 cursor: pointer;
-                font-size: 13px;
-                transition: all 0.2s;
+                font-size: 14px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+                color: var(--gray-color);
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             }
             
             .filter-btn.active {
-                background: var(--primary-color);
-                color: white;
+                background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
                 border-color: var(--primary-color);
+                color: white;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
             }
             
             .filter-btn:hover:not(.active) {
-                background: #f8f9fa;
-            }
-            
-            /* Search box improvements */
-            .search-box {
-                position: relative;
-                margin-bottom: 20px;
-            }
-            
-            .search-box i {
-                position: absolute;
-                left: 12px;
-                top: 50%;
-                transform: translateY(-50%);
-                color: #6b7280;
-            }
-            
-            .search-box input {
-                padding-left: 40px;
-                width: 100%;
-                max-width: 300px;
-            }
-            
-            /* Theme toggle button */
-            .theme-toggle {
-                cursor: pointer;
-                transition: all 0.3s ease;
-                padding: 10px 15px;
-                border-radius: 8px;
-                background: rgba(79, 70, 229, 0.05);
-                margin: 10px 0;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .theme-toggle:hover {
-                background: rgba(79, 70, 229, 0.1);
+                border-color: var(--primary-color);
                 color: var(--primary-color);
                 transform: translateY(-2px);
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            }
-            
-            .theme-toggle i {
-                font-size: 18px;
-                color: var(--primary-color);
-                transition: transform 0.3s ease;
-            }
-            
-            .theme-toggle:hover i {
-                transform: rotate(15deg);
-            }
-            
-            .theme-toggle span {
-                font-weight: 500;
-                font-size: 14px;
             }
         `;
         document.head.appendChild(locationStyle);
@@ -2321,13 +2487,13 @@ style.textContent = `
 }
 
 .custom-modal .modal-content {
-    background: white;
+    background: var(--card-bg);
     border-radius: var(--border-radius);
     width: 90%;
     max-width: 500px;
     box-shadow: var(--shadow-lg);
     animation: modalSlideIn 0.3s ease;
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--border-color);
 }
 
 @keyframes modalSlideIn {
@@ -2343,10 +2509,11 @@ style.textContent = `
 
 .custom-modal .modal-header {
     padding: 20px 25px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 2px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: linear-gradient(to right, rgba(124, 58, 237, 0.05), transparent);
 }
 
 .custom-modal .modal-header h3 {
@@ -2372,7 +2539,7 @@ style.textContent = `
 
 .custom-modal .modal-close:hover {
     background: var(--gray-light);
-    color: var(--danger-color);
+    color: var(--dark-color);
 }
 
 .custom-modal .modal-body {
@@ -2383,7 +2550,7 @@ style.textContent = `
 
 .custom-modal .modal-footer {
     padding: 20px 25px;
-    border-top: 1px solid var(--border-color);
+    border-top: 2px solid var(--border-color);
     display: flex;
     gap: 15px;
     justify-content: flex-end;
@@ -2401,108 +2568,128 @@ style.textContent = `
 }
 
 .custom-modal .modal-btn.primary {
-    background: var(--primary-color);
-    color: white;
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
+    color: white !important;
 }
 
 .custom-modal .modal-btn.primary:hover {
-    background: var(--primary-dark);
     transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
 }
 
 .custom-modal .modal-btn.secondary {
     background: var(--gray-light);
     color: var(--dark-color);
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--border-color);
 }
 
 .custom-modal .modal-btn.secondary:hover {
-    background: white;
+    background: var(--light-color);
     border-color: var(--primary-color);
 }
 
 .notification-container {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    top: 25px;
+    right: 25px;
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 15px;
+    max-width: 450px;
 }
 
 .notification {
-    background: white;
-    padding: 15px 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background: var(--card-bg);
+    padding: 20px 25px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
     display: flex;
     align-items: center;
-    gap: 15px;
-    min-width: 300px;
-    max-width: 400px;
+    gap: 20px;
+    min-width: 350px;
     animation: slideInRight 0.3s ease;
-    border-left: 4px solid #4f46e5;
+    border-left: 6px solid;
+    border: 2px solid var(--border-color);
+    backdrop-filter: blur(10px);
 }
 
 .notification.success {
-    border-left-color: #10b981;
+    border-left-color: var(--status-paid);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
 }
 
 .notification.error {
-    border-left-color: #ef4444;
+    border-left-color: var(--status-terminated);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
 }
 
 .notification.warning {
-    border-left-color: #f59e0b;
+    border-left-color: var(--status-pending);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
 }
 
 .notification.info {
-    border-left-color: #3b82f6;
+    border-left-color: var(--status-approved);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
 }
 
 .notification i {
-    font-size: 20px;
+    font-size: 24px;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
 }
 
 .notification.success i {
-    color: #10b981;
+    background: var(--status-paid);
+    color: white;
 }
 
 .notification.error i {
-    color: #ef4444;
+    background: var(--status-terminated);
+    color: white;
 }
 
 .notification.warning i {
-    color: #f59e0b;
+    background: var(--status-pending);
+    color: white;
 }
 
 .notification.info i {
-    color: #3b82f6;
+    background: var(--status-approved);
+    color: white;
 }
 
 .notification span {
     flex: 1;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--dark-color);
 }
 
 .notification-close {
     background: none;
     border: none;
-    color: #6b7280;
+    color: var(--gray-color);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 16px;
     padding: 0;
-    width: 20px;
-    height: 20px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s;
+    border-radius: 50%;
+    transition: var(--transition);
 }
 
 .notification-close:hover {
-    color: #1f2937;
+    color: var(--dark-color);
+    background: var(--gray-light);
 }
 
 @keyframes slideInRight {
@@ -2521,121 +2708,33 @@ body {
     transition: background-color 0.3s ease;
 }
 
-/* Theme-specific styles - HIGH PRIORITY */
-body.theme-purple {
-    --primary-color: #4f46e5 !important;
-    --primary-dark: #3730a3 !important;
-    --secondary-color: #8b5cf6 !important;
-}
-
-body.theme-blue {
-    --primary-color: #3b82f6 !important;
-    --primary-dark: #1e40af !important;
-    --secondary-color: #60a5fa !important;
-}
-
-body.theme-green {
-    --primary-color: #10b981 !important;
-    --primary-dark: #047857 !important;
-    --secondary-color: #34d399 !important;
-}
-
-body.theme-orange {
-    --primary-color: #f59e0b !important;
-    --primary-dark: #d97706 !important;
-    --secondary-color: #fbbf24 !important;
-}
-
-body.theme-red {
-    --primary-color: #ef4444 !important;
-    --primary-dark: #dc2626 !important;
-    --secondary-color: #f87171 !important;
-}
-
-body.theme-violet {
-    --primary-color: #8b5cf6 !important;
-    --primary-dark: #7c3aed !important;
-    --secondary-color: #a78bfa !important;
-}
-
-body.theme-pink {
-    --primary-color: #ec4899 !important;
-    --primary-dark: #db2777 !important;
-    --secondary-color: #f472b6 !important;
-}
-
-body.theme-teal {
-    --primary-color: #14b8a6 !important;
-    --primary-dark: #0d9488 !important;
-    --secondary-color: #2dd4bf !important;
-}
-
-body.theme-amber {
-    --primary-color: #f97316 !important;
-    --primary-dark: #ea580c !important;
-    --secondary-color: #fb923c !important;
-}
-
-body.theme-indigo {
-    --primary-color: #6366f1 !important;
-    --primary-dark: #4f46e5 !important;
-    --secondary-color: #818cf8 !important;
-}
-
-/* Theme toggle styling */
-.theme-toggle {
-    cursor: pointer;
-    transition: all 0.3s ease;
-    padding: 10px 15px;
-    border-radius: 8px;
-    background: rgba(79, 70, 229, 0.05);
-    margin: 10px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.theme-toggle:hover {
-    background: rgba(79, 70, 229, 0.1);
-    color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-.theme-toggle i {
-    font-size: 18px;
-    color: var(--primary-color);
-    transition: transform 0.3s ease;
-}
-
-.theme-toggle:hover i {
-    transform: rotate(15deg);
-}
-
-.theme-toggle span {
-    font-weight: 500;
-    font-size: 14px;
-}
-
 /* Ensure buttons use theme colors */
 .btn-primary {
-    background: var(--primary-color) !important;
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
     border-color: var(--primary-color) !important;
 }
 
 .btn-primary:hover {
-    background: var(--primary-dark) !important;
-    border-color: var(--primary-dark) !important;
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
+    border-color: var(--primary-color) !important;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(124, 58, 237, 0.4);
 }
 
 /* Theme-specific stat item icons */
 .stat-item i {
-    color: var(--primary-color) !important;
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 /* Theme-specific action button icons */
 .action-btn i {
-    color: var(--primary-color) !important;
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 `;
 document.head.appendChild(style);
@@ -2657,16 +2756,15 @@ function checkAdminAccess() {
                 adminNavItem.innerHTML = `
                     <i class="fas fa-lock"></i>
                     <span>Admin Dashboard</span>
-                    <span style="margin-left: auto; font-size: 10px; background: var(--accent-success); color: white; padding: 2px 6px; border-radius: 10px;">Active</span>
+                    <span style="margin-left: auto; font-size: 10px; background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)); color: white; padding: 2px 8px; border-radius: 10px;">Active</span>
                 `;
-                adminNavItem.style.color = 'var(--accent-success)';
+                adminNavItem.style.color = 'var(--primary-color)';
             }
-            console.log('Admin access active (valid for next', Math.round((hours24 - tokenAge) / (60 * 60 * 1000)), 'hours)');
         } else {
             // Token expired, clear it
             localStorage.removeItem('admin_token');
             localStorage.removeItem('admin_token_time');
-            console.log('Admin token expired');
+            this.showMessage('Session expired. Please login again.', 'error');
         }
     }
 }

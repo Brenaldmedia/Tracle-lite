@@ -30,7 +30,8 @@ const elements = {
     customModal: document.getElementById('customModal'),
     modalTitle: document.getElementById('modalTitle'),
     modalBody: document.getElementById('modalBody'),
-    modalConfirm: document.getElementById('modalConfirm')
+    modalConfirm: document.getElementById('modalConfirm'),
+    themeToggleBtn: document.querySelector('.nav-item[data-section="theme"]') // Add this line
 };
 
 // ===== INITIALIZATION =====
@@ -48,22 +49,50 @@ setInterval(checkAdminAccess, 5 * 60 * 1000);
 // ===== THEME FUNCTIONS =====
 function checkThemePreference() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
+    console.log('Loading theme:', savedTheme);
+    
     if (savedTheme === 'light') {
         document.body.classList.remove('dark-theme');
+        console.log('Applied light theme');
     } else {
         document.body.classList.add('dark-theme');
+        console.log('Applied dark theme');
+    }
+    
+    // Update theme icon in navigation
+    updateThemeIcon(savedTheme);
+}
+
+function updateThemeIcon(theme) {
+    const themeToggle = document.querySelector('.nav-item[data-section="theme"]');
+    if (themeToggle) {
+        const icon = themeToggle.querySelector('i');
+        const text = themeToggle.querySelector('span');
+        if (theme === 'light') {
+            icon.className = 'fas fa-moon';
+            text.textContent = 'Dark Mode';
+        } else {
+            icon.className = 'fas fa-sun';
+            text.textContent = 'Light Mode';
+        }
     }
 }
 
 function toggleTheme() {
+    console.log('Toggle theme clicked');
+    
     if (document.body.classList.contains('dark-theme')) {
         document.body.classList.remove('dark-theme');
         localStorage.setItem('theme', 'light');
         showToast('Theme changed to Light mode', 'success');
+        updateThemeIcon('light');
+        console.log('Switched to light theme');
     } else {
         document.body.classList.add('dark-theme');
         localStorage.setItem('theme', 'dark');
         showToast('Theme changed to Dark mode', 'success');
+        updateThemeIcon('dark');
+        console.log('Switched to dark theme');
     }
 }
 
@@ -91,6 +120,8 @@ function closeModal() {
 
 // ===== NAVIGATION =====
 function initNavigation() {
+    console.log('Initializing navigation...');
+    
     elements.menuToggle.addEventListener('click', () => {
         elements.navOverlay.classList.toggle('active');
     });
@@ -101,17 +132,22 @@ function initNavigation() {
     
     elements.navItems.forEach(item => {
         item.addEventListener('click', (e) => {
-            if (item.querySelector('span')?.textContent === 'Admin Login') {
-                return;
-            }
+            const section = item.dataset.section;
+            console.log('Nav item clicked:', section);
             
-            if (item.querySelector('span')?.textContent === 'Toggle Theme') {
+            // Handle theme toggle separately
+            if (section === 'theme') {
+                e.stopPropagation(); // Prevent event from bubbling up
                 toggleTheme();
                 return;
             }
             
-            const section = item.dataset.section;
+            // Handle admin login separately
+            if (section === 'admin') {
+                return;
+            }
             
+            // Normal navigation items
             elements.navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
             
@@ -135,6 +171,8 @@ function initNavigation() {
 }
 
 function showSection(section) {
+    console.log('Showing section:', section);
+    
     elements.contentSections.forEach(sec => {
         sec.classList.remove('active');
     });
@@ -315,7 +353,7 @@ async function getPairingCode() {
     
     const validatedNumber = validateWhatsAppNumber(number);
     if (!validatedNumber) {
-        showModal('Invalid Number', 'Please enter a valid WhatsApp number format (e.g., 2349012345678)', 'OK');
+        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
         return;
     }
     
@@ -409,18 +447,7 @@ function validateWhatsAppNumber(number) {
         return false;
     }
     
-    if (cleanNumber.startsWith('0')) {
-        return '234' + cleanNumber.substring(1);
-    }
-    
-    if (cleanNumber.startsWith('234')) {
-        return cleanNumber;
-    }
-    
-    if (cleanNumber.length >= 10 && cleanNumber.length <= 12) {
-        return '234' + cleanNumber;
-    }
-    
+    // Return the cleaned number without auto-adding any country code
     return cleanNumber;
 }
 
@@ -821,9 +848,7 @@ function copyToClipboard(text) {
 }
 
 function formatPhoneNumber(number) {
-    if (number.startsWith('234') && number.length === 13) {
-        return `+${number.substring(0, 3)} ${number.substring(3, 6)} ${number.substring(6, 9)} ${number.substring(9)}`;
-    }
+    // Simply return the number with + prefix
     return `+${number}`;
 }
 
@@ -838,7 +863,7 @@ function showToast(message, type = 'info') {
         <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
     `;
     
-    toastContainer.appendChild(toast);88
+    toastContainer.appendChild(toast);
     
     setTimeout(() => {
         if (toast.parentElement) {
