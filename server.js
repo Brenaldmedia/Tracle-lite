@@ -1794,11 +1794,11 @@ async function handleMessage(conn, message, sessionId) {
             const latency = Date.now() - start;
             
             await conn.sendMessage(message.key.remoteJid, { 
-                text: `🏓 Pong! Latency: ${latency}ms\n\n🤖 Bot: ${userSettings.botName || BOT_NAME}\n🔧 Commands: ${commands.size}\n📊 Active Sessions: ${activeConnections.size}`,
+                text: `🏓 Pong! Speed: ${latency}ms\n\n🤖 Bot: ${userSettings.botName || BOT_NAME}\n🔧 Commands: ${commands.size}\n📊 Active Sessions: ${activeConnections.size}`,
                 contextInfo: {
                     externalAdReply: {
                         title: "Bot Status",
-                        body: `Latency: ${latency}ms | Active: ${activeConnections.size}`,
+                        body: `Speed: ${latency}ms | Active: ${activeConnections.size}`,
                         thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
                         sourceUrl: REPO_LINK,
                         mediaType: 1
