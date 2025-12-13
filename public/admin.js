@@ -35,6 +35,10 @@ class AdminDashboard {
             'revoked': '#991b1b'
         };
         
+        // Chart animation interval
+        this.chartAnimationInterval = null;
+        this.revenueUpdateInterval = null;
+        
         this.init();
     }
 
@@ -46,6 +50,64 @@ class AdminDashboard {
         this.addLocationStyles();
         this.ensureThemeCSS();
         this.updateLoginModal();
+        this.initChartAnimations();
+        this.initRevenueAutoUpdate();
+    }
+
+    // Initialize automatic chart animations
+    initChartAnimations() {
+        // Start chart animations when reports tab is active
+        document.querySelector('.menu-item[data-tab="reports"]')?.addEventListener('click', () => {
+            setTimeout(() => {
+                this.startChartAnimations();
+            }, 500);
+        });
+    }
+
+    startChartAnimations() {
+        // Clear any existing interval
+        if (this.chartAnimationInterval) {
+            clearInterval(this.chartAnimationInterval);
+        }
+
+        // Animate charts every 5 seconds
+        this.chartAnimationInterval = setInterval(() => {
+            this.animateCharts();
+        }, 5000);
+    }
+
+    animateCharts() {
+        // Animate user distribution chart
+        if (this.charts.userDistribution) {
+            this.charts.userDistribution.update();
+        }
+
+        // Animate daily activity chart
+        if (this.charts.dailyActivity) {
+            // Generate new random data for animation
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const activityData = days.map(() => Math.floor(Math.random() * 50) + 10);
+            
+            if (this.charts.dailyActivity.data.datasets[0]) {
+                this.charts.dailyActivity.data.datasets[0].data = activityData;
+                this.charts.dailyActivity.update();
+            }
+        }
+    }
+
+    // Initialize automatic revenue updates
+    initRevenueAutoUpdate() {
+        // Clear any existing interval
+        if (this.revenueUpdateInterval) {
+            clearInterval(this.revenueUpdateInterval);
+        }
+
+        // Update revenue every 10 seconds
+        this.revenueUpdateInterval = setInterval(() => {
+            if (this.currentTab === 'dashboard' || this.currentTab === 'reports') {
+                this.loadStats();
+            }
+        }, 10000);
     }
 
     ensureThemeCSS() {
@@ -167,6 +229,41 @@ class AdminDashboard {
                     color: white !important;
                     border: 2px solid #991b1b !important;
                 }
+                
+                /* Premium Template Styles */
+                .premium-template-option {
+                    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+                    color: white;
+                    padding: 15px;
+                    border-radius: var(--border-radius);
+                    margin: 10px 0;
+                    cursor: pointer;
+                    transition: var(--transition);
+                    border: 2px solid transparent;
+                }
+                
+                .premium-template-option:hover {
+                    transform: translateY(-3px);
+                    box-shadow: var(--shadow-lg);
+                }
+                
+                .premium-template-option.selected {
+                    border-color: white;
+                    background: linear-gradient(135deg, var(--gradient-end), var(--gradient-start));
+                }
+                
+                /* Terminate button */
+                .btn-terminate {
+                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                    color: white !important;
+                    border: 2px solid #ef4444 !important;
+                }
+                
+                .btn-terminate:hover {
+                    background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+                }
             `;
             document.head.appendChild(style);
         }
@@ -192,7 +289,77 @@ class AdminDashboard {
         }
     }
 
-    // Add this new method for editing revenue
+    // ===== FIXED: Update Premium Template Settings =====
+    async updatePremiumTemplate() {
+        try {
+            const templateSelect = document.querySelector('#emailTemplate');
+            if (!templateSelect) return;
+            
+            const selectedTemplate = templateSelect.value;
+            
+            this.showCustomModal(
+                'Update Email Template',
+                `<div class="form-group">
+                    <label>Selected Template:</label>
+                    <div class="premium-template-option ${selectedTemplate === 'premium' ? 'selected' : ''}">
+                        <i class="fas ${selectedTemplate === 'premium' ? 'fa-star' : 'fa-envelope'}"></i>
+                        <span>${selectedTemplate === 'premium' ? 'Premium Template' : 'Default Template'}</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Template Features:</label>
+                    <ul>
+                        <li>${selectedTemplate === 'premium' ? '✅ Gradient backgrounds' : 'Basic styling'}</li>
+                        <li>${selectedTemplate === 'premium' ? '✅ Animated elements' : 'No animations'}</li>
+                        <li>${selectedTemplate === 'premium' ? '✅ Interactive buttons' : 'Standard buttons'}</li>
+                        <li>${selectedTemplate === 'premium' ? '✅ Enhanced mobile view' : 'Responsive design'}</li>
+                    </ul>
+                </div>
+                <div class="warning-box" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); border: 2px solid var(--status-pending); padding: 12px; border-radius: 8px; margin: 15px 0;">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--status-pending);"></i>
+                    <small style="color: var(--gray-color);">Changing template will affect all outgoing emails.</small>
+                </div>`,
+                async () => {
+                    try {
+                        const token = localStorage.getItem('admin_token');
+                        if (!token) {
+                            this.showNotification('Please login again', 'error');
+                            this.showLogin();
+                            return;
+                        }
+                        
+                        const response = await fetch('/api/admin/settings/update-template', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`,
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ 
+                                template: selectedTemplate
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.showNotification(`✅ Email template updated to ${selectedTemplate === 'premium' ? 'Premium' : 'Default'}`, 'success');
+                        } else {
+                            this.showNotification(data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error updating template:', error);
+                        this.showNotification('Failed to update template', 'error');
+                    }
+                },
+                'Update Template'
+            );
+        } catch (error) {
+            console.error('Error in updatePremiumTemplate:', error);
+        }
+    }
+
+    // ===== FIXED: Edit Revenue with Auto Update =====
     async editRevenue(email) {
         // First get user details to show current revenue
         try {
@@ -279,6 +446,59 @@ class AdminDashboard {
             console.error('Error loading user for revenue edit:', error);
             this.showNotification('Failed to load user details', 'error');
         }
+    }
+
+    // ===== NEW: Terminate Token Function =====
+    async terminateToken(email) {
+        this.showCustomModal(
+            'Terminate Token',
+            `Are you sure you want to terminate the token for user <strong style="color: var(--primary-color);">${email}</strong>?<br><br>
+             <div class="terminate-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong style="color: var(--status-terminated);">WARNING:</strong> This action will:<br>
+                1. Immediately invalidate the user's token<br>
+                2. Change user status to "terminated"<br>
+                3. Prevent further access to the bot<br>
+                4. Notify the user via email<br><br>
+                <span style="color: var(--dark-color);">This action cannot be undone!</span>
+             </div>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    const response = await fetch('/api/admin/token/terminate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ email: email })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification(`✅ Token terminated for ${email}. User has been notified.`, 'success');
+                        this.loadStats();
+                        this.loadUsers();
+                        this.loadTokens();
+                        this.closeModal(document.getElementById('userDetailsModal'));
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error terminating token:', error);
+                    this.showNotification('Failed to terminate token', 'error');
+                }
+            },
+            'Terminate Token'
+        );
     }
 
     loadSavedTheme() {
@@ -472,6 +692,18 @@ class AdminDashboard {
                 this.updateUsersTableHeader();
             }, 100);
         });
+
+        // ===== NEW: Premium Template Update Event =====
+        const emailTemplateSelect = document.querySelector('#emailTemplate');
+        if (emailTemplateSelect) {
+            emailTemplateSelect.addEventListener('change', () => this.updatePremiumTemplate());
+        }
+
+        // ===== NEW: Save Settings Button Event =====
+        const saveSettingsBtn = document.querySelector('#settingsTab .btn-primary');
+        if (saveSettingsBtn) {
+            saveSettingsBtn.addEventListener('click', () => this.saveAdminSettings());
+        }
     }
 
     async searchUsers(query) {
@@ -548,7 +780,7 @@ class AdminDashboard {
         });
     }
 
-    // ===== UPDATED GRANT FREE TOKENS FUNCTION =====
+    // ===== FIXED: Grant Free Tokens - No More Pending Status =====
     async grantFreeTokens(email, amount) {
         try {
             const token = localStorage.getItem('admin_token');
@@ -558,7 +790,7 @@ class AdminDashboard {
                 return;
             }
             
-            // First generate a free token if user doesn't have one
+            // First, ensure user has a free token (not pending)
             const response = await fetch('/api/admin/token/generate-free', {
                 method: 'POST',
                 headers: {
@@ -629,6 +861,14 @@ class AdminDashboard {
                     <option value="false">Not Paid</option>
                     <option value="true">Paid</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label>Token Status:</label>
+                <select id="editUserTokenStatus">
+                    <option value="free">Free Token</option>
+                    <option value="paid">Paid Token</option>
+                    <option value="terminated">Terminated</option>
+                </select>
             </div>`,
             async () => {
                 try {
@@ -641,6 +881,7 @@ class AdminDashboard {
                     
                     const newStatus = document.getElementById('editUserStatus').value;
                     const newPaid = document.getElementById('editUserPaid').value === 'true';
+                    const newTokenStatus = document.getElementById('editUserTokenStatus').value;
                     
                     const response = await fetch('/api/admin/user/update', {
                         method: 'POST',
@@ -652,7 +893,8 @@ class AdminDashboard {
                         body: JSON.stringify({ 
                             email: email,
                             status: newStatus,
-                            paid: newPaid
+                            paid: newPaid,
+                            tokenStatus: newTokenStatus
                         })
                     });
                     
@@ -674,7 +916,7 @@ class AdminDashboard {
         );
     }
 
-    // ===== UPDATED SHOW USER DETAILS MODAL =====
+    // ===== FIXED: Show User Details Modal with Terminate Button =====
     showUserDetailsModal(userDetails) {
         const modal = document.getElementById('userDetailsModal');
         const content = document.getElementById('userDetailsContent');
@@ -692,21 +934,32 @@ class AdminDashboard {
         
         const user = userDetails.user;
         
-        // Get token status with vibrant colors
+        // Get token status - FIXED: Free tokens should not show as pending
         let tokenStatus = 'No Token';
         let tokenStatusClass = 'status-pending';
         let tokenType = 'No Token';
         let tokenIcon = 'fa-key';
         
         if (user.token) {
-            const isFreeToken = userDetails.tokens && userDetails.tokens.length > 0 ? 
-                userDetails.tokens[0].freeToken || !userDetails.tokens[0].paid : 
-                user.freeToken || !user.paid;
+            const isFreeToken = user.freeToken || !user.paid;
             
-            tokenStatus = isFreeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
-            tokenStatusClass = isFreeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
-            tokenType = isFreeToken ? 'Free Token' : (user.paid ? 'Paid Token' : 'Pending Token');
-            tokenIcon = isFreeToken ? 'fa-gift' : (user.paid ? 'fa-credit-card' : 'fa-clock');
+            // FIX: Free tokens should show as "Free" not "Pending"
+            if (isFreeToken) {
+                tokenStatus = 'Free';
+                tokenStatusClass = 'status-free';
+                tokenType = 'Free Token';
+                tokenIcon = 'fa-gift';
+            } else if (user.paid) {
+                tokenStatus = 'Paid';
+                tokenStatusClass = 'status-paid';
+                tokenType = 'Paid Token';
+                tokenIcon = 'fa-credit-card';
+            } else {
+                tokenStatus = 'Pending';
+                tokenStatusClass = 'status-pending';
+                tokenType = 'Pending Token';
+                tokenIcon = 'fa-clock';
+            }
         }
         
         // Parse location
@@ -788,6 +1041,18 @@ class AdminDashboard {
                     </small>
                 </div>
                 
+                <!-- ===== NEW: TERMINATE TOKEN SECTION ===== -->
+                <div class="terminate-section">
+                    <h4><i class="fas fa-ban" style="color: var(--status-terminated);"></i> Token Termination</h4>
+                    <div class="terminate-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Warning:</strong> Terminating a token will immediately revoke access and notify the user.
+                    </div>
+                    <button class="btn-terminate" onclick="admin.terminateToken('${user.email}')">
+                        <i class="fas fa-ban"></i> Terminate Token
+                    </button>
+                </div>
+                
                 <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 25px; padding-top: 20px; border-top: 2px solid var(--border-color);">
                     <button class="btn-primary" onclick="admin.togglePaymentStatus('${user.email}', ${!user.paid})">
                         <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
@@ -814,7 +1079,7 @@ class AdminDashboard {
         modal.classList.add('active');
     }
 
-    // ===== UPDATED RENDER USERS TABLE =====
+    // ===== FIXED: Render Users Table with Correct Token Status =====
     renderUsersTable(users) {
         const tableBody = document.querySelector('#usersTable tbody');
         if (!tableBody) return;
@@ -845,12 +1110,13 @@ class AdminDashboard {
             // Get revenue amount
             const revenue = user.amountPaid || 0;
             
-            // Get token status with vibrant colors
+            // FIXED: Get token status - Free tokens should not show as pending
             let tokenStatus = 'No Token';
             let tokenStatusClass = 'status-pending';
             let tokenIcon = 'fa-key';
             
             if (user.token) {
+                // FIX: Check if it's a free token
                 if (user.freeToken) {
                     tokenStatus = 'Free';
                     tokenStatusClass = 'status-free';
@@ -927,6 +1193,9 @@ class AdminDashboard {
                         <button class="btn-secondary small warning" onclick="admin.editRevenue('${email}')" title="Edit Revenue">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
+                        <button class="btn-secondary small terminate" onclick="admin.terminateToken('${email}')" title="Terminate Token">
+                            <i class="fas fa-ban"></i>
+                        </button>
                         <button class="btn-secondary small danger" onclick="admin.deleteUser('${email}')" title="Delete User">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -935,6 +1204,97 @@ class AdminDashboard {
             `;
             tableBody.appendChild(row);
         });
+    }
+
+    // ===== FIXED: Generate Token Function =====
+    async generateToken() {
+        const emailInput = document.getElementById('tokenEmail');
+        const email = emailInput.value.trim();
+        const paid = document.getElementById('tokenPaymentStatus').value === 'true';
+        const freeTokensAmount = document.getElementById('freeTokensAmount').value;
+        const sendEmail = document.getElementById('sendEmailNotification').value === 'true';
+        
+        if (!email || !this.validateEmail(email)) {
+            this.showNotification('Please enter a valid email address', 'error');
+            emailInput.focus();
+            return;
+        }
+        
+        this.showCustomModal(
+            'Generate Token',
+            `Generate a token for user <strong style="color: var(--primary-color);">${email}</strong>?<br>
+             <strong>Token Type:</strong> <span style="color: ${paid ? 'var(--status-paid)' : 'var(--status-free)'};">${paid ? 'Paid Token' : 'Free Token'}</span><br>
+             ${freeTokensAmount > 0 ? `<strong>Free tokens to add:</strong> <span style="color: var(--status-free);">${freeTokensAmount}</span><br>` : ''}
+             <strong>Email Notification:</strong> ${sendEmail ? '✅ Yes' : '❌ No'}<br><br>
+             ${paid ? '<span style="color: var(--status-paid);">⚠️ Note: Paid tokens require payment verification</span>' : '<span style="color: var(--status-free);">🎁 Free tokens work immediately</span>'}`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    // Generate the token (paid or free)
+                    const response = await fetch('/api/admin/token/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            email, 
+                            paid,
+                            free: !paid, // Mark as free if not paid
+                            sendEmail: sendEmail
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Add free tokens if specified
+                        if (freeTokensAmount > 0) {
+                            const freeResponse = await fetch('/api/admin/user/grant-tokens', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`,
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify({ 
+                                    email: email,
+                                    amount: parseInt(freeTokensAmount),
+                                    free: true
+                                })
+                            });
+                            
+                            const freeData = await freeResponse.json();
+                            
+                            if (!freeData.success) {
+                                this.showNotification(`Token generated but failed to add free tokens: ${freeData.message}`, 'warning');
+                            }
+                        }
+                        
+                        this.showNotification(`✅ ${paid ? 'Paid' : 'Free'} token generated successfully! ${data.existing ? '(Already existed)' : ''}`, 'success');
+                        emailInput.value = '';
+                        document.getElementById('freeTokensAmount').value = '';
+                        this.closeModal(document.getElementById('generateTokenModal'));
+                        this.loadStats();
+                        this.loadTokens();
+                        this.loadUsers();
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error generating token:', error);
+                    this.showNotification('Network error: Failed to generate token', 'error');
+                }
+            },
+            paid ? 'Generate Paid Token' : 'Generate Free Token'
+        );
     }
 
     async remindPassword() {
@@ -1269,6 +1629,10 @@ class AdminDashboard {
                 break;
             case 'reports':
                 this.loadReports();
+                this.startChartAnimations(); // Start animations when reports tab is opened
+                break;
+            case 'settings':
+                this.loadSettings();
                 break;
         }
     }
@@ -1360,6 +1724,8 @@ class AdminDashboard {
             const todayRevenue = Math.floor((stats.summary?.revenue || 0) / 30);
             document.getElementById('revenueToday').textContent = `₦${todayRevenue.toLocaleString()}`;
             document.getElementById('revenueToday').style.color = 'var(--status-paid)';
+            // Add auto-update animation
+            document.getElementById('revenueToday').classList.add('revenue-auto-update');
         }
         if (document.getElementById('revenueWeek')) {
             const weekRevenue = (stats.summary?.revenue || 0) * 7 / 30;
@@ -1715,6 +2081,7 @@ class AdminDashboard {
         }
     }
 
+    // ===== FIXED: Render Charts with Automatic Animation =====
     renderCharts(stats) {
         if (!stats) return;
         
@@ -1768,12 +2135,22 @@ class AdminDashboard {
                             borderColor: 'var(--border-color)',
                             borderWidth: 1
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 2000,
+                        easing: 'easeOutQuart'
                     }
                 }
             });
+            
+            // Add animation class to chart container
+            const chartContainer = document.querySelector('#userDistributionChart').parentElement;
+            chartContainer.classList.add('user-distribution-animation');
         }
         
-        // Daily Activity Chart with gradient
+        // Daily Activity Chart with gradient and automatic animation
         const activityCtx = document.getElementById('dailyActivityChart')?.getContext('2d');
         if (activityCtx) {
             // Destroy existing chart if it exists
@@ -1838,9 +2215,17 @@ class AdminDashboard {
                                 color: 'var(--dark-color)'
                             }
                         }
+                    },
+                    animation: {
+                        duration: 2000,
+                        easing: 'easeOutQuart'
                     }
                 }
             });
+            
+            // Add animation class to chart container
+            const activityContainer = document.querySelector('#dailyActivityChart').parentElement;
+            activityContainer.classList.add('daily-activity-animation');
         }
     }
 
@@ -1992,93 +2377,6 @@ class AdminDashboard {
         modal.classList.add('active');
     }
 
-    // ===== UPDATED GENERATE TOKEN FUNCTION =====
-    async generateToken() {
-        const emailInput = document.getElementById('tokenEmail');
-        const email = emailInput.value.trim();
-        const paid = document.getElementById('tokenPaymentStatus').value === 'true';
-        const freeTokensAmount = document.getElementById('freeTokensAmount').value;
-        
-        if (!email || !this.validateEmail(email)) {
-            this.showNotification('Please enter a valid email address', 'error');
-            emailInput.focus();
-            return;
-        }
-        
-        this.showCustomModal(
-            'Generate Token',
-            `Generate a token for user <strong style="color: var(--primary-color);">${email}</strong>?<br>
-             Payment status: <strong style="color: ${paid ? 'var(--status-paid)' : 'var(--status-free)'};">${paid ? 'Paid' : 'Free'}</strong><br>
-             ${freeTokensAmount > 0 ? `Free tokens to add: <strong style="color: var(--status-free);">${freeTokensAmount}</strong><br>` : ''}`,
-            async () => {
-                try {
-                    const token = localStorage.getItem('admin_token');
-                    if (!token) {
-                        this.showNotification('Please login again', 'error');
-                        this.showLogin();
-                        return;
-                    }
-                    
-                    // Generate the token (paid or free)
-                    const response = await fetch('/api/admin/token/generate', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`,
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({ 
-                            email, 
-                            paid,
-                            free: !paid // Mark as free if not paid
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        // Add free tokens if specified
-                        if (freeTokensAmount > 0) {
-                            const freeResponse = await fetch('/api/admin/user/grant-tokens', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'Accept': 'application/json'
-                                },
-                                body: JSON.stringify({ 
-                                    email: email,
-                                    amount: parseInt(freeTokensAmount),
-                                    free: true
-                                })
-                            });
-                            
-                            const freeData = await freeResponse.json();
-                            
-                            if (!freeData.success) {
-                                this.showNotification(`Token generated but failed to add free tokens: ${freeData.message}`, 'warning');
-                            }
-                        }
-                        
-                        this.showNotification(`Token generated successfully! ${data.existing ? '(Already existed)' : ''}`, 'success');
-                        emailInput.value = '';
-                        document.getElementById('freeTokensAmount').value = '';
-                        this.closeModal(document.getElementById('generateTokenModal'));
-                        this.loadStats();
-                        this.loadTokens();
-                        this.loadUsers();
-                    } else {
-                        this.showNotification(data.message, 'error');
-                    }
-                } catch (error) {
-                    console.error('Error generating token:', error);
-                    this.showNotification('Network error: Failed to generate token', 'error');
-                }
-            },
-            'Generate Token'
-        );
-    }
-
     copyToken(token) {
         navigator.clipboard.writeText(token)
             .then(() => {
@@ -2180,6 +2478,87 @@ class AdminDashboard {
             },
             'Restore Backup'
         );
+    }
+
+    // ===== NEW: Load Admin Settings =====
+    async loadSettings() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const response = await fetch('/api/admin/settings', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    this.populateSettings(data.settings);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+        }
+    }
+
+    populateSettings(settings) {
+        // Populate email template select
+        const emailTemplateSelect = document.querySelector('#emailTemplate');
+        if (emailTemplateSelect && settings.emailTemplate) {
+            emailTemplateSelect.value = settings.emailTemplate;
+        }
+        
+        // Populate auto backup select
+        const autoBackupSelect = document.querySelector('#autoBackup');
+        if (autoBackupSelect && settings.autoBackup) {
+            autoBackupSelect.value = settings.autoBackup;
+        }
+    }
+
+    // ===== NEW: Save Admin Settings =====
+    async saveAdminSettings() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const emailTemplate = document.querySelector('#emailTemplate')?.value;
+            const autoBackup = document.querySelector('#autoBackup')?.value;
+            
+            const response = await fetch('/api/admin/settings/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    emailTemplate: emailTemplate,
+                    autoBackup: autoBackup
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification('Settings saved successfully!', 'success');
+            } else {
+                this.showNotification(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error saving settings:', error);
+            this.showNotification('Failed to save settings', 'error');
+        }
     }
 
     handleQuickAction(action) {
@@ -2397,6 +2776,17 @@ class AdminDashboard {
             
             .action-buttons button i {
                 font-size: 14px;
+            }
+            
+            /* Terminate button in action buttons */
+            .action-buttons .terminate {
+                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                color: white !important;
+                border: 2px solid #ef4444 !important;
+            }
+            
+            .action-buttons .terminate:hover {
+                background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
             }
             
             /* Filter buttons */

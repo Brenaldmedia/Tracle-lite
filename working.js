@@ -2111,92 +2111,24 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
         
-  // In your server.js, update the TRACLE command section
-if (commandName === 'tracle') {
-    const featureList = `
-🚀 *TRACLE - LITE BOT v2.1.0*
-━━━━━━━━━━━━━━━━━━━━━━
-
-👑 *Owner:* ${userSettings.ownerName || OWNER_NAME}
-🔧 *Developer:* ${DEV}
-📱 *Prefix:* ${userPrefix}
-
-✨ *CORE FEATURES*
-━━━━━━━━━━━━━━━━━━━━━━
-
-🎵 *MEDIA DOWNLOADER*
-• .song [title] - Download any song
-• .video [url] - Download YouTube videos
-• .yt [search] - YouTube search & download
-• .tiktok [url] - TikTok downloader
-• .ig [url] - Instagram downloader
-• .fb [url] - Facebook downloader
-• .twitter [url] - Twitter/X downloader
-
-👁️ *AUTO FEATURES*
-• Auto-view status updates
-• Auto-like/react to status
-• Anti-delete message protection
-
-🛡️ *SECURITY TOOLS*
-• Message anti-delete (DM/Group mode)
-• Session restoration
-• Multi-device support
-
-📱 *GROUP MANAGEMENT*
-• .add [number] - Add members
-• .kick @user - Remove members
-• .promote/demote - Admin control
-• .gclink - Group invite link
-
-⚙️ *SETTINGS COMMANDS*
-• .mode [public/private] - Bot response mode
-• .setprefix [prefix] - Change command prefix
-• .setname [name] - Set owner name
-• .setbotname [name] - Set bot name
-• .setbotimage [url] - Set bot image
-• .setbank [details] - Configure bank info
-• .autoviewstatus [on/off] - Auto-view status
-• .autolikestatus [on/off] - Auto-react status
-• .antidelete [on/off] - Anti-delete protection
-
-🔗 *UTILITY COMMANDS*
-• .ping - Check bot speed
-• .menu - Full command list
-• .support - Bank/support info
-• .owner - Owner information
-
-☁️ *CLOUD FEATURES*
-• Session backup & restore
-• Multi-device synchronization
-
-━━━━━━━━━━━━━━━━━━━━━━
-💾 *BOT INFORMATION*
-• Total Commands: ${commands.size}
-• Bot Mode: ${userSettings.botMode}
-• Anti-Delete: ${userSettings.antiDelete === "true" ? "✅ ON" : "❌ OFF"}
-• Auto-View Status: ${userSettings.autoViewStatus === "true" ? "✅ ON" : "❌ OFF"}
-• Auto-Like Status: ${userSettings.autoLikeStatus === "true" ? "✅ ON" : "❌ OFF"}
-
-📚 *GitHub:* ${REPO_LINK}
-🌟 *Advanced WhatsApp automation bot with media downloading capabilities!*`;
-
-    await conn.sendMessage(message.key.remoteJid, { 
-        text: featureList,
-        contextInfo: {
-            externalAdReply: {
-                title: "TRACLE - LITE BOT",
-                body: "Advanced WhatsApp Bot v2.1.0",
-                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                sourceUrl: REPO_LINK,
-                mediaType: 1,
-                showAdAttribution: true,
-                renderLargerThumbnail: true
-            }
+        // TRACLE COMMAND with premium context info
+        if (commandName === 'tracle') {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `🚀 *TRACLE - LITE*\n\n• Version: 2.0\n• Developer: ${DEV}\n• GitHub: ${REPO_LINK}\n• Owner: ${userSettings.ownerName || OWNER_NAME}\n\n🌟 Advanced WhatsApp bot with multi-device support, Supabase backup, and more!`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "TRACLE - LITE",
+                        body: "Advanced WhatsApp Bot",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1,
+                        showAdAttribution: true,
+                        renderLargerThumbnail: true
+                    }
+                }
+            }, { quoted: message });
+            return;
         }
-    }, { quoted: message });
-    return;
-}
         
         // SETNAME COMMAND with premium context info
         if (commandName === 'setname') {
@@ -2676,7 +2608,7 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             connectedAt: null // Track when connected
         });
 
-        // =============== FIXED: PAIRING CODE GENERATION FOR NEW USERS ===============
+        // =============== UPDATED CONNECTION EVENT HANDLER WITH IMPROVED STABILITY ===============
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
@@ -2688,20 +2620,15 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                 userEmail: userEmail
             });
             
-            // FIX: Always generate QR code for new sessions
-            if (!isRestoring) {
-                if (qr) {
-                    console.log(`📱 QR code generated for NEW user`);
-                    socket.emit('qr', { 
-                        userNumber,
-                        qr: qr,
-                        email: userEmail,
-                        token: userToken,
-                        instructions: 'Scan with WhatsApp'
-                    });
-                } else if (connection === 'open') {
-                    console.log(`✅ Connected without QR for existing session`);
-                }
+            if (qr && !isRestoring) {
+                console.log(`📱 QR code generated`);
+                socket.emit('qr', { 
+                    userNumber,
+                    qr: qr,
+                    email: userEmail,
+                    token: userToken,
+                    instructions: 'Scan with WhatsApp'
+                });
             }
             
             if (connection === 'open') {
@@ -3068,25 +2995,14 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
 
         sock.ev.on('creds.update', saveCreds);
         
-        // =============== FIXED: PAIRING CODE GENERATION FOR NEW USERS ===============
-        // Generate pairing code for new users if not registered
         if (!state.creds?.registered && !isRestoring) {
-            console.log(`🔄 Generating pairing code for new user: ${userNumber}`);
-            
-            try {
-                // Wait a bit for connection to establish
-                await delay(3000);
-                
-                // Check if socket has requestPairingCode method
-                if (sock.requestPairingCode && typeof sock.requestPairingCode === 'function') {
+            setTimeout(async () => {
+                try {
                     const phoneNumber = userNumber.replace(/\D/g, '');
-                    console.log(`📱 Requesting pairing code for phone number: ${phoneNumber}`);
-                    
                     const code = await sock.requestPairingCode(phoneNumber);
                     
-                    console.log(`✅ Pairing code generated: ${code}`);
+                    console.log(`✅ Pairing code: ${code}`);
                     
-                    // Set timeout for pairing code expiration
                     const timeout = setTimeout(() => {
                         if (sessions.get(userNumber) === sock) {
                             socket.emit('pairing-expired', { 
@@ -3096,11 +3012,10 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                             });
                             cleanupSession(userNumber);
                         }
-                    }, 180000); // 3 minutes
+                    }, 180000);
                     
                     pairingTimeouts.set(userNumber, timeout);
                     
-                    // Send pairing code to frontend
                     socket.emit('pairing-code', { 
                         pairingCode: code, 
                         userNumber,
@@ -3108,45 +3023,18 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         token: userToken,
                         instructions: 'Open WhatsApp → Linked Devices → Link Device → Enter code'
                     });
-                    
-                    console.log(`📤 Sent pairing code to frontend for ${userNumber}`);
-                } else {
-                    console.error(`❌ Socket doesn't have requestPairingCode method`);
+                } catch (error) {
+                    console.error('❌ Pairing error:', error);
                     socket.emit('error', { 
                         userNumber, 
                         email: userEmail,
                         token: userToken,
-                        error: 'Failed to generate pairing code: requestPairingCode method not available'
+                        error: 'Failed to generate pairing code: ' + error.message
                     });
-                }
-            } catch (error) {
-                console.error('❌ Pairing code generation error:', error);
-                socket.emit('error', { 
-                    userNumber, 
-                    email: userEmail,
-                    token: userToken,
-                    error: 'Failed to generate pairing code: ' + error.message
-                });
-                
-                // Try alternative method for older versions
-                try {
-                    console.log(`🔄 Trying alternative pairing method...`);
-                    // Emit QR code if available
-                    socket.emit('qr', { 
-                        userNumber,
-                        email: userEmail,
-                        token: userToken,
-                        instructions: 'Scan QR code with WhatsApp'
-                    });
-                } catch (altError) {
-                    console.error('❌ Alternative pairing also failed:', altError);
                     await cleanupSession(userNumber);
                 }
-            }
-        } else if (state.creds?.registered && !isRestoring) {
-            console.log(`✅ User ${userNumber} already registered, connecting directly`);
+            }, 5000);
         }
-        // =============== END FIXED PAIRING CODE GENERATION ===============
         
         return sock;
     } catch (error) {
@@ -3703,19 +3591,114 @@ app.post('/api/validate-token', async (req, res) => {
     }
 });
 
-// API route to get quiz questions - REMOVED AS REQUESTED
+// API route to get quiz questions
+const quizQuestions = [
+    {
+        question: "What is 5 + 7?",
+        options: ["10", "12", "13", "15"],
+        correct: 1
+    },
+    {
+        question: "What is 8 × 6?",
+        options: ["42", "48", "54", "56"],
+        correct: 1
+    },
+    {
+        question: "What is the capital of France?",
+        options: ["London", "Berlin", "Paris", "Madrid"],
+        correct: 2
+    },
+    {
+        question: "What is 15 ÷ 3?",
+        options: ["3", "4", "5", "6"],
+        correct: 2
+    },
+    {
+        question: "Which word is spelled correctly?",
+        options: ["Recieve", "Receive", "Recieive", "Receeve"],
+        correct: 1
+    },
+    {
+        question: "What is 9²?",
+        options: ["81", "72", "90", "99"],
+        correct: 0
+    },
+    {
+        question: "What is the plural of 'child'?",
+        options: ["Childs", "Children", "Childes", "Childies"],
+        correct: 1
+    },
+    {
+        question: "What is 100 ÷ 4?",
+        options: ["20", "25", "30", "35"],
+        correct: 1
+    },
+    {
+        question: "Which is a noun?",
+        options: ["Run", "Beautiful", "Quickly", "Dog"],
+        correct: 3
+    },
+    {
+        question: "What is 7 × 8?",
+        options: ["54", "56", "58", "60"],
+        correct: 1
+    }
+];
+
 app.get('/api/quiz', (req, res) => {
+    const randomIndex = Math.floor(Math.random() * quizQuestions.length);
+    const question = quizQuestions[randomIndex];
+    
     res.json({
-        success: false,
-        message: 'Quiz API has been removed'
+        success: true,
+        question: question.question,
+        options: question.options,
+        questionId: randomIndex
     });
 });
 
 app.post('/api/verify-quiz', (req, res) => {
-    res.json({
-        success: false,
-        message: 'Quiz verification API has been removed'
-    });
+    try {
+        const { questionId, answer } = req.body;
+        
+        if (questionId === undefined || answer === undefined) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Question ID and answer are required' 
+            });
+        }
+        
+        const question = quizQuestions[questionId];
+        
+        if (!question) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid question ID' 
+            });
+        }
+        
+        if (parseInt(answer) === question.correct) {
+            res.json({
+                success: true,
+                correct: true,
+                message: 'Correct answer!'
+            });
+        } else {
+            res.json({
+                success: true,
+                correct: false,
+                message: 'Incorrect answer. Try again.',
+                correctAnswer: question.correct
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error verifying quiz:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error' 
+        });
+    }
 });
 
 // API route to get active users count (now based on sessions)
@@ -3783,7 +3766,7 @@ app.delete('/api/session/:userNumber', async (req, res) => {
         await cleanupSession(userNumber);
         
         // Delete session folder
-        const sessionPath = path.join(__dirname, "sessions", userNumber);
+        const sessionPath = path.join(__dirname, 'sessions', userNumber);
         if (fs.existsSync(sessionPath)) {
             await fs.remove(sessionPath);
             console.log(`✅ Session folder deleted: ${sessionPath}`);
@@ -4158,7 +4141,6 @@ const startServer = async () => {
             console.log(`   • joingroup (join group)`);
             console.log(`   • tracle (bot info)`);
             console.log(`🔗 CONNECTION STABILITY: IMPROVED (Longer timeout, keep-alive enabled)`);
-            console.log(`✅ PAIRING CODE FIX: Now working for new users`);
 
             // Load commands
             loadCommands();
@@ -4260,7 +4242,6 @@ process.on('SIGINT', async () => {
     console.log('📁 Sessions will be restored on next startup');
     console.log('☁️ Backups are available on Supabase');
     console.log('📱 All commands will include premium context info on next startup');
-    console.log('✅ Pairing code system is now working for new users');
     process.exit(0);
 });
 

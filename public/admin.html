@@ -7,46 +7,183 @@
     <link rel="stylesheet" href="admin.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Premium Template Styles */
+        .premium-template {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .premium-template h4 {
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+        }
+        
+        .premium-template .features {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .premium-template .feature {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .premium-template .feature i {
+            color: #fbbf24;
+        }
+        
+        .premium-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Terminate button styling */
+        .btn-terminate {
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            color: white !important;
+            border: 2px solid #ef4444 !important;
+        }
+        
+        .btn-terminate:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+        
+        /* Chart animations */
+        .chart-container {
+            position: relative;
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Pulse animation for active charts */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        
+        .chart-pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Enhanced revenue display */
+        .revenue-glow {
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+            animation: revenuePulse 3s infinite;
+        }
+        
+        @keyframes revenuePulse {
+            0%, 100% { text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+            50% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.8); }
+        }
+        
+        /* New styles for email template select */
+        .email-template-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .template-option {
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        .template-option:hover {
+            border-color: #8b5cf6;
+            transform: translateY(-2px);
+        }
+        
+        .template-option.selected {
+            border-color: #8b5cf6;
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        }
+        
+        .template-option i {
+            font-size: 24px;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .template-option h4 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+        }
+        
+        .template-option p {
+            margin: 0;
+            font-size: 12px;
+            color: #6b7280;
+        }
+    </style>
 </head>
 <body class="theme-purple">
- <!-- Login Modal -->
-<div class="login-modal" id="loginModal">
-    <div class="login-container">
-        <div class="login-header">
-            <i class="fas fa-lock"></i>
-            <h2>Admin Login</h2>
-            <p>Enter your admin credentials to access the dashboard</p>
-        </div>
-        
-        <div class="login-form">
-            <div class="input-group">
-                <label for="adminEmail"><i class="fas fa-envelope"></i> Admin Email</label>
-                <input type="email" id="adminEmail" placeholder="brenaldmedia@gmail.com" value="brenaldmedia@gmail.com">
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-lock"></i>
+                <h2>Admin Login</h2>
+                <p>Enter your admin credentials to access the dashboard</p>
             </div>
             
-            <div class="input-group">
-                <label for="adminPassword"><i class="fas fa-key"></i> Password</label>
-                <input type="password" id="adminPassword" placeholder="Enter your password">
-              
+            <div class="login-form">
+                <div class="input-group">
+                    <label for="adminEmail"><i class="fas fa-envelope"></i> Admin Email</label>
+                    <input type="email" id="adminEmail" placeholder="brenaldmedia@gmail.com" value="brenaldmedia@gmail.com">
+                </div>
+                
+                <div class="input-group">
+                    <label for="adminPassword"><i class="fas fa-key"></i> Password</label>
+                    <input type="password" id="adminPassword" placeholder="Enter your password">
+                  
+                </div>
+                
+                <button class="login-btn" id="loginBtn">
+                    <i class="fas fa-sign-in-alt"></i> Login to Dashboard
+                </button>
+                
+                <button class="request-code-btn" id="remindMeBtn">
+                    <i class="fas fa-key"></i> Remind Me
+                </button>
+                
+                <div id="loginMessage" class="login-message"></div>
             </div>
             
-            <button class="login-btn" id="loginBtn">
-                <i class="fas fa-sign-in-alt"></i> Login to Dashboard
-            </button>
-            
-            <button class="request-code-btn" id="remindMeBtn">
-                <i class="fas fa-key"></i> Remind Me
-            </button>
-            
-            <div id="loginMessage" class="login-message"></div>
-        </div>
-        
-        <div class="login-footer">
-            <p><i class="fas fa-shield-alt"></i> Secure Admin Access Only</p>
-            <p style="font-size: 12px; margin-top: 10px;">Admin Email: brenaldmedia@gmail.com</p>
+            <div class="login-footer">
+                <p><i class="fas fa-shield-alt"></i> Secure Admin Access Only</p>
+                <p style="font-size: 12px; margin-top: 10px;">Admin Email: brenaldmedia@gmail.com</p>
+            </div>
         </div>
     </div>
-</div>
 
     <!-- Admin Dashboard -->
     <div class="admin-dashboard hidden" id="adminDashboard">
@@ -139,7 +276,7 @@
                         <div class="stat-item">
                             <i class="fas fa-money-bill-wave"></i>
                             <div>
-                                <span class="stat-value" id="totalRevenue">₦0</span>
+                                <span class="stat-value revenue-glow" id="totalRevenue">₦0</span>
                                 <span class="stat-label">Revenue</span>
                             </div>
                         </div>
@@ -274,6 +411,7 @@
                             <button class="filter-btn" data-filter="pending" onclick="admin.filterUsers('pending')">Pending</button>
                             <button class="filter-btn" data-filter="approved" onclick="admin.filterUsers('approved')">Approved</button>
                             <button class="filter-btn" data-filter="paid" onclick="admin.filterUsers('paid')">Paid</button>
+                            <button class="filter-btn" data-filter="free" onclick="admin.filterUsers('free')">Free Tokens</button>
                         </div>
                     </div>
                     
@@ -364,9 +502,10 @@
                         <div class="card">
                             <div class="card-header">
                                 <h3><i class="fas fa-chart-pie"></i> User Distribution</h3>
+                                <span class="premium-badge">Auto-Animated</span>
                             </div>
                             <div class="card-body">
-                                <div class="chart-container">
+                                <div class="chart-container chart-pulse">
                                     <canvas id="userDistributionChart"></canvas>
                                 </div>
                             </div>
@@ -375,9 +514,10 @@
                         <div class="card">
                             <div class="card-header">
                                 <h3><i class="fas fa-calendar-alt"></i> Daily Activity</h3>
+                                <span class="premium-badge">Live Updates</span>
                             </div>
                             <div class="card-body">
-                                <div class="chart-container">
+                                <div class="chart-container chart-pulse">
                                     <canvas id="dailyActivityChart"></canvas>
                                 </div>
                             </div>
@@ -386,24 +526,25 @@
                         <div class="card wide">
                             <div class="card-header">
                                 <h3><i class="fas fa-money-bill"></i> Revenue Report</h3>
+                                <span class="premium-badge">Premium</span>
                             </div>
                             <div class="card-body">
                                 <div class="revenue-stats">
                                     <div class="revenue-item">
                                         <span class="revenue-label">Today</span>
-                                        <span class="revenue-value" id="revenueToday">₦0</span>
+                                        <span class="revenue-value revenue-glow" id="revenueToday">₦0</span>
                                     </div>
                                     <div class="revenue-item">
                                         <span class="revenue-label">This Week</span>
-                                        <span class="revenue-value" id="revenueWeek">₦0</span>
+                                        <span class="revenue-value revenue-glow" id="revenueWeek">₦0</span>
                                     </div>
                                     <div class="revenue-item">
                                         <span class="revenue-label">This Month</span>
-                                        <span class="revenue-value" id="revenueMonth">₦0</span>
+                                        <span class="revenue-value revenue-glow" id="revenueMonth">₦0</span>
                                     </div>
                                     <div class="revenue-item">
                                         <span class="revenue-label">Total</span>
-                                        <span class="revenue-value" id="revenueTotal">₦0</span>
+                                        <span class="revenue-value revenue-glow" id="revenueTotal">₦0</span>
                                     </div>
                                 </div>
                             </div>
@@ -417,20 +558,46 @@
                         <div class="card">
                             <div class="card-header">
                                 <h3><i class="fas fa-envelope"></i> Email Settings</h3>
+                                <span class="premium-badge">Premium</span>
                             </div>
                             <div class="card-body">
+                                <!-- Premium Template Section -->
+                                <div class="premium-template">
+                                    <h4><i class="fas fa-star"></i> Premium Email Template</h4>
+                                    <p>Enhanced email templates with better formatting and branding.</p>
+                                    <div class="features">
+                                        <div class="feature"><i class="fas fa-check"></i> Custom Branding</div>
+                                        <div class="feature"><i class="fas fa-check"></i> HTML Formatting</div>
+                                        <div class="feature"><i class="fas fa-check"></i> Auto-templates</div>
+                                        <div class="feature"><i class="fas fa-check"></i> Bulk Sending</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="email-template-options">
+                                    <div class="template-option selected" data-template="default">
+                                        <i class="fas fa-file-alt"></i>
+                                        <h4>Default Template</h4>
+                                        <p>Simple and clean email design</p>
+                                    </div>
+                                    <div class="template-option" data-template="premium">
+                                        <i class="fas fa-crown"></i>
+                                        <h4>Premium Template</h4>
+                                        <p>Enhanced design with branding</p>
+                                    </div>
+                                </div>
+                                
                                 <div class="form-group">
                                     <label>Admin Email</label>
                                     <input type="email" value="brenaldmedia@gmail.com" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label>Email Template</label>
-                                    <select>
-                                        <option>Default Template</option>
-                                        <option>Premium Template</option>
+                                    <select id="emailTemplateSelect" style="display: none;">
+                                        <option value="default">Default Template</option>
+                                        <option value="premium" selected>Premium Template</option>
                                     </select>
                                 </div>
-                                <button class="btn-primary">
+                                <button class="btn-primary" onclick="admin.saveEmailSettings()">
                                     <i class="fas fa-save"></i> Save Settings
                                 </button>
                             </div>
@@ -443,11 +610,11 @@
                             <div class="card-body">
                                 <div class="form-group">
                                     <label>Auto Backup</label>
-                                    <select>
-                                        <option>Daily</option>
-                                        <option>Weekly</option>
-                                        <option>Monthly</option>
-                                        <option>Disabled</option>
+                                    <select id="autoBackupSelect">
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly" selected>Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="disabled">Disabled</option>
                                     </select>
                                 </div>
                                 <div class="backup-actions">
@@ -469,6 +636,15 @@
                                 <div class="form-group">
                                     <label>Admin Password</label>
                                     <input type="password" value="isiboremmanuel0911" readonly style="font-family: monospace;">
+                                </div>
+                                <div class="form-group">
+                                    <label>Session Timeout</label>
+                                    <select id="sessionTimeoutSelect">
+                                        <option value="1">1 hour</option>
+                                        <option value="4">4 hours</option>
+                                        <option value="24" selected>24 hours</option>
+                                        <option value="168">7 days</option>
+                                    </select>
                                 </div>
                                 <button class="btn-secondary">
                                     <i class="fas fa-history"></i> View Login History
@@ -494,7 +670,7 @@
         </div>
     </div>
 
-    <!-- ===== UPDATED GENERATE TOKEN MODAL ===== -->
+    <!-- Generate Token Modal -->
     <div class="modal" id="generateTokenModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -531,7 +707,173 @@
         </div>
     </div>
 
+    <!-- Terminate Token Modal -->
+    <div class="modal" id="terminateTokenModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Terminate Token</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="terminateTokenContent">
+                <!-- Terminate token content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="admin.js"></script>
+    <script>
+        // Additional admin functions for premium features
+        const admin = new AdminDashboard();
+        
+        // Email settings save function
+        admin.saveEmailSettings = function() {
+            const selectedTemplate = document.querySelector('.template-option.selected');
+            const template = selectedTemplate ? selectedTemplate.dataset.template : 'premium';
+            const isPremium = template === 'premium';
+            
+            this.showNotification(
+                isPremium ? '✅ Premium email template activated!' : '✅ Default email template selected',
+                'success'
+            );
+            
+            // Save to localStorage
+            localStorage.setItem('admin_email_template', template);
+            
+            // Update hidden select
+            document.getElementById('emailTemplateSelect').value = template;
+        };
+        
+        // Load saved email template
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTemplate = localStorage.getItem('admin_email_template') || 'premium';
+            
+            // Set hidden select value
+            document.getElementById('emailTemplateSelect').value = savedTemplate;
+            
+            // Update template options UI
+            document.querySelectorAll('.template-option').forEach(option => {
+                option.classList.remove('selected');
+                if (option.dataset.template === savedTemplate) {
+                    option.classList.add('selected');
+                }
+            });
+            
+            // Add click handlers for template options
+            document.querySelectorAll('.template-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    document.querySelectorAll('.template-option').forEach(opt => opt.classList.remove('selected'));
+                    this.classList.add('selected');
+                    localStorage.setItem('admin_email_template', this.dataset.template);
+                    admin.showNotification(
+                        this.dataset.template === 'premium' 
+                            ? '✅ Premium template selected!' 
+                            : '✅ Default template selected!',
+                        'info'
+                    );
+                });
+            });
+        });
+        
+        // Auto backup settings
+        const savedBackup = localStorage.getItem('admin_auto_backup') || 'weekly';
+        document.getElementById('autoBackupSelect').value = savedBackup;
+        
+        document.getElementById('autoBackupSelect').addEventListener('change', function(e) {
+            localStorage.setItem('admin_auto_backup', e.target.value);
+            admin.showNotification(`Auto backup set to ${e.target.value}`, 'info');
+        });
+        
+        // Session timeout settings
+        const savedTimeout = localStorage.getItem('admin_session_timeout') || '24';
+        document.getElementById('sessionTimeoutSelect').value = savedTimeout;
+        
+        document.getElementById('sessionTimeoutSelect').addEventListener('change', function(e) {
+            localStorage.setItem('admin_session_timeout', e.target.value);
+            admin.showNotification(`Session timeout set to ${e.target.value} hours`, 'info');
+        });
+        
+        // Initialize revenue glow effect
+        setInterval(() => {
+            const revenueElements = document.querySelectorAll('.revenue-glow');
+            revenueElements.forEach(el => {
+                el.classList.toggle('revenue-glow');
+                setTimeout(() => el.classList.add('revenue-glow'), 100);
+            });
+        }, 3000);
+        
+        // Enhanced terminate token functionality
+        admin.terminateToken = function(email, token) {
+            if (!confirm(`Are you sure you want to terminate the token for ${email}? This action cannot be undone!`)) {
+                return;
+            }
+            
+            const modalContent = `
+                <div class="terminate-confirmation">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h4>⚠️ Token Termination Warning</h4>
+                        <p>You are about to terminate the token for <strong>${email}</strong>.</p>
+                    </div>
+                    
+                    <div class="terminate-details">
+                        <p><strong>Email:</strong> ${email}</p>
+                        <p><strong>Token:</strong> ${token ? token.substring(0, 15) + '...' : 'Not found'}</p>
+                        <p><strong>Action:</strong> Token will be revoked immediately</p>
+                        <p><strong>User Status:</strong> Will be marked as terminated</p>
+                    </div>
+                    
+                    <div class="terminate-options">
+                        <label>
+                            <input type="checkbox" id="sendTerminationEmail" checked>
+                            Send termination email to user
+                        </label>
+                        <small>User will receive email notification about token termination</small>
+                    </div>
+                    
+                    <div class="terminate-actions">
+                        <button class="btn-secondary" onclick="document.querySelector('.modal-close').click()">Cancel</button>
+                        <button class="btn-terminate" onclick="admin.confirmTerminateToken('${email}')">
+                            <i class="fas fa-ban"></i> Terminate Token
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('terminateTokenContent').innerHTML = modalContent;
+            document.getElementById('terminateTokenModal').classList.add('active');
+        };
+        
+        admin.confirmTerminateToken = function(email) {
+            const sendEmail = document.getElementById('sendTerminationEmail')?.checked || true;
+            
+            fetch('/api/admin/token/terminate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + this.adminToken
+                },
+                body: JSON.stringify({
+                    email: email,
+                    sendEmail: sendEmail
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.showNotification('✅ Token terminated successfully!', 'success');
+                    this.loadUsers();
+                    this.loadTokens();
+                    document.querySelector('.modal-close').click();
+                } else {
+                    this.showNotification('❌ ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error terminating token:', error);
+                this.showNotification('❌ Failed to terminate token', 'error');
+            });
+        };
+    </script>
 </body>
 </html>

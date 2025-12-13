@@ -11,7 +11,7 @@ module.exports = {
         try {
             const message = q || args.join(" ");
             if (!message) {
-                return reply("Example: .report Play command is not working");
+                return reply("Example: .report I found a bug in the music downloader feature.");
             }
 
             // Use mek.key.id instead of m.key.id

@@ -31,8 +31,79 @@ const elements = {
     modalTitle: document.getElementById('modalTitle'),
     modalBody: document.getElementById('modalBody'),
     modalConfirm: document.getElementById('modalConfirm'),
-    themeToggleBtn: document.querySelector('.nav-item[data-section="theme"]') // Add this line
+    themeToggleBtn: document.querySelector('.nav-item[data-section="theme"]')
 };
+
+// ===== LOADING STATE MANAGEMENT =====
+function showLoader(button, text = 'Processing...') {
+    if (!button) return;
+    
+    // Store original content
+    button.dataset.originalHtml = button.innerHTML;
+    button.disabled = true;
+    
+    // Create loading state
+    const spinner = document.createElement('i');
+    spinner.className = 'fas fa-spinner fa-spin';
+    
+    button.innerHTML = '';
+    button.appendChild(spinner);
+    
+    const textSpan = document.createElement('span');
+    textSpan.className = 'btn-text';
+    textSpan.textContent = ` ${text}`;
+    button.appendChild(textSpan);
+    
+    // Add loading class for CSS styling
+    button.classList.add('btn-loading');
+}
+
+function hideLoader(button) {
+    if (!button || !button.dataset.originalHtml) return;
+    
+    button.disabled = false;
+    button.innerHTML = button.dataset.originalHtml;
+    button.classList.remove('btn-loading');
+    delete button.dataset.originalHtml;
+}
+
+function showSectionLoader(sectionId, text = 'Loading...') {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    
+    const loader = document.createElement('div');
+    loader.className = 'section-loader';
+    loader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
+    loader.id = `${sectionId}-loader`;
+    
+    section.appendChild(loader);
+}
+
+function hideSectionLoader(sectionId) {
+    const loader = document.getElementById(`${sectionId}-loader`);
+    if (loader) loader.remove();
+}
+
+function showPairingSectionLoader(text = 'Generating pairing code...') {
+    if (!elements.pairingSection) return;
+    
+    elements.pairingSection.classList.add('loading');
+    
+    if (!elements.codeDisplay) return;
+    
+    elements.codeDisplay.innerHTML = `
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>${text}</span>
+        </div>
+    `;
+}
+
+function hidePairingSectionLoader() {
+    if (!elements.pairingSection) return;
+    
+    elements.pairingSection.classList.remove('loading');
+}
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -49,17 +120,13 @@ setInterval(checkAdminAccess, 5 * 60 * 1000);
 // ===== THEME FUNCTIONS =====
 function checkThemePreference() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
-    console.log('Loading theme:', savedTheme);
     
     if (savedTheme === 'light') {
         document.body.classList.remove('dark-theme');
-        console.log('Applied light theme');
     } else {
         document.body.classList.add('dark-theme');
-        console.log('Applied dark theme');
     }
     
-    // Update theme icon in navigation
     updateThemeIcon(savedTheme);
 }
 
@@ -79,33 +146,42 @@ function updateThemeIcon(theme) {
 }
 
 function toggleTheme() {
-    console.log('Toggle theme clicked');
-    
     if (document.body.classList.contains('dark-theme')) {
         document.body.classList.remove('dark-theme');
         localStorage.setItem('theme', 'light');
         showToast('Theme changed to Light mode', 'success');
         updateThemeIcon('light');
-        console.log('Switched to light theme');
     } else {
         document.body.classList.add('dark-theme');
         localStorage.setItem('theme', 'dark');
         showToast('Theme changed to Dark mode', 'success');
         updateThemeIcon('dark');
-        console.log('Switched to dark theme');
     }
 }
 
 // ===== CUSTOM MODAL FUNCTIONS =====
-function showModal(title, message, confirmText = 'Confirm', confirmCallback = null) {
+function showModal(title, message, confirmText = 'Confirm', confirmCallback = null, cancelCallback = null) {
     elements.modalTitle.textContent = title;
     elements.modalBody.innerHTML = message;
     elements.modalConfirm.textContent = confirmText;
     
+    // Remove existing event listeners
+    const newConfirmBtn = elements.modalConfirm.cloneNode(true);
+    elements.modalConfirm.parentNode.replaceChild(newConfirmBtn, elements.modalConfirm);
+    elements.modalConfirm = newConfirmBtn;
+    
     if (confirmCallback) {
-        const originalOnclick = elements.modalConfirm.onclick;
         elements.modalConfirm.onclick = function() {
             confirmCallback();
+            closeModal();
+        };
+    }
+    
+    // Add cancel button handler
+    const modalCancel = document.querySelector('.modal-btn.secondary');
+    if (modalCancel && cancelCallback) {
+        modalCancel.onclick = function() {
+            cancelCallback();
             closeModal();
         };
     }
@@ -120,8 +196,6 @@ function closeModal() {
 
 // ===== NAVIGATION =====
 function initNavigation() {
-    console.log('Initializing navigation...');
-    
     elements.menuToggle.addEventListener('click', () => {
         elements.navOverlay.classList.toggle('active');
     });
@@ -133,21 +207,17 @@ function initNavigation() {
     elements.navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             const section = item.dataset.section;
-            console.log('Nav item clicked:', section);
             
-            // Handle theme toggle separately
             if (section === 'theme') {
-                e.stopPropagation(); // Prevent event from bubbling up
+                e.stopPropagation();
                 toggleTheme();
                 return;
             }
             
-            // Handle admin login separately
             if (section === 'admin') {
                 return;
             }
             
-            // Normal navigation items
             elements.navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
             
@@ -171,8 +241,6 @@ function initNavigation() {
 }
 
 function showSection(section) {
-    console.log('Showing section:', section);
-    
     elements.contentSections.forEach(sec => {
         sec.classList.remove('active');
     });
@@ -224,6 +292,8 @@ function initSocket() {
     });
     
     socket.on('pairing-code', (data) => {
+        console.log('Received pairing code:', data);
+        
         if (data.email !== currentUserEmail || data.token !== currentUserToken) {
             console.log('Ignoring pairing code for different user');
             return;
@@ -231,6 +301,7 @@ function initSocket() {
         
         currentUserNumber = data.userNumber;
         const code = data.pairingCode;
+        hidePairingSectionLoader();
         showPairingCode(code);
     });
     
@@ -240,6 +311,7 @@ function initSocket() {
             return;
         }
         
+        hidePairingSectionLoader();
         showConnected(data.userNumber);
     });
     
@@ -262,7 +334,25 @@ function initSocket() {
             return;
         }
         showToast('Pairing code expired. Generate a new one.', 'warning');
+        hidePairingSectionLoader();
         resetPairingSection();
+    });
+    
+    // NEW: Handle QR code events
+    socket.on('qr', (data) => {
+        console.log('Received QR data:', data);
+        
+        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+            console.log('Ignoring QR for different user');
+            return;
+        }
+        
+        // We'll use the pairing code as QR for display
+        if (data.qr) {
+            currentUserNumber = data.userNumber;
+            hidePairingSectionLoader();
+            showPairingCode(data.qr);
+        }
     });
 }
 
@@ -303,8 +393,6 @@ function saveUserToken(token, email) {
 // ===== TOKEN VALIDATION =====
 async function validateTokenForUser(email, token) {
     try {
-        console.log('🔐 Validating token:', { email, token: token.substring(0, 12) + '...' });
-        
         const response = await fetch('/api/validate-token-email', {
             method: 'POST',
             headers: { 
@@ -322,8 +410,6 @@ async function validateTokenForUser(email, token) {
         }
         
         const data = await response.json();
-        console.log('🔐 Validation response:', data);
-        
         return data;
         
     } catch (error) {
@@ -357,19 +443,33 @@ async function getPairingCode() {
         return;
     }
     
-    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]');
-    const originalHtml = getCodeBtn.innerHTML;
-    getCodeBtn.disabled = true;
-    getCodeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting Code...';
+    // Get the correct button - check both possible selectors
+    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]') || 
+                      document.querySelector('.action-btn[onclick*="getPairingCode"]') ||
+                      document.querySelector('button:contains("Get Pairing Code")');
+    
+    if (getCodeBtn) {
+        showLoader(getCodeBtn, 'Getting Code...');
+    }
     
     try {
-        // First validate token
         const validationResult = await validateTokenForUser(email, token);
         
         if (validationResult.valid) {
             saveUserToken(token, email);
             
-            // Check if session exists on B2 and get new code
+            // Show loading in pairing section
+            showPairingSectionLoader('Generating pairing code...');
+            
+            if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+                elements.pairingSection.classList.remove('hidden');
+            }
+            
+            if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+                elements.statusSection.classList.add('hidden');
+            }
+            
+            // Check if session exists
             const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -384,49 +484,60 @@ async function getPairingCode() {
                 const sessionData = await sessionCheckResponse.json();
                 
                 if (sessionData.sessionExists) {
+                    hideLoader(getCodeBtn);
                     showModal('Session Found', 
                         `A session already exists for ${validatedNumber}.<br><br>
                         <strong>Options:</strong><br>
                         1. Restore existing session (if disconnected)<br>
                         2. Generate new pairing code<br>
-                        3. Delete session and start fresh`,
+                        3. Delete session and start fresh<br><br>
+                        <span style="color: var(--accent-warning); font-size: 12px;">
+                            Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
+                        </span>`,
                         'Generate New Code',
                         () => {
-                            createNewSession(validatedNumber, email, token);
+                            createNewSession(validatedNumber, email, token, true);
+                        },
+                        () => {
+                            // Cancel - just close modal
                         }
                     );
                 } else {
-                    // No session exists, create new one
-                    createNewSession(validatedNumber, email, token);
+                    createNewSession(validatedNumber, email, token, false);
                 }
             } else {
-                // Fallback to direct creation
-                createNewSession(validatedNumber, email, token);
+                createNewSession(validatedNumber, email, token, false);
             }
             
         } else {
+            hideLoader(getCodeBtn);
             showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
         }
     } catch (error) {
         console.error('Pairing code error:', error);
+        hideLoader(getCodeBtn);
+        hidePairingSectionLoader();
         showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
-    } finally {
-        getCodeBtn.disabled = false;
-        getCodeBtn.innerHTML = originalHtml;
     }
 }
 
-function createNewSession(userNumber, email, token) {
-    if (elements.pairingSection && !elements.pairingSection.classList.contains('hidden')) {
-        elements.pairingSection.classList.remove('hidden');
-        elements.codeDisplay.innerHTML = `
-            <div class="loading-spinner">
-                <i class="fas fa-spinner fa-spin"></i>
-                <span>Generating pairing code...</span>
-            </div>
-        `;
+function createNewSession(userNumber, email, token, deleteExisting = false) {
+    if (deleteExisting) {
+        // First delete existing session
+        deleteUserSessionImmediately(userNumber, email, token, () => {
+            // After deletion, create new session
+            actuallyCreateNewSession(userNumber, email, token);
+        });
+    } else {
+        actuallyCreateNewSession(userNumber, email, token);
     }
+}
+
+function actuallyCreateNewSession(userNumber, email, token) {
+    // Show loading state
+    showPairingSectionLoader('Creating new session...');
     
+    // Emit to server to create session
     socket.emit('create-session', {
         userNumber: userNumber,
         email: email,
@@ -447,13 +558,17 @@ function validateWhatsAppNumber(number) {
         return false;
     }
     
-    // Return the cleaned number without auto-adding any country code
     return cleanNumber;
 }
 
 function showPairingCode(code) {
-    elements.pairingSection.classList.remove('hidden');
-    elements.statusSection.classList.add('hidden');
+    if (!elements.pairingSection.classList.contains('hidden')) {
+        elements.pairingSection.classList.remove('hidden');
+    }
+    
+    if (!elements.statusSection.classList.contains('hidden')) {
+        elements.statusSection.classList.add('hidden');
+    }
     
     elements.codeDisplay.innerHTML = `
         <div class="code-text">${code}</div>
@@ -465,7 +580,6 @@ function showPairingCode(code) {
     startCountdown(120);
     showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
     
-    // Auto-scroll to code section
     const codeSection = document.getElementById('pairingSection');
     if (codeSection) {
         setTimeout(() => {
@@ -541,10 +655,12 @@ async function requestToken() {
         return;
     }
     
-    const requestBtn = document.querySelector('.primary-btn[onclick*="requestToken"]');
-    const originalHtml = requestBtn.innerHTML;
-    requestBtn.disabled = true;
-    requestBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
+    const requestBtn = document.querySelector('.primary-btn[onclick*="requestToken"]') ||
+                      document.querySelector('button:contains("Request Token")');
+    
+    if (requestBtn) {
+        showLoader(requestBtn, 'Requesting...');
+    }
     
     try {
         const response = await fetch('/api/request-token', {
@@ -581,8 +697,9 @@ async function requestToken() {
         showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
         console.error('Token request error:', error);
     } finally {
-        requestBtn.disabled = false;
-        requestBtn.innerHTML = originalHtml;
+        if (requestBtn) {
+            hideLoader(requestBtn);
+        }
     }
 }
 
@@ -603,6 +720,7 @@ async function loadUserSessions() {
             return;
         }
         
+        // Show loading state
         elements.sessionsList.innerHTML = `
             <div class="loading-sessions">
                 <i class="fas fa-spinner fa-spin"></i>
@@ -632,7 +750,7 @@ async function loadUserSessions() {
             
             data.sessions.forEach(session => {
                 sessionsHTML += `
-                    <div class="session-card">
+                    <div class="session-card" id="session-card-${session.userNumber}">
                         <div class="session-header">
                             <i class="fas fa-phone"></i>
                             <h4>${session.userNumber}</h4>
@@ -645,11 +763,11 @@ async function loadUserSessions() {
                             <p><strong>Mode:</strong> ${session.settings?.botMode || 'public'}</p>
                             <p><strong>Last Active:</strong> ${session.lastActivity ? new Date(session.lastActivity).toLocaleString() : 'Never'}</p>
                             <div class="session-actions">
-                                <button class="btn-restore small" onclick="restoreSession('${session.userNumber}')">
-                                    <i class="fas fa-sync-alt"></i> Restore
+                                <button class="btn-restore small" onclick="restoreSession('${session.userNumber}')" id="restore-btn-${session.userNumber}">
+                                    <i class="fas fa-sync-alt"></i> <span class="btn-text">Restore</span>
                                 </button>
-                                <button class="btn-delete small" onclick="deleteUserSession('${session.userNumber}')">
-                                    <i class="fas fa-trash"></i> Delete
+                                <button class="btn-delete small" onclick="deleteUserSession('${session.userNumber}')" id="delete-btn-${session.userNumber}">
+                                    <i class="fas fa-trash"></i> <span class="btn-text">Delete</span>
                                 </button>
                             </div>
                         </div>
@@ -679,6 +797,9 @@ async function loadUserSessions() {
                 <i class="fas fa-exclamation-circle"></i>
                 <h4>Error Loading Sessions</h4>
                 <p>Failed to load sessions. Please try again.</p>
+                <button class="primary-btn" onclick="loadUserSessions()">
+                    <i class="fas fa-redo"></i> Retry
+                </button>
             </div>
         `;
     }
@@ -691,55 +812,64 @@ async function restoreSession(userNumber) {
         return;
     }
     
+    const restoreBtn = document.getElementById(`restore-btn-${userNumber}`);
+    if (restoreBtn) {
+        showLoader(restoreBtn, 'Restoring...');
+    }
+    
     try {
-        showModal('Restore Session', 
-            `Do you want to restore session for ${userNumber}? This will generate a new pairing code.`,
-            'Restore',
-            async () => {
-                try {
-                    showToast('Restoring session...', 'info');
-                    
-                    const response = await fetch('/api/user/restore-session', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            email: currentUserEmail,
-                            token: currentUserToken,
-                            userNumber: userNumber
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        
-                        if (data.success) {
-                            showToast('✅ Session restored! Generating new pairing code...', 'success');
-                            
-                            // Switch to home section and generate new code
-                            elements.codeNumber.value = userNumber;
-                            showSection('home');
-                            
-                            // Generate new pairing code
-                            setTimeout(() => {
-                                createNewSession(userNumber, currentUserEmail, currentUserToken);
-                            }, 1000);
-                        } else {
-                            showToast('❌ ' + data.message, 'error');
-                        }
-                    } else {
-                        throw new Error('Failed to restore session');
-                    }
-                } catch (error) {
-                    console.error('Error restoring session:', error);
-                    showToast('❌ Failed to restore session', 'error');
+        const response = await fetch('/api/user/restore-session', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email: currentUserEmail,
+                token: currentUserToken,
+                userNumber: userNumber
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast('✅ Session restored! Generating new pairing code...', 'success');
+                
+                // Switch to home section
+                showSection('home');
+                
+                // Set the number in the form
+                elements.codeNumber.value = userNumber;
+                
+                // Show loading in pairing section
+                showPairingSectionLoader('Restoring session and generating pairing code...');
+                
+                if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+                    elements.pairingSection.classList.remove('hidden');
                 }
+                
+                if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+                    elements.statusSection.classList.add('hidden');
+                }
+                
+                // Generate new pairing code after a short delay
+                setTimeout(() => {
+                    actuallyCreateNewSession(userNumber, currentUserEmail, currentUserToken);
+                }, 1000);
+            } else {
+                showToast('❌ ' + data.message, 'error');
             }
-        );
+        } else {
+            throw new Error('Failed to restore session');
+        }
     } catch (error) {
-        console.error('Error in restoreSession:', error);
-        showToast('❌ Error restoring session', 'error');
+        console.error('Error restoring session:', error);
+        showToast('❌ Failed to restore session', 'error');
+    } finally {
+        if (restoreBtn) {
+            hideLoader(restoreBtn);
+        }
     }
 }
 
@@ -749,51 +879,75 @@ async function deleteUserSession(userNumber) {
         return;
     }
     
+    showModal('Delete Session', 
+        `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data.`,
+        'Delete',
+        () => {
+            deleteUserSessionImmediately(userNumber, currentUserEmail, currentUserToken);
+        },
+        () => {
+            // Cancel - do nothing
+        }
+    );
+}
+
+async function deleteUserSessionImmediately(userNumber, email, token, callback = null) {
+    const deleteBtn = document.getElementById(`delete-btn-${userNumber}`);
+    if (deleteBtn) {
+        showLoader(deleteBtn, 'Deleting...');
+    }
+    
     try {
-        showModal('Delete Session', 
-            `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data .`,
-            'Delete',
-            async () => {
-                try {
-                    showToast('Deleting session...', 'info');
-                    
-                    const response = await fetch(`/api/delete-user-session`, {
-                        method: 'DELETE',
-                        headers: { 
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            email: currentUserEmail,
-                            token: currentUserToken,
-                            userNumber: userNumber
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        showToast('✅ Session deleted successfully', 'success');
-                        
-                        // Reload sessions list
+        const response = await fetch(`/api/delete-user-session`, {
+            method: 'DELETE',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email: email,
+                token: token,
+                userNumber: userNumber
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            showToast('✅ Session deleted successfully', 'success');
+            
+            // Remove the session card from UI
+            const sessionCard = document.getElementById(`session-card-${userNumber}`);
+            if (sessionCard) {
+                sessionCard.style.opacity = '0.5';
+                setTimeout(() => {
+                    sessionCard.remove();
+                    // If no sessions left, reload the list
+                    if (document.querySelectorAll('.session-card').length === 0) {
                         loadUserSessions();
-                        
-                        // Emit disconnect event
-                        socket.emit('disconnect-session', {
-                            userNumber: userNumber,
-                            email: currentUserEmail,
-                            token: currentUserToken
-                        });
-                    } else {
-                        throw new Error('Failed to delete session');
                     }
-                } catch (error) {
-                    console.error('Error deleting session:', error);
-                    showToast('❌ Failed to delete session', 'error');
-                }
+                }, 500);
             }
-        );
+            
+            // Emit disconnect event
+            socket.emit('disconnect-session', {
+                userNumber: userNumber,
+                email: email,
+                token: token
+            });
+            
+            if (callback) {
+                callback();
+            }
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to delete session');
+        }
     } catch (error) {
-        console.error('Error in deleteSession:', error);
-        showToast('❌ Error deleting session', 'error');
+        console.error('Error deleting session:', error);
+        showToast('❌ Failed to delete session: ' + error.message, 'error');
+    } finally {
+        if (deleteBtn) {
+            hideLoader(deleteBtn);
+        }
     }
 }
 
@@ -803,7 +957,21 @@ function generateNewCode() {
         return;
     }
     
-    createNewSession(currentUserNumber, currentUserEmail, currentUserToken);
+    const getCodeBtn = document.querySelector('.primary-btn[onclick*="generateNewCode"]') || 
+                      document.querySelector('.secondary-btn.small-btn[onclick*="generateNewCode"]');
+    
+    if (getCodeBtn) {
+        showLoader(getCodeBtn, 'Generating...');
+    }
+    
+    showPairingSectionLoader('Generating new pairing code...');
+    
+    setTimeout(() => {
+        createNewSession(currentUserNumber, currentUserEmail, currentUserToken, true);
+        if (getCodeBtn) {
+            hideLoader(getCodeBtn);
+        }
+    }, 100);
 }
 
 // ===== ADMIN ACCESS CHECK =====
@@ -826,11 +994,9 @@ function checkAdminAccess() {
                 `;
                 adminNavItem.style.color = 'var(--accent-success)';
             }
-            console.log('Admin access active (valid for next', Math.round((hours24 - tokenAge) / (60 * 60 * 1000)), 'hours)');
         } else {
             localStorage.removeItem('admin_token');
             localStorage.removeItem('admin_token_time');
-            console.log('Admin token expired');
         }
     }
 }
@@ -848,7 +1014,6 @@ function copyToClipboard(text) {
 }
 
 function formatPhoneNumber(number) {
-    // Simply return the number with + prefix
     return `+${number}`;
 }
 

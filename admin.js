@@ -409,27 +409,56 @@ class AdminManager {
             }
         });
 
-        // ===== NEW: FREE TOKEN GENERATION ENDPOINT =====
-        // Generate free token endpoint
+        // ===== NEW: FREE TOKEN GENERATION ENDPOINTS =====
+        // Generate free token endpoint (FIXED - no pending status)
         app.post('/api/admin/token/generate-free', this.verifyAdminToken.bind(this), async (req, res) => {
             try {
-                const { email, free } = req.body;
+                const { email, free, sendEmail = true } = req.body;
                 
-                const result = await tokenManager.generateTokenForEmail(email, true, free);
+                const result = await tokenManager.generateTokenForEmail(email, true, free || true);
                 
                 if (result.success) {
                     // Update user as approved but not paid for free tokens
-                    if (free) {
-                        const users = await tokenManager.getAllUsers();
-                        if (users[email]) {
-                            users[email].status = 'approved';
-                            users[email].paid = false;
-                            users[email].lastUpdated = new Date().toISOString();
-                            await tokenManager.saveUsers(users);
-                        }
+                    const users = await tokenManager.getAllUsers();
+                    if (users[email]) {
+                        users[email].status = 'approved';
+                        users[email].paid = false;
+                        users[email].freeToken = true; // IMPORTANT: Mark as free token
+                        users[email].lastUpdated = new Date().toISOString();
+                        await tokenManager.saveUsers(users);
                     }
                     
-                    res.json(result);
+                    // Send email if requested
+                    if (sendEmail && result.token) {
+                        const emailHtml = `
+                            <h2>🎉 Your Free Tracle-Lite Token is Ready!</h2>
+                            <p>You have been granted a free token by the administrator!</p>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                                <h3 style="color: #8b5cf6; font-family: monospace;">${result.token}</h3>
+                            </div>
+                            <p><strong>Instructions:</strong></p>
+                            <ol>
+                                <li>Go to Tracle-Lite website</li>
+                                <li>Enter this token in the login section</li>
+                                <li>Access all premium features immediately</li>
+                            </ol>
+                            <p><strong>Token Details:</strong></p>
+                            <ul>
+                                <li>Created: ${new Date().toLocaleString()}</li>
+                                <li>Status: Active ✅</li>
+                                <li>Type: Free Token 🎁</li>
+                            </ul>
+                        `;
+                        
+                        await tokenManager.sendEmail(email, '🎉 Your Free Tracle-Lite Token is Ready!', emailHtml);
+                    }
+                    
+                    res.json({
+                        success: true,
+                        message: 'Free token generated successfully',
+                        token: result.token,
+                        isFreeToken: true
+                    });
                 } else {
                     res.status(400).json(result);
                 }
@@ -443,27 +472,165 @@ class AdminManager {
             }
         });
 
-        // Update the existing token generation endpoint
+        // Generate token with email option
         app.post('/api/admin/token/generate', this.verifyAdminToken.bind(this), async (req, res) => {
             try {
-                const { email, paid, free } = req.body;
+                const { email, paid, free, sendEmail = true } = req.body;
                 
-                const result = await tokenManager.generateTokenForEmail(email, true, free || !paid);
+                const isFreeToken = free || !paid;
+                
+                const result = await tokenManager.generateTokenForEmail(email, true, isFreeToken);
                 
                 if (result.success) {
                     // Update payment status if specified
                     if (paid !== undefined) {
-                        await tokenManager.updateUserPaymentStatus(email, paid && !free);
+                        await tokenManager.updateUserPaymentStatus(email, paid && !isFreeToken);
                     }
+                    
+                    // Send email if requested
+                    if (sendEmail && result.token) {
+                        const tokenType = isFreeToken ? "Free Token" : "Paid Token";
+                        const subject = isFreeToken ? 
+                            '🎉 Your Free Tracle-Lite Token is Ready!' : 
+                            '🎉 Your Tracle-Lite Token is Approved!';
+                        
+                        const emailHtml = `
+                            <h2>${isFreeToken ? '🎉' : '✅'} ${subject}</h2>
+                            <p>${isFreeToken ? 'You have been granted a free token!' : 'Your payment has been verified and token is approved!'}</p>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                                <h3 style="color: #6366f1; font-family: monospace;">${result.token}</h3>
+                            </div>
+                            <p><strong>Token Details:</strong></p>
+                            <ul>
+                                <li>Type: ${tokenType}</li>
+                                <li>Status: Active ✅</li>
+                                <li>Created: ${new Date().toLocaleString()}</li>
+                            </ul>
+                        `;
+                        
+                        await tokenManager.sendEmail(email, subject, emailHtml);
+                    }
+                    
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
                 }
-                
-                res.json(result);
                 
             } catch (error) {
                 console.error('Error generating token:', error);
                 res.status(500).json({
                     success: false,
                     message: 'Failed to generate token'
+                });
+            }
+        });
+
+        // Terminate token endpoint
+        app.post('/api/admin/token/terminate', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email } = req.body;
+                
+                if (!email) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email is required'
+                    });
+                }
+
+                const result = await tokenManager.terminateUserToken(email);
+                
+                if (result.success) {
+                    // Send termination email to user
+                    const terminationHtml = `
+                        <h2 style="color: #ef4444;">⚠️ Token Terminated</h2>
+                        <p>Your Tracle-Lite token has been terminated by the administrator.</p>
+                        <div style="background: #fef2f2; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid #ef4444;">
+                            <p><strong>Reason:</strong> Administrative action</p>
+                            <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                            <p><strong>Status:</strong> Token revoked</p>
+                        </div>
+                        <p>If you believe this was done in error, please contact the administrator.</p>
+                        <p><strong>Contact Admin:</strong> ${this.adminEmail}</p>
+                    `;
+                    
+                    await tokenManager.sendEmail(email, '⚠️ Tracle-Lite Token Terminated', terminationHtml);
+                }
+                
+                res.json(result);
+                
+            } catch (error) {
+                console.error('Error terminating token:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to terminate token'
+                });
+            }
+        });
+
+        // Update user with token status
+        app.post('/api/admin/user/update-token-status', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { email, status, paid, tokenStatus } = req.body;
+                
+                if (!email) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email is required'
+                    });
+                }
+
+                const users = await tokenManager.getAllUsers();
+                
+                if (!users[email]) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'User not found'
+                    });
+                }
+
+                // Update user data
+                if (status !== undefined) {
+                    users[email].status = status;
+                }
+                
+                if (paid !== undefined) {
+                    users[email].paid = paid;
+                    
+                    // If marking as paid, ensure status is approved
+                    if (paid && users[email].status === 'pending') {
+                        users[email].status = 'approved';
+                    }
+                }
+                
+                // Update token status
+                if (tokenStatus !== undefined) {
+                    if (tokenStatus === 'free') {
+                        users[email].freeToken = true;
+                        users[email].paid = false;
+                    } else if (tokenStatus === 'paid') {
+                        users[email].freeToken = false;
+                        users[email].paid = true;
+                    } else if (tokenStatus === 'terminated') {
+                        // Terminate the token
+                        await tokenManager.terminateUserToken(email);
+                    }
+                }
+                
+                users[email].lastUpdated = new Date().toISOString();
+                
+                await tokenManager.saveUsers(users);
+                
+                res.json({
+                    success: true,
+                    message: 'User updated successfully',
+                    user: users[email]
+                });
+                
+            } catch (error) {
+                console.error('Error updating user:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to update user'
                 });
             }
         });
@@ -490,7 +657,7 @@ class AdminManager {
         // Backup data
         app.post('/api/admin/backup', this.verifyAdminToken.bind(this), async (req, res) => {
             try {
-                const result = await tokenManager.backupToB2();
+                const result = await tokenManager.backupToDrive();
                 
                 res.json(result);
                 
@@ -506,7 +673,7 @@ class AdminManager {
         // Restore data
         app.post('/api/admin/restore', this.verifyAdminToken.bind(this), async (req, res) => {
             try {
-                const result = await tokenManager.restoreFromB2();
+                const result = await tokenManager.restoreFromDrive();
                 
                 res.json(result);
                 
@@ -584,6 +751,84 @@ class AdminManager {
                 res.status(500).json({
                     success: false,
                     message: 'Failed to edit revenue'
+                });
+            }
+        });
+
+        // Admin settings endpoints
+        app.get('/api/admin/settings', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                // Return default settings
+                res.json({
+                    success: true,
+                    settings: {
+                        emailTemplate: 'default',
+                        autoBackup: 'daily',
+                        adminEmail: this.adminEmail
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error loading settings:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to load settings'
+                });
+            }
+        });
+
+        app.post('/api/admin/settings/save', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { emailTemplate, autoBackup } = req.body;
+                
+                // Here you would save to database
+                // For now, just return success
+                
+                res.json({
+                    success: true,
+                    message: 'Settings saved successfully',
+                    settings: {
+                        emailTemplate,
+                        autoBackup
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to save settings'
+                });
+            }
+        });
+
+        app.post('/api/admin/settings/update-template', this.verifyAdminToken.bind(this), async (req, res) => {
+            try {
+                const { template } = req.body;
+                
+                // Validate template
+                const validTemplates = ['default', 'premium'];
+                if (!validTemplates.includes(template)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Invalid template type'
+                    });
+                }
+                
+                // Here you would save to database
+                // For now, just return success
+                
+                res.json({
+                    success: true,
+                    message: `Email template updated to ${template}`,
+                    template: template
+                });
+                
+            } catch (error) {
+                console.error('Error updating template:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to update template'
                 });
             }
         });

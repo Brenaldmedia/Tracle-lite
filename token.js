@@ -1,4 +1,4 @@
-// FILE: token.js (UPDATED VERSION WITH SUPABASE BACKUP)
+// FILE: token.js (UPDATED VERSION WITH SUPABASE BACKUP AND ALL FIXES)
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
@@ -269,7 +269,7 @@ class TokenManager {
                 };
             }
             
-            // Check if user has paid (admin must approve) - EXCEPTION for free tokens
+            // FIXED: Free tokens should be approved immediately
             if (!adminApproved && !users[email].paid && !isFreeToken) {
                 return { 
                     success: false, 
@@ -281,9 +281,10 @@ class TokenManager {
             for (const [token, data] of Object.entries(tokens)) {
                 if (data.email === email) {
                     // Update token payment status if different
-                    if (data.paid !== (isFreeToken ? false : users[email].paid)) {
+                    if (data.paid !== (isFreeToken ? false : users[email].paid) || 
+                        data.freeToken !== isFreeToken) {
                         tokens[token].paid = isFreeToken ? false : users[email].paid;
-                        tokens[token].freeToken = isFreeToken;
+                        tokens[token].freeToken = isFreeToken; // IMPORTANT: Set freeToken flag
                         tokens[token].lastUpdated = new Date().toISOString();
                         await this.saveTokens(tokens);
                     }
@@ -319,22 +320,26 @@ class TokenManager {
                 used: false,
                 lastUsed: null,
                 generatedBy: adminApproved ? 'admin' : 'system',
-                paid: tokenPaidStatus,  // Mark as free if free token
-                freeToken: isFreeToken,  // Track if it's a free token
+                paid: tokenPaidStatus,
+                freeToken: isFreeToken,  // IMPORTANT: Track if it's a free token
                 expires: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days from now
                 lastUpdated: new Date().toISOString()
             };
 
-            // Update user data
+            // Update user data - FIXED: Free tokens should not be pending
             users[email].token = token;
-            users[email].status = 'approved';
+            users[email].status = 'approved'; // Always approved for admin-generated tokens
             users[email].tokenGenerated = new Date().toISOString();
             users[email].lastTokenActivity = new Date().toISOString();
             users[email].lastUpdated = new Date().toISOString();
             
-            // If free token, mark as not paid
+            // FIXED: Set freeToken flag on user
             if (isFreeToken) {
+                users[email].freeToken = true;
                 users[email].paid = false;
+            } else {
+                users[email].freeToken = false;
+                users[email].paid = tokenPaidStatus;
             }
             
             await this.saveTokens(tokens);
@@ -344,7 +349,7 @@ class TokenManager {
             if (adminApproved) {
                 const tokenType = isFreeToken ? "Free Token" : "Paid Token";
                 const userEmailHtml = `
-                    <h2>🎉 Your Tracle-Lite ${tokenType} is Ready!</h2>
+                    <h2>${isFreeToken ? '🎉' : '✅'} Your Tracle-Lite ${tokenType} is Ready!</h2>
                     <p>${isFreeToken ? 'You have been granted a free token!' : 'Your payment has been verified and token is approved!'}</p>
                     <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
                         <h3 style="color: #6366f1; font-family: monospace;">${token}</h3>
@@ -403,6 +408,46 @@ class TokenManager {
                 success: false, 
                 message: 'Failed to generate token' 
             };
+        }
+    }
+
+    // Add this new function for token termination
+    async terminateUserToken(email) {
+        try {
+            const users = await this.getAllUsers();
+            const tokens = await this.getAllTokens();
+            
+            if (users[email]) {
+                const token = users[email].token;
+                
+                // Remove token
+                if (token && tokens[token]) {
+                    tokens[token].used = true;
+                    tokens[token].revoked = true;
+                    tokens[token].revokedAt = new Date().toISOString();
+                    tokens[token].lastUpdated = new Date().toISOString();
+                    
+                    await this.saveTokens(tokens);
+                }
+                
+                // Update user
+                users[email].token = null;
+                users[email].status = 'terminated';
+                users[email].tokenTerminated = new Date().toISOString();
+                users[email].lastUpdated = new Date().toISOString();
+                
+                await this.saveUsers(users);
+                
+                return { 
+                    success: true, 
+                    message: 'Token terminated successfully' 
+                };
+            }
+            
+            return { success: false, message: 'User not found' };
+        } catch (error) {
+            console.error('Error terminating token:', error);
+            return { success: false, message: error.message };
         }
     }
 
@@ -670,45 +715,7 @@ class TokenManager {
         }
     }
 
-    async terminateUserToken(email) {
-        try {
-            const users = await this.getAllUsers();
-            const tokens = await this.getAllTokens();
-            
-            if (users[email] && users[email].token) {
-                const token = users[email].token;
-                
-                // Remove token
-                if (tokens[token]) {
-                    delete tokens[token];
-                }
-                
-                // Update user
-                users[email].token = null;
-                users[email].status = 'terminated';
-                users[email].terminatedAt = new Date().toISOString();
-                users[email].lastUpdated = new Date().toISOString();
-                
-                await this.saveTokens(tokens);
-                await this.saveUsers(users);
-                
-                // Auto backup data after token termination
-                this.autoBackupAfterUpdate('token_terminated');
-                
-                return { 
-                    success: true, 
-                    message: 'Token terminated successfully' 
-                };
-            }
-            
-            return { success: false, message: 'User or token not found' };
-        } catch (error) {
-            console.error('Error terminating token:', error);
-            return { success: false, message: error.message };
-        }
-    }
-
-    // Admin functions
+    // Update getAllUsers to ensure freeToken field exists
     async getAllUsers() {
         try {
             const data = await fs.readFile(this.usersFile, 'utf8');
@@ -730,7 +737,8 @@ class TokenManager {
                     needsUpdate = true;
                 }
                 if (users[email].freeToken === undefined) {
-                    users[email].freeToken = false;
+                    // FIX: Set freeToken based on payment status
+                    users[email].freeToken = !users[email].paid;
                     needsUpdate = true;
                 }
             }
@@ -745,6 +753,7 @@ class TokenManager {
         }
     }
 
+    // Update getAllTokens to ensure freeToken field exists
     async getAllTokens() {
         try {
             const data = await fs.readFile(this.tokensFile, 'utf8');
@@ -754,6 +763,7 @@ class TokenManager {
             let needsUpdate = false;
             for (const token in tokens) {
                 if (tokens[token].freeToken === undefined) {
+                    // FIX: Set freeToken based on paid status
                     tokens[token].freeToken = !tokens[token].paid;
                     needsUpdate = true;
                 }
