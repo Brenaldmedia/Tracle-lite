@@ -45,6 +45,9 @@ module.exports = {
                 groupTimers.delete(from);
             }
 
+            // Calculate scheduled time
+            const scheduledTime = Date.now() + closeTime;
+            
             // Store the new timer
             groupTimers.set(from, {
                 type: 'close',
@@ -63,11 +66,32 @@ module.exports = {
                         groupTimers.delete(from);
                     }
                 }, closeTime),
-                scheduledTime: Date.now() + closeTime
+                scheduledTime: scheduledTime
             });
 
+            // Format time for display with proper timezone handling
+            const scheduledDate = new Date(scheduledTime);
+            
+            // Use UTC time for consistent display
+            const utcHours = scheduledDate.getUTCHours();
+            const utcMinutes = scheduledDate.getUTCMinutes();
+            const utcSeconds = scheduledDate.getUTCSeconds();
+            
+            // Calculate local time
+            const localHours = scheduledDate.getHours();
+            const localMinutes = scheduledDate.getMinutes();
+            
+            // Format time strings
+            const utcTime = `${utcHours.toString().padStart(2, '0')}:${utcMinutes.toString().padStart(2, '0')}:${utcSeconds.toString().padStart(2, '0')} UTC`;
+            const localTime = `${localHours.toString().padStart(2, '0')}:${localMinutes.toString().padStart(2, '0')} Local`;
+            
             await reply(
-                `✅ Group will be closed in ${minutes} minute(s)\n\nAt: ${new Date(Date.now() + closeTime).toLocaleString()}`
+                `✅ *Group will be closed in ${minutes} minute(s)*\n\n` +
+                `⏰ *Scheduled Time:*\n` +
+                `• ${scheduledDate.toLocaleDateString()}\n` +
+                `• ${localTime}\n` +
+                `• (${utcTime})\n\n` +
+                `📅 Full date: ${scheduledDate.toString()}`
             );
         } catch (error) {
             console.error('Error in closetime command:', error);

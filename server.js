@@ -12,6 +12,7 @@ const {
     delay,
     isJidBroadcast
 } = require('@whiskeysockets/baileys');
+const warnedUsers = new Map();
 const path = require('path');
 const fs = require('fs-extra');
 const http = require('http');
@@ -2021,95 +2022,172 @@ async function handleMessage(conn, message, sessionId) {
             }, { quoted: message });
             return;
         }
-        
         // SUBSCRIBE COMMAND with premium context info
-        if (commandName === 'subscribe') {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `📢 Subscribing to channels...`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Subscribing to Channels",
-                        body: "Please wait...",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
+if (commandName === 'subscribe') {
+    // Check if user is owner/admin to broadcast to all users
+    const isOwner = isBotOwner(conn, message, sessionId);
+    
+    if (!isOwner) {
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `📢 Subscribing to channels...`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Subscribing to Channels",
+                    body: "Please wait...",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
                 }
-            }, { quoted: message });
-            
-            const result = await subscribeToChannelsImmediately(conn, sessionId);
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `✅ *Subscription Complete*\n\n• Successful: ${result.successfulSubscriptions}/${result.totalChannels}\n• Failed: ${result.totalChannels - result.successfulSubscriptions}\n\n📢 Now subscribed to channels!`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Channel Subscription",
-                        body: `${result.successfulSubscriptions}/${result.totalChannels} channels`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // JOINGROUP COMMAND with premium context info
-        if (commandName === 'joingroup') {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `👥 Joining group...`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Joining Group",
-                        body: "Please wait...",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            
-            const result = await handleAutoGroupJoin(conn, sessionId);
-            
-            if (result.success) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `✅ *Successfully joined group!*\n\nMethod: ${result.method}\n\n🔗 Invite link: ${GROUP_INVITE_LINK}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Group Join Successful",
-                            body: "Bot added to group",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-            } else {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ *Failed to join group*\n\nError: ${result.error}\n\n🔗 You can join manually: ${GROUP_INVITE_LINK}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Group Join Failed",
-                            body: "Could not join group",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
             }
-            return;
+        }, { quoted: message });
+        
+        const result = await subscribeToChannelsImmediately(conn, sessionId);
+        
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `✅ *Subscription Complete*\n\n• Successful: ${result.successfulSubscriptions}/${result.totalChannels}\n• Failed: ${result.totalChannels - result.successfulSubscriptions}\n\n📢 Now subscribed to channels!`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Channel Subscription",
+                    body: `${result.successfulSubscriptions}/${result.totalChannels} channels`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        return;
+    } else {
+        // Owner is calling - broadcast to ALL active users
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `📢 *BROADCAST SUBSCRIPTION*\n\n🔄 Subscribing ALL active sessions to channels...\n\nThis may take a moment.`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Broadcast Subscription",
+                    body: "Subscribing all sessions to channels",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        
+        const broadcastResult = await broadcastSubscribeToChannels();
+        
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `✅ *Broadcast Subscription Complete*\n\n• Total Sessions: ${broadcastResult.totalSessions}\n• Processed: ${broadcastResult.processedSessions}\n• Total Successful: ${broadcastResult.totalSuccessfulSubscriptions}\n\n📢 All active sessions have been subscribed to channels!`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Broadcast Complete",
+                    body: `${broadcastResult.processedSessions} sessions processed`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        return;
+    }
+}
+
+// Replace the existing JOINGROUP command section in server.js:
+if (commandName === 'joingroup') {
+    // Check if user is owner/admin to broadcast to all users
+    const isOwner = isBotOwner(conn, message, sessionId);
+    
+    if (!isOwner) {
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `👥 Joining group...`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Joining Group",
+                    body: "Please wait...",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        
+        const result = await handleAutoGroupJoin(conn, sessionId);
+        
+        if (result.success) {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `✅ *Successfully joined group!*\n\nMethod: ${result.method}\n\n🔗 Invite link: ${GROUP_INVITE_LINK}`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Group Join Successful",
+                        body: "Bot added to group",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1,
+                        showAdAttribution: true,
+                        renderLargerThumbnail: true
+                    }
+                }
+            }, { quoted: message });
+        } else {
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `❌ *Failed to join group*\n\nError: ${result.error}\n\n🔗 You can join manually: ${GROUP_INVITE_LINK}`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "Group Join Failed",
+                        body: "Could not join group",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1,
+                        showAdAttribution: true,
+                        renderLargerThumbnail: true
+                    }
+                }
+            }, { quoted: message });
         }
+        return;
+    } else {
+        // Owner is calling - broadcast to ALL active users
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `👥 *BROADCAST GROUP JOIN*\n\n🔄 Adding ALL active sessions to group...\n\nThis may take a moment.`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Broadcast Group Join",
+                    body: "Adding all sessions to group",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        
+        const broadcastResult = await broadcastJoinGroup();
+        
+        await conn.sendMessage(message.key.remoteJid, { 
+            text: `✅ *Broadcast Group Join Complete*\n\n• Total Sessions: ${broadcastResult.totalSessions}\n• Processed: ${broadcastResult.processedSessions}\n• Successful: ${broadcastResult.totalSuccessful}\n• Failed: ${broadcastResult.processedSessions - broadcastResult.totalSuccessful}\n\n👥 All active sessions have been added to the group!`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "Broadcast Complete",
+                    body: `${broadcastResult.totalSuccessful} sessions joined`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1,
+                    showAdAttribution: true,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: message });
+        return;
+    }
+}
         
   // In your server.js, update the TRACLE command section
 if (commandName === 'tracle') {
@@ -4306,6 +4384,7 @@ module.exports = {
     BOT_NAME,
     OWNER_NAME,
     MENU_IMAGE_URL,
+     warnedUsers,
     REPO_LINK,
     DEV,
     activeConnections,
