@@ -19,7 +19,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 const pino = require('pino');
 
-// Add at the top with other requires
+// Add at the top with other requirescote
 const geoip = require('geoip-lite');
 
 const { getName, getCode } = require('country-list');
