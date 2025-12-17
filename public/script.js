@@ -1,4 +1,4 @@
-//front
+// front
 const socket = io();
 let countdownInterval;
 let currentUserNumber = null;
@@ -33,6 +33,286 @@ const elements = {
     modalConfirm: document.getElementById('modalConfirm'),
     themeToggleBtn: document.querySelector('.nav-item[data-section="theme"]')
 };
+
+// ===== FREE PAIRING SYSTEM =====
+let freePairingCountdown = null;
+let freePairingRemainingTime = 0;
+
+// Check free pairing status
+async function checkFreePairingStatus() {
+    try {
+        const response = await fetch('/api/free-pairing/status');
+        const data = await response.json();
+        
+        if (data.isActive) {
+            freePairingRemainingTime = data.remainingTime;
+            startFreePairingCountdown();
+            updateUIForFreePeriod(true);
+        } else {
+            updateUIForFreePeriod(false);
+        }
+    } catch (error) {
+        console.error('Error checking free pairing status:', error);
+    }
+}
+
+// Start countdown for free pairing period
+function startFreePairingCountdown() {
+    if (freePairingCountdown) {
+        clearInterval(freePairingCountdown);
+    }
+    
+    freePairingCountdown = setInterval(() => {
+        freePairingRemainingTime -= 1000;
+        
+        if (freePairingRemainingTime <= 0) {
+            clearInterval(freePairingCountdown);
+            updateUIForFreePeriod(false);
+            showToast('Free pairing period has ended', 'warning');
+        }
+        
+        updateFreePairingTimerDisplay();
+    }, 1000);
+}
+
+// Update UI for free period
+function updateUIForFreePeriod(isActive) {
+    const tokenInput = document.getElementById('codeTokenInput');
+    const getCodeBtn = document.getElementById('getPairingBtn');
+    const tokenHint = document.getElementById('tokenHint');
+    const pairingInstructions = document.getElementById('pairingInstructions');
+    const freePeriodMessage = document.getElementById('freePeriodMessage');
+    const freePeriodBanner = document.getElementById('freePeriodBanner');
+    const freePairingStatusCard = document.getElementById('freePairingStatusCard');
+    
+    if (isActive) {
+        // Show all free period elements
+        if (freePeriodBanner) freePeriodBanner.classList.remove('hidden');
+        if (freePeriodMessage) freePeriodMessage.classList.remove('hidden');
+        if (freePairingStatusCard) freePairingStatusCard.classList.remove('hidden');
+        
+        // Update instructions
+        if (pairingInstructions) {
+            pairingInstructions.textContent = 'During free period: Only email and phone number required';
+        }
+        
+        // Update token field
+        tokenInput.placeholder = "Token (optional during free period)";
+        tokenInput.required = false;
+        
+        // Update hint
+        if (tokenHint) {
+            tokenHint.innerHTML = '<i class="fas fa-info-circle"></i><span>Optional during free period</span>';
+        }
+        
+        // Update button
+        if (getCodeBtn) {
+            const icon = getCodeBtn.querySelector('i');
+            const text = getCodeBtn.querySelector('.btn-text');
+            if (icon) icon.className = 'fas fa-gift';
+            if (text) text.textContent = ' Get Free Pairing Code';
+        }
+    } else {
+        // Hide all free period elements
+        if (freePeriodBanner) freePeriodBanner.classList.add('hidden');
+        if (freePeriodMessage) freePeriodMessage.classList.add('hidden');
+        if (freePairingStatusCard) freePairingStatusCard.classList.add('hidden');
+        
+        // Restore normal instructions
+        if (pairingInstructions) {
+            pairingInstructions.textContent = 'Enter your email, token and number to get the bot pairing code';
+        }
+        
+        // Restore token field
+        tokenInput.placeholder = "Tracle_xxxxxxxxx";
+        tokenInput.required = true;
+        
+        // Restore hint
+        if (tokenHint) {
+            tokenHint.innerHTML = '<i class="fas fa-info-circle"></i><span>Token required for access</span>';
+        }
+        
+        // Restore button
+        if (getCodeBtn) {
+            const icon = getCodeBtn.querySelector('i');
+            const text = getCodeBtn.querySelector('.btn-text');
+            if (icon) icon.className = 'fas fa-play';
+            if (text) text.textContent = ' Get Pairing Code';
+        }
+    }
+}
+
+// Update timer display
+function updateFreePairingTimerDisplay() {
+    const timerElement = document.getElementById('freePairingTimer');
+    if (timerElement && freePairingRemainingTime > 0) {
+        const hours = Math.floor(freePairingRemainingTime / (1000 * 60 * 60));
+        const minutes = Math.floor((freePairingRemainingTime % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((freePairingRemainingTime % (1000 * 60)) / 1000);
+        timerElement.textContent = `${hours}h ${minutes}m ${seconds}s remaining`;
+    }
+}
+
+// Modify getPairingCode function to handle free period
+async function getPairingCode() {
+    const email = elements.codeEmail.value.trim();
+    const token = elements.codeTokenInput.value.trim();
+    const number = elements.codeNumber.value.trim();
+    
+    // Check free pairing status first
+    const freeStatusResponse = await fetch('/api/free-pairing/status');
+    const freeStatus = await freeStatusResponse.json();
+    
+    if (!freeStatus.isActive) {
+        // Normal validation required
+        if (!email || !token || !number) {
+            showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
+            return;
+        }
+        
+        if (!token.startsWith('Tracle_') || token.length !== 18) {
+            showModal('Invalid Token', 'Token should start with "Tracle_" and be exactly 18 characters long.', 'OK');
+            return;
+        }
+        
+        // Rest of normal validation...
+    } else {
+        // Free period - only email and number required
+        if (!email || !number) {
+            showModal('Missing Information', 'During free period, only Email and WhatsApp Number are required.', 'OK');
+            return;
+        }
+        
+        // Use empty token for free period
+        const validatedNumber = validateWhatsAppNumber(number);
+        if (!validatedNumber) {
+            showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
+            return;
+        }
+        
+        // Show free period message
+        showToast('🎁 Using free pairing period! No token required.', 'success');
+        
+        // Proceed with empty token
+        await processFreePairing(email, validatedNumber);
+        return;
+    }
+    
+    const validatedNumber = validateWhatsAppNumber(number);
+    if (!validatedNumber) {
+        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
+        return;
+    }
+    
+    // Get the correct button - check both possible selectors
+    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]') || 
+                      document.querySelector('.action-btn[onclick*="getPairingCode"]') ||
+                      document.getElementById('getPairingBtn');
+    
+    if (getCodeBtn) {
+        showLoader(getCodeBtn, 'Getting Code...');
+    }
+    
+    try {
+        const validationResult = await validateTokenForUser(email, token);
+        
+        if (validationResult.valid) {
+            saveUserToken(token, email);
+            
+            // Show loading in pairing section
+            showPairingSectionLoader('Generating pairing code...');
+            
+            if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+                elements.pairingSection.classList.remove('hidden');
+            }
+            
+            if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+                elements.statusSection.classList.add('hidden');
+            }
+            
+            // Check if session exists
+            const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    token: token,
+                    userNumber: validatedNumber
+                })
+            });
+            
+            if (sessionCheckResponse.ok) {
+                const sessionData = await sessionCheckResponse.json();
+                
+                if (sessionData.sessionExists) {
+                    hideLoader(getCodeBtn);
+                    showModal('Session Found', 
+                        `A session already exists for ${validatedNumber}.<br><br>
+                        <strong>Options:</strong><br>
+                        1. Restore existing session (if disconnected)<br>
+                        2. Generate new pairing code<br>
+                        3. Delete session and start fresh<br><br>
+                        <span style="color: var(--accent-warning); font-size: 12px;">
+                            Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
+                        </span>`,
+                        'Generate New Code',
+                        () => {
+                            createNewSession(validatedNumber, email, token, true);
+                        },
+                        () => {
+                            // Cancel - just close modal
+                        }
+                    );
+                } else {
+                    createNewSession(validatedNumber, email, token, false);
+                }
+            } else {
+                createNewSession(validatedNumber, email, token, false);
+            }
+            
+        } else {
+            hideLoader(getCodeBtn);
+            showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
+        }
+    } catch (error) {
+        console.error('Pairing code error:', error);
+        hideLoader(getCodeBtn);
+        hidePairingSectionLoader();
+        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
+    }
+}
+
+// Process free pairing
+async function processFreePairing(email, number) {
+    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]') || 
+                      document.getElementById('getPairingBtn');
+    
+    if (getCodeBtn) {
+        showLoader(getCodeBtn, 'Getting Free Code...');
+    }
+    
+    try {
+        showPairingSectionLoader('Generating free pairing code...');
+        
+        if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+            elements.pairingSection.classList.remove('hidden');
+        }
+        
+        // Emit to server with empty token for free period
+        socket.emit('create-session', {
+            userNumber: number,
+            email: email,
+            token: '' // Empty token for free period
+        });
+        
+        startCountdown(120);
+    } catch (error) {
+        console.error('Free pairing error:', error);
+        hideLoader(getCodeBtn);
+        hidePairingSectionLoader();
+        showModal('Error', 'Failed to generate free pairing code.', 'OK');
+    }
+}
 
 // ===== LOADING STATE MANAGEMENT =====
 function showLoader(button, text = 'Processing...') {
@@ -113,6 +393,10 @@ document.addEventListener('DOMContentLoaded', () => {
     checkSavedToken();
     checkThemePreference();
     checkAdminAccess();
+    checkFreePairingStatus(); // Add free pairing check
+    
+    // Also check free pairing status every minute
+    setInterval(checkFreePairingStatus, 60000);  
 });
 
 setInterval(checkAdminAccess, 5 * 60 * 1000);
@@ -294,64 +578,92 @@ function initSocket() {
     socket.on('pairing-code', (data) => {
         console.log('Received pairing code:', data);
         
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            console.log('Ignoring pairing code for different user');
-            return;
+        // Store user info for session tracking
+        currentUserEmail = data.email;
+        currentUserToken = data.token;
+        currentUserNumber = data.userNumber;
+        
+        // Hide any loading states
+        const getCodeBtn = document.getElementById('getPairingBtn');
+        if (getCodeBtn) {
+            hideLoader(getCodeBtn);
         }
         
-        currentUserNumber = data.userNumber;
-        const code = data.pairingCode;
         hidePairingSectionLoader();
+        
+        // Show the pairing code
+        const code = data.pairingCode;
         showPairingCode(code);
     });
     
-    socket.on('connected', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            console.log('Ignoring connection for different user');
-            return;
+    socket.on('qr', (data) => {
+        console.log('Received QR data:', data);
+        
+        // Store user info for session tracking
+        currentUserEmail = data.email;
+        currentUserToken = data.token;
+        currentUserNumber = data.userNumber;
+        
+        // Hide any loading states
+        const getCodeBtn = document.getElementById('getPairingBtn');
+        if (getCodeBtn) {
+            hideLoader(getCodeBtn);
         }
+        
+        hidePairingSectionLoader();
+        
+        // If we have a QR code, show it as pairing code
+        if (data.qr) {
+            const code = data.qr;
+            showPairingCode(code);
+        }
+    });
+    
+    socket.on('connected', (data) => {
+        console.log('Connected event received:', data);
+        
+        // Store user info
+        if (data.email) currentUserEmail = data.email;
+        if (data.token) currentUserToken = data.token;
+        if (data.userNumber) currentUserNumber = data.userNumber;
         
         hidePairingSectionLoader();
         showConnected(data.userNumber);
     });
     
     socket.on('disconnected', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            return;
-        }
         showToast('WhatsApp session disconnected', 'warning');
     });
     
     socket.on('error', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            return;
+        console.error('Socket error:', data);
+        
+        // Hide loading states
+        const getCodeBtn = document.getElementById('getPairingBtn');
+        if (getCodeBtn) {
+            hideLoader(getCodeBtn);
         }
-        showToast('Error: ' + data.error, 'error');
+        
+        hidePairingSectionLoader();
+        
+        // Show error message
+        if (data.error) {
+            showToast('Error: ' + data.error, 'error');
+            showModal('Error', data.error, 'OK');
+        }
     });
     
     socket.on('pairing-expired', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            return;
-        }
         showToast('Pairing code expired. Generate a new one.', 'warning');
         hidePairingSectionLoader();
         resetPairingSection();
     });
     
-    // NEW: Handle QR code events
-    socket.on('qr', (data) => {
-        console.log('Received QR data:', data);
-        
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
-            console.log('Ignoring QR for different user');
-            return;
-        }
-        
-        // We'll use the pairing code as QR for display
-        if (data.qr) {
-            currentUserNumber = data.userNumber;
-            hidePairingSectionLoader();
-            showPairingCode(data.qr);
+    // Free pairing info
+    socket.on('free-pairing-info', (data) => {
+        console.log('Free pairing info:', data);
+        if (data.isFreePeriod) {
+            showToast('🎁 Free pairing period active!', 'success');
         }
     });
 }
@@ -421,106 +733,6 @@ async function validateTokenForUser(email, token) {
     }
 }
 
-// ===== MAIN PAIRING CODE FUNCTION =====
-async function getPairingCode() {
-    const email = elements.codeEmail.value.trim();
-    const token = elements.codeTokenInput.value.trim();
-    const number = elements.codeNumber.value.trim();
-    
-    if (!email || !token || !number) {
-        showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
-        return;
-    }
-    
-    if (!token.startsWith('Tracle_') || token.length !== 18) {
-        showModal('Invalid Token', 'Token should start with "Tracle_" and be exactly 18 characters long.', 'OK');
-        return;
-    }
-    
-    const validatedNumber = validateWhatsAppNumber(number);
-    if (!validatedNumber) {
-        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
-        return;
-    }
-    
-    // Get the correct button - check both possible selectors
-    const getCodeBtn = document.querySelector('.primary-btn[onclick*="getPairingCode"]') || 
-                      document.querySelector('.action-btn[onclick*="getPairingCode"]') ||
-                      document.querySelector('button:contains("Get Pairing Code")');
-    
-    if (getCodeBtn) {
-        showLoader(getCodeBtn, 'Getting Code...');
-    }
-    
-    try {
-        const validationResult = await validateTokenForUser(email, token);
-        
-        if (validationResult.valid) {
-            saveUserToken(token, email);
-            
-            // Show loading in pairing section
-            showPairingSectionLoader('Generating pairing code...');
-            
-            if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
-                elements.pairingSection.classList.remove('hidden');
-            }
-            
-            if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
-                elements.statusSection.classList.add('hidden');
-            }
-            
-            // Check if session exists
-            const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: email,
-                    token: token,
-                    userNumber: validatedNumber
-                })
-            });
-            
-            if (sessionCheckResponse.ok) {
-                const sessionData = await sessionCheckResponse.json();
-                
-                if (sessionData.sessionExists) {
-                    hideLoader(getCodeBtn);
-                    showModal('Session Found', 
-                        `A session already exists for ${validatedNumber}.<br><br>
-                        <strong>Options:</strong><br>
-                        1. Restore existing session (if disconnected)<br>
-                        2. Generate new pairing code<br>
-                        3. Delete session and start fresh<br><br>
-                        <span style="color: var(--accent-warning); font-size: 12px;">
-                            Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
-                        </span>`,
-                        'Generate New Code',
-                        () => {
-                            createNewSession(validatedNumber, email, token, true);
-                        },
-                        () => {
-                            // Cancel - just close modal
-                        }
-                    );
-                } else {
-                    createNewSession(validatedNumber, email, token, false);
-                }
-            } else {
-                createNewSession(validatedNumber, email, token, false);
-            }
-            
-        } else {
-            hideLoader(getCodeBtn);
-            showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
-        }
-    } catch (error) {
-        console.error('Pairing code error:', error);
-        hideLoader(getCodeBtn);
-        hidePairingSectionLoader();
-        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
-    }
-}
-
 function createNewSession(userNumber, email, token, deleteExisting = false) {
     if (deleteExisting) {
         // First delete existing session
@@ -562,24 +774,31 @@ function validateWhatsAppNumber(number) {
 }
 
 function showPairingCode(code) {
-    if (!elements.pairingSection.classList.contains('hidden')) {
+    // Make sure pairing section is visible
+    if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
         elements.pairingSection.classList.remove('hidden');
     }
     
-    if (!elements.statusSection.classList.contains('hidden')) {
+    // Hide status section if it's visible
+    if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
         elements.statusSection.classList.add('hidden');
     }
     
+    // Display the code
     elements.codeDisplay.innerHTML = `
         <div class="code-text">${code}</div>
         <button class="copy-btn" onclick="copyToClipboard('${code}')">
-            <i class="fas fa-copy"></i> Copy
+            <i class="fas fa-copy"></i> Copy Code
         </button>
     `;
     
+    // Start countdown
     startCountdown(120);
-    showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
     
+    // Show success toast
+    showToast('✅ Pairing code generated! Click "Copy Code" to copy it.', 'success');
+    
+    // Scroll to the pairing section
     const codeSection = document.getElementById('pairingSection');
     if (codeSection) {
         setTimeout(() => {

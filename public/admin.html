@@ -143,6 +143,61 @@
             font-size: 12px;
             color: #6b7280;
         }
+
+        /* Status card styles for Free Pairing */
+        .status-card {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05));
+            border: 2px solid rgba(139, 92, 246, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .status-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 15px 0;
+            color: var(--dark-color);
+        }
+        
+        .status-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .status-item.active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+        
+        .status-item.inactive {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        
+        .status-item i {
+            font-size: 20px;
+        }
+        
+        .status-item.active i {
+            color: #10b981;
+        }
+        
+        .status-item.inactive i {
+            color: #ef4444;
+        }
     </style>
 </head>
 <body class="theme-purple">
@@ -243,6 +298,11 @@
                 <div class="menu-item" data-tab="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
+                </div>
+                <!-- Free Pairing Tab Added -->
+                <div class="menu-item" data-tab="freePairing">
+                    <i class="fas fa-gift"></i>
+                    <span>Free Pairing</span>
                 </div>
             </nav>
             
@@ -652,6 +712,11 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Free Pairing Tab -->
+                <div class="tab-content" id="freePairingTab">
+                    <!-- Content will be loaded here -->
                 </div>
             </div>
         </main>

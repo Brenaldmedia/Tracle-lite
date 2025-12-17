@@ -54,6 +54,167 @@ class AdminDashboard {
         this.initRevenueAutoUpdate();
     }
 
+    // ===== NEW: Free Pairing Methods =====
+    async loadFreePairingUsers() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const response = await fetch('/api/admin/free-pairing/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.renderFreePairingUsers(data.users, data);
+            }
+        } catch (error) {
+            console.error('Error loading free pairing users:', error);
+            this.showNotification('Failed to load free pairing users', 'error');
+        }
+    }
+
+    // Render free pairing users table
+    renderFreePairingUsers(users, status) {
+        const tabContent = document.getElementById('freePairingTab');
+        if (!tabContent) return;
+        
+        let html = `
+            <div class="status-card">
+                <h3><i class="fas fa-gift"></i> Free Pairing Period Status</h3>
+                <div class="status-info">
+                    <div class="status-item ${status.isPeriodActive ? 'active' : 'inactive'}">
+                        <i class="fas ${status.isPeriodActive ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+                        <span>Status: ${status.isPeriodActive ? 'ACTIVE' : 'ENDED'}</span>
+                    </div>
+                    <div class="status-item">
+                        <i class="fas fa-clock"></i>
+                        <span>Remaining: ${this.formatTime(status.remainingTime)}</span>
+                    </div>
+                    <div class="status-item">
+                        <i class="fas fa-users"></i>
+                        <span>Total Users: ${users.length}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <h3><i class="fas fa-user-friends"></i> Free Pairing Users</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th><i class="fas fa-envelope"></i> Email</th>
+                            <th><i class="fas fa-phone"></i> Phone Numbers</th>
+                            <th><i class="fas fa-link"></i> Sessions</th>
+                            <th><i class="fas fa-calendar"></i> Joined</th>
+                            <th><i class="fas fa-history"></i> Last Activity</th>
+                            <th><i class="fas fa-cogs"></i> Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        if (users.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 40px;">
+                        <div style="color: var(--gray-color);">
+                            <i class="fas fa-user-slash" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5;"></i>
+                            <h4>No free pairing users yet</h4>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        } else {
+            users.forEach(user => {
+                html += `
+                    <tr>
+                        <td>${user.email}</td>
+                        <td>${user.phoneNumbers.join('<br>')}</td>
+                        <td>${user.sessions.length}</td>
+                        <td>${new Date(user.joinedAt).toLocaleString()}</td>
+                        <td>${user.lastActivity ? new Date(user.lastActivity).toLocaleString() : 'Never'}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn-secondary small danger" onclick="admin.deleteFreePairingUser('${user.email}')">
+                                    <i class="fas fa-trash"></i> Remove
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        tabContent.innerHTML = html;
+    }
+
+    // Format time helper
+    formatTime(ms) {
+        const hours = Math.floor(ms / (1000 * 60 * 60));
+        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        return `${hours}h ${minutes}m`;
+    }
+
+    // Delete free pairing user
+    async deleteFreePairingUser(email) {
+        this.showCustomModal(
+            'Remove Free Pairing User',
+            `Are you sure you want to remove <strong>${email}</strong> from free pairing?<br><br>
+             <span style="color: var(--status-terminated);">
+                <i class="fas fa-exclamation-triangle"></i> This will prevent them from accessing free pairing features.
+             </span>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    // This endpoint would need to be implemented in the backend
+                    const response = await fetch('/api/admin/free-pairing/remove-user', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ email: email })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification(`User ${email} removed from free pairing`, 'success');
+                        this.loadFreePairingUsers();
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error removing free pairing user:', error);
+                    this.showNotification('Failed to remove user', 'error');
+                }
+            },
+            'Remove User'
+        );
+    }
+
     // Initialize automatic chart animations
     initChartAnimations() {
         // Start chart animations when reports tab is active
@@ -608,7 +769,7 @@ class AdminDashboard {
         document.getElementById('hamburgerMenu')?.addEventListener('click', () => this.toggleSidebar());
         document.getElementById('sidebarClose')?.addEventListener('click', () => this.closeSidebar());
         
-        // Navigation
+        // Navigation - Updated to include freePairing tab
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', (e) => this.switchTab(e.currentTarget.dataset.tab));
         });
@@ -703,6 +864,78 @@ class AdminDashboard {
         const saveSettingsBtn = document.querySelector('#settingsTab .btn-primary');
         if (saveSettingsBtn) {
             saveSettingsBtn.addEventListener('click', () => this.saveAdminSettings());
+        }
+    }
+
+    // ===== UPDATED: Switch Tab Method =====
+    switchTab(tabName) {
+        this.currentTab = tabName;
+        
+        // Update active menu item
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.tab === tabName) {
+                item.classList.add('active');
+            }
+        });
+        
+        // Show active tab content
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+            if (tab.id === `${tabName}Tab`) {
+                tab.classList.add('active');
+            }
+        });
+        
+        // Update page title
+        const titles = {
+            dashboard: 'Dashboard',
+            users: 'User Management',
+            tokens: 'Token Management',
+            requests: 'Token Requests',
+            reports: 'Reports & Analytics',
+            settings: 'Settings',
+            freePairing: 'Free Pairing'
+        };
+        
+        document.getElementById('pageTitle').textContent = titles[tabName];
+        document.getElementById('pageTitle').style.background = 'linear-gradient(135deg, var(--gradient-start), var(--gradient-end))';
+        document.getElementById('pageTitle').style.webkitBackgroundClip = 'text';
+        document.getElementById('pageTitle').style.webkitTextFillColor = 'transparent';
+        document.getElementById('pageTitle').style.backgroundClip = 'text';
+        
+        document.getElementById('pageSubtitle').textContent = 'Admin Control Panel';
+        
+        // Close sidebar on mobile
+        if (window.innerWidth <= 992) {
+            this.closeSidebar();
+        }
+        
+        // Load tab data - Updated to include freePairing
+        switch(tabName) {
+            case 'dashboard':
+                this.loadStats();
+                break;
+            case 'users':
+                this.loadUsers();
+                this.updateUsersTableHeader();
+                break;
+            case 'tokens':
+                this.loadTokens();
+                break;
+            case 'requests':
+                this.loadRequests();
+                break;
+            case 'reports':
+                this.loadReports();
+                this.startChartAnimations(); // Start animations when reports tab is opened
+                break;
+            case 'settings':
+                this.loadSettings();
+                break;
+            case 'freePairing':
+                this.loadFreePairingUsers();
+                break;
         }
     }
 
@@ -1570,6 +1803,7 @@ class AdminDashboard {
         }, 5000);
     }
 
+    // ===== UPDATED: Switch Tab Method =====
     switchTab(tabName) {
         this.currentTab = tabName;
         
@@ -1596,7 +1830,8 @@ class AdminDashboard {
             tokens: 'Token Management',
             requests: 'Token Requests',
             reports: 'Reports & Analytics',
-            settings: 'Settings'
+            settings: 'Settings',
+            freePairing: 'Free Pairing'
         };
         
         document.getElementById('pageTitle').textContent = titles[tabName];
@@ -1612,7 +1847,7 @@ class AdminDashboard {
             this.closeSidebar();
         }
         
-        // Load tab data
+        // Load tab data - Updated to include freePairing
         switch(tabName) {
             case 'dashboard':
                 this.loadStats();
@@ -1633,6 +1868,9 @@ class AdminDashboard {
                 break;
             case 'settings':
                 this.loadSettings();
+                break;
+            case 'freePairing':
+                this.loadFreePairingUsers();
                 break;
         }
     }
