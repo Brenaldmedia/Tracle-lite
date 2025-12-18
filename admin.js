@@ -832,51 +832,6 @@ class AdminManager {
                 });
             }
         });
-
-        // ===== NEW: FREE PAIRING ROUTES =====
-        // Get free pairing users
-        app.get('/api/admin/free-pairing/users', this.verifyAdminToken.bind(this), async (req, res) => {
-            try {
-                // Get from freePairingUsers map (you need to make this accessible)
-                // This would require passing the freePairingUsers map from server.js
-                // For now, return mock data structure
-                res.json({
-                    success: true,
-                    users: [], // Will be populated from server.js
-                    isPeriodActive: true,
-                    remainingTime: 172800000 // 48 hours in ms
-                });
-            } catch (error) {
-                console.error('Error getting free pairing users:', error);
-                res.status(500).json({ success: false, message: error.message });
-            }
-        });
-
-        // Remove free pairing user
-        app.post('/api/admin/free-pairing/remove-user', this.verifyAdminToken.bind(this), async (req, res) => {
-            try {
-                const { email } = req.body;
-                
-                if (!email) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Email is required'
-                    });
-                }
-
-                // Here you would remove user from free pairing
-                // This would need to be implemented in server.js to access freePairingUsers
-                
-                res.json({
-                    success: true,
-                    message: `User ${email} removed from free pairing`,
-                    email: email
-                });
-            } catch (error) {
-                console.error('Error removing free pairing user:', error);
-                res.status(500).json({ success: false, message: error.message });
-            }
-        });
     }
 }
 

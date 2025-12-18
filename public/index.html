@@ -134,17 +134,10 @@
                     </div>
                 </div>
 
-                <!-- Free Pairing Banner (will be added dynamically by JavaScript) -->
-                <div id="freePeriodBanner" class="free-period-banner hidden">
-                    <i class="fas fa-gift"></i>
-                    <span>🎁 FREE PAIRING PERIOD ACTIVE! No token required for 48 hours</span>
-                    <span id="freePairingTimer" class="free-timer">48h 00m 00s remaining</span>
-                </div>
-
                 <!-- THE ONLY GET CODE SECTION (NO QUIZ) -->
                 <div class="get-bot-code-section" id="codeSection">
                     <h4><i class="fas fa-code"></i> Get Pairing Code</h4>
-                    <p id="pairingInstructions">Enter your email, token and number to get the bot pairing code</p>
+                    <p>Enter your email, token and number to get the bot pairing code</p>
 
                     <div class="code-input-section">
                         <div class="input-group">
@@ -155,10 +148,6 @@
                         <div class="input-group">
                             <div class="input-icon"><i class="fas fa-key"></i></div>
                             <input type="text" id="codeTokenInput" placeholder="Tracle_xxxxxxxxx" required>
-                            <div class="input-hint" id="tokenHint">
-                                <i class="fas fa-info-circle"></i>
-                                <span>Token required for access</span>
-                            </div>
                         </div>
 
                         <div class="input-group">
@@ -166,16 +155,9 @@
                             <input type="tel" id="codeNumber" placeholder="234xxx (without +)" required>
                         </div>
 
-                        <button class="primary-btn" onclick="getPairingCode()" id="getPairingBtn">
-                            <i class="fas fa-play"></i>
-                            <span class="btn-text">Get Pairing Code</span>
+                        <button class="primary-btn" onclick="getPairingCode()">
+                            <i class="fas fa-play"></i> Get Pairing Code
                         </button>
-                        
-                        <!-- Free period message -->
-                        <div class="info-box free-period-message hidden" id="freePeriodMessage">
-                            <i class="fas fa-gift"></i>
-                            <p>🎁 <strong>Free Period Active!</strong> Token is optional during free pairing period</p>
-                        </div>
                     </div>
 
                     <div id="tokenValidationResult" class="validation-result"></div>
@@ -219,25 +201,6 @@
                     <button class="secondary-btn" onclick="resetConnection()">
                         <i class="fas fa-plus"></i> Connect Another Device
                     </button>
-                </div>
-
-                <!-- Free Pairing Status Display (for debugging) -->
-                <div class="status-card hidden" id="freePairingStatusCard">
-                    <h3><i class="fas fa-gift"></i> Free Pairing Status</h3>
-                    <div class="status-info">
-                        <div class="status-item" id="freeStatusItem">
-                            <i class="fas fa-question-circle"></i>
-                            <span>Status: Checking...</span>
-                        </div>
-                        <div class="status-item">
-                            <i class="fas fa-clock"></i>
-                            <span>Remaining: <span id="freeRemainingTime">--:--:--</span></span>
-                        </div>
-                        <div class="status-item">
-                            <i class="fas fa-users"></i>
-                            <span>Free Users: <span id="freeUsersCount">0</span></span>
-                        </div>
-                    </div>
                 </div>
             </section>
 

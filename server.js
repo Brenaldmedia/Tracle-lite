@@ -12,76 +12,6 @@ const {
     delay,
     isJidBroadcast
 } = require('@whiskeysockets/baileys');
-
-// =============== FREE PAIRING SYSTEM (48 HOURS) ===============
-const FREE_PAIRING_START_TIME = Date.now(); // When server starts
-const FREE_PAIRING_DURATION = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
-const freePairingUsers = new Map(); // Store users who use free pairing
-
-// Check if free pairing period is active
-function isFreePairingActive() {
-    const timeElapsed = Date.now() - FREE_PAIRING_START_TIME;
-    return timeElapsed < FREE_PAIRING_DURATION;
-}
-
-// Get remaining free pairing time
-function getFreePairingRemainingTime() {
-    if (!isFreePairingActive()) {
-        return 0;
-    }
-    const timeElapsed = Date.now() - FREE_PAIRING_START_TIME;
-    return FREE_PAIRING_DURATION - timeElapsed;
-}
-
-// Format remaining time for display
-function formatRemainingTime(ms) {
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-    return `${hours}h ${minutes}m ${seconds}s`;
-}
-
-// Track free pairing user
-function trackFreePairingUser(email, phoneNumber, sessionId) {
-    if (!freePairingUsers.has(email)) {
-        freePairingUsers.set(email, {
-            email: email,
-            phoneNumbers: new Set(),
-            sessions: new Set(),
-            joinedAt: Date.now()
-        });
-    }
-    
-    const user = freePairingUsers.get(email);
-    user.phoneNumbers.add(phoneNumber);
-    user.sessions.add(sessionId);
-    user.lastActivity = Date.now();
-}
-
-// Get free pairing users for admin
-function getFreePairingUsers() {
-    return Array.from(freePairingUsers.values()).map(user => ({
-        email: user.email,
-        phoneNumbers: Array.from(user.phoneNumbers),
-        sessions: Array.from(user.sessions),
-        joinedAt: user.joinedAt,
-        lastActivity: user.lastActivity
-    }));
-}
-
-// Remove session from free pairing
-function removeFreePairingSession(sessionId) {
-    for (const [email, user] of freePairingUsers.entries()) {
-        if (user.sessions.has(sessionId)) {
-            user.sessions.delete(sessionId);
-            if (user.sessions.size === 0 && user.phoneNumbers.size === 0) {
-                freePairingUsers.delete(email);
-            }
-            break;
-        }
-    }
-}
-
 const warnedUsers = new Map();
 const path = require('path');
 const fs = require('fs-extra');
@@ -3309,9 +3239,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
 
 // =============== UPDATED CLEANUP SESSION FUNCTION ===============
 async function cleanupSession(userNumber) {
-    // Remove from free pairing tracking
-    removeFreePairingSession(userNumber);
-    
     // Stop alive message system
     stopAliveMessageSystem(userNumber);
     
@@ -3383,50 +3310,16 @@ io.on('connection', (socket) => {
     socket.on('create-session', async (data) => {
         const { userNumber, email, token } = data;
         
-        // Check if free pairing is active
-        const isFreePeriod = isFreePairingActive();
-        
         if (!email || !token) {
-            // During free period, only email is required (no token)
-            if (isFreePeriod) {
-                if (!email || !userNumber) {
-                    socket.emit('error', { 
-                        error: 'Email and phone number are required during free period',
-                        email: email,
-                        token: null
-                    });
-                    return;
-                }
-                
-                // Generate a temporary token for free users
-                const tempToken = `FREE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                
-                console.log('🎁 FREE PAIRING: Creating session for:', userNumber, 'by', email);
-                
-                // Track free pairing user
-                trackFreePairingUser(email, userNumber, userNumber);
-                
-                // Send free pairing info to frontend
-                socket.emit('free-pairing-info', {
-                    remainingTime: getFreePairingRemainingTime(),
-                    isFreePeriod: true,
-                    message: 'Free pairing period active!'
-                });
-                
-                await createSession(userNumber, socket, false, email, tempToken);
-                return;
-            } else {
-                // Normal period - token required
-                socket.emit('error', { 
-                    error: 'Email and token are required',
-                    email: email,
-                    token: token
-                });
-                return;
-            }
+            socket.emit('error', { 
+                error: 'Email and token are required',
+                email: email,
+                token: token
+            });
+            return;
         }
         
-        // Normal token validation for non-free period
+        // Validate token before creating session
         const validation = await tokenManager.validateTokenWithEmail(email, token);
         if (!validation.valid) {
             socket.emit('error', { 
@@ -3472,69 +3365,6 @@ io.on('connection', (socket) => {
 
 app.use(express.json());
 app.use(express.static('public'));
-
-// =============== FREE PAIRING API ENDPOINTS ===============
-
-// Get free pairing status
-app.get('/api/free-pairing/status', (req, res) => {
-    const isActive = isFreePairingActive();
-    const remainingTime = getFreePairingRemainingTime();
-    
-    res.json({
-        isActive: isActive,
-        remainingTime: remainingTime,
-        formattedTime: formatRemainingTime(remainingTime),
-        startTime: FREE_PAIRING_START_TIME,
-        endTime: FREE_PAIRING_START_TIME + FREE_PAIRING_DURATION
-    });
-});
-
-// Get all free pairing users (admin only)
-app.get('/api/admin/free-pairing/users', adminManager.verifyAdminToken.bind(adminManager), (req, res) => {
-    const users = getFreePairingUsers();
-    
-    res.json({
-        success: true,
-        users: users,
-        count: users.length,
-        isPeriodActive: isFreePairingActive(),
-        remainingTime: getFreePairingRemainingTime()
-    });
-});
-
-// Delete free pairing session (admin only)
-app.delete('/api/admin/free-pairing/session/:sessionId', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
-    const { sessionId } = req.params;
-    
-    // Remove session from tracking
-    removeFreePairingSession(sessionId);
-    
-    // Also clean up the actual session
-    await cleanupSession(sessionId);
-    
-    res.json({
-        success: true,
-        message: 'Session removed from free pairing'
-    });
-});
-
-// Delete free pairing user (admin only)
-app.delete('/api/admin/free-pairing/user/:email', adminManager.verifyAdminToken.bind(adminManager), (req, res) => {
-    const { email } = req.params;
-    
-    if (freePairingUsers.has(email)) {
-        freePairingUsers.delete(email);
-        res.json({
-            success: true,
-            message: 'User removed from free pairing'
-        });
-    } else {
-        res.status(404).json({
-            success: false,
-            message: 'User not found in free pairing list'
-        });
-    }
-});
 
 // =============== NEW SUPABASE SESSION CHECKING API ENDPOINTS ===============
 
@@ -4382,7 +4212,6 @@ const startServer = async () => {
             console.log(`📧 EMAIL TEMPLATE SYSTEM: Added to admin dashboard`);
             console.log(`🔧 TOKEN TERMINATION: Added with email notifications`);
             console.log(`🎁 FREE TOKEN SYSTEM: Improved with proper flags`);
-            console.log(`🎁 FREE PAIRING SYSTEM: ENABLED for 48 hours`);
             console.log(`🔧 ADDED COMMANDS WITH PREMIUM CONTEXT INFO:`);
             console.log(`   • mode (bot mode settings)`);
             console.log(`   • autoviewstatus (auto view status)`);
@@ -4444,7 +4273,6 @@ const startServer = async () => {
             startConnectionMonitor();
             
             console.log(`✅ All systems initialized. All commands now include premium template context info.`);
-            console.log(`🎁 Free pairing system active for: ${formatRemainingTime(FREE_PAIRING_DURATION)}`);
         });
         
         server.on('error', (err) => {
@@ -4511,7 +4339,6 @@ process.on('SIGINT', async () => {
     console.log('☁️ Backups are available on Supabase');
     console.log('📱 All commands will include premium context info on next startup');
     console.log('✅ Pairing code system is now working for new users');
-    console.log('🎁 Free pairing system will resume timing on next startup');
     process.exit(0);
 });
 
@@ -4569,12 +4396,6 @@ module.exports = {
     getQuotedMessage,
     broadcastSubscribeToChannels,
     broadcastJoinGroup,
-    userPrefixes,
-    // Free pairing system exports
-    isFreePairingActive,
-    getFreePairingRemainingTime,
-    formatRemainingTime,
-    getFreePairingUsers,
-    freePairingUsers
+    userPrefixes
 };
 console.log('🔄 Memory cleanup interval started for anti-delete and owner cache');
