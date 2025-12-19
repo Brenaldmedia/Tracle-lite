@@ -2,7 +2,7 @@
 class AdminDashboard {
     constructor() {
         this.adminEmail = 'brenaldmedia@gmail.com';
-        this.adminPassword = 'isiboremmanuel0911'; // Hardcoded password
+        this.adminPassword = 'isiboremmanuel0911'; 
         this.isAuthenticated = false;
         this.currentTab = 'dashboard';
         this.charts = {};

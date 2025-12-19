@@ -5,7 +5,7 @@ const tokenManager = require('./token');
 class AdminManager {
     constructor() {
         this.adminEmail = 'brenaldmedia@gmail.com';
-        this.adminPassword = 'isiboremmanuel0911'; // Hardcoded password
+        this.adminPassword = 'isiboremmanuel0911';
         this.adminLoginCodes = new Map();
     }
 
