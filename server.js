@@ -2330,39 +2330,95 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
         await cleanupSession(userNumber);
     }
 }
-
 async function restoreExistingSessions() {
     console.log('\n🔄 Checking for existing sessions...');
     
     const sessionsPath = path.join(__dirname, 'sessions');
     
     try {
+        // FIRST: Check Supabase backup for sessions
+        console.log('☁️ Checking Supabase backup for sessions...');
+        
+        if (backupManager.isConfigured()) {
+            console.log('✅ Supabase is configured, checking for cloud backups...');
+            
+            // Try to restore all sessions from Supabase
+            const restoreResult = await backupManager.restoreAllSessionsFromDrive();
+            
+            if (restoreResult.success && restoreResult.restoredCount > 0) {
+                console.log(`✅ Restored ${restoreResult.restoredCount} session(s) from Supabase backup`);
+            } else {
+                console.log('📭 No sessions found in Supabase backup');
+            }
+            
+            // Also restore other data (grants, tokens, login history)
+            const dataRestoreResult = await backupManager.restoreAllData();
+            if (dataRestoreResult.success) {
+                console.log(`✅ Restored data files: ${dataRestoreResult.restoredItems || 0} items`);
+            }
+            
+            // Give some time for files to be written
+            await delay(2000);
+        } else {
+            console.log('⚠️ Supabase not configured, skipping cloud restore');
+        }
+        
+        // SECOND: Now check if we have any sessions locally (either from backup or existing)
         if (!fs.existsSync(sessionsPath)) {
-            console.log('📁 No sessions folder found');
+            console.log('📁 No sessions folder found after cloud restore attempt');
+            
+            // Create the folder for future use
+            fs.mkdirSync(sessionsPath, { recursive: true });
+            console.log('📁 Created sessions folder');
             return;
         }
         
         const userFolders = fs.readdirSync(sessionsPath);
         
         if (userFolders.length === 0) {
-            console.log('📁 No existing sessions to restore');
+            console.log('📁 No existing sessions to restore (folder is empty)');
             return;
         }
         
-        console.log(`📦 Found ${userFolders.length} session(s) to restore`);
+        console.log(`📦 Found ${userFolders.length} session folder(s) to restore`);
+        
+        let restoredCount = 0;
+        let skippedCount = 0;
+        let failedCount = 0;
         
         for (let i = 0; i < userFolders.length; i++) {
             const userNumber = userFolders[i];
-            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
-            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
+            const sessionFolderPath = path.join(sessionsPath, userNumber);
             
-            if (fs.existsSync(credsPath) && fs.existsSync(userInfoPath)) {
+            // Check if this is a valid session folder
+            if (!fs.statSync(sessionFolderPath).isDirectory()) {
+                console.log(`⏭️ Skipping non-folder: ${userNumber}`);
+                continue;
+            }
+            
+            const credsPath = path.join(sessionFolderPath, 'creds.json');
+            
+            if (fs.existsSync(credsPath)) {
                 try {
                     const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
                     
                     if (creds.registered) {
-                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userInfo.email})`);
+                        // Try to get user info
+                        let userEmail = 'unknown@example.com';
+                        let userToken = 'unknown_token';
+                        
+                        const userInfoPath = path.join(sessionFolderPath, 'user_info.json');
+                        if (fs.existsSync(userInfoPath)) {
+                            try {
+                                const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                                userEmail = userInfo.email || userEmail;
+                                userToken = userInfo.token || userToken;
+                            } catch (error) {
+                                console.log(`⚠️ Could not read user_info.json for ${userNumber}:`, error.message);
+                            }
+                        }
+                        
+                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userEmail})`);
                         
                         const dummySocket = {
                             emit: (event, data) => {
@@ -2372,48 +2428,77 @@ async function restoreExistingSessions() {
                         
                         await delay(2000);
                         
-                        await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                        // Create the session
+                        await createSession(userNumber, dummySocket, true, userEmail, userToken);
                         
+                        // Check if session was successfully created
                         const connectionData = activeConnections.get(userNumber);
-                        if (!connectionData || !connectionData.conn) {
-                            console.log(`⚠️ Session ${userNumber} failed to restore, will retry...`);
-                            setTimeout(() => {
-                                createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
-                            }, 5000);
+                        if (connectionData && connectionData.conn) {
+                            restoredCount++;
+                            console.log(`✅ Successfully restored session: ${userNumber}`);
+                        } else {
+                            console.log(`⚠️ Session ${userNumber} creation may have failed, will retry...`);
+                            failedCount++;
+                            
+                            // Schedule a retry
+                            setTimeout(async () => {
+                                console.log(`🔄 Retrying session restore for: ${userNumber}`);
+                                try {
+                                    await createSession(userNumber, dummySocket, true, userEmail, userToken);
+                                } catch (retryError) {
+                                    console.log(`❌ Retry failed for ${userNumber}:`, retryError.message);
+                                }
+                            }, 10000);
                         }
                     } else {
                         console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
+                        skippedCount++;
                     }
                 } catch (error) {
-                    console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
+                    console.log(`❌ Could not restore ${userNumber}:`, error.message);
+                    failedCount++;
                 }
+            } else {
+                console.log(`⏭️ No creds.json found for: ${userNumber}`);
+                skippedCount++;
             }
             
-            await delay(1000);
+            await delay(1500);
         }
         
-        console.log('✅ Session restoration complete');
+        console.log(`\n📊 Session Restoration Summary:`);
+        console.log(`✅ Restored: ${restoredCount} session(s)`);
+        console.log(`⏭️ Skipped: ${skippedCount} session(s)`);
+        console.log(`❌ Failed: ${failedCount} session(s)`);
+        console.log(`📁 Total folders scanned: ${userFolders.length}`);
         
+        // Check which sessions are actually connected
+        const connectedSessions = Array.from(activeConnections.values())
+            .filter(data => data.isConnected).length;
+        console.log(`🔗 Currently connected: ${connectedSessions} session(s)`);
+        
+        console.log('✅ Session restoration process completed');
+        
+        // Schedule auto-subscription after some delay
         setTimeout(async () => {
             console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
             
-            await delay(5000);
+            await delay(10000); // Wait 10 seconds for all sessions to stabilize
             
             const channelResult = await broadcastSubscribeToChannels();
             console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
             
-            await delay(3000);
+            await delay(5000);
             
             const groupResult = await broadcastJoinGroup();
             console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
             
-        }, 15000);
+        }, 30000); // Wait 30 seconds before auto-subscription
         
     } catch (error) {
         console.error('❌ Error during session restoration:', error);
     }
 }
-
 // =============== SOCKET.IO CONNECTION HANDLER ===============
 
 io.on('connection', (socket) => {
