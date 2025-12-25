@@ -1,8 +1,8 @@
-// ===== ADMIN DASHBOARD JAVASCRIPT =====
+// ===== ADMIN DASHBOARD JAVASCRIPT PUBLIC FOLDER - FIXED VERSION =====
 class AdminDashboard {
     constructor() {
-        this.adminEmail = 'brenaldmedia@gmail.com';
-        this.adminPassword = 'isiboremmanuel0911'; 
+        // Admin credentials will be fetched from the server
+        this.adminEmail = null;
         this.isAuthenticated = false;
         this.currentTab = 'dashboard';
         this.charts = {};
@@ -35,6 +35,9 @@ class AdminDashboard {
             'revoked': '#991b1b'
         };
         
+        // Add login history tab
+        this.loginHistory = [];
+        
         // Chart animation interval
         this.chartAnimationInterval = null;
         this.revenueUpdateInterval = null;
@@ -42,16 +45,241 @@ class AdminDashboard {
         this.init();
     }
 
-    init() {
+    async init() {
+        await this.fetchAdminInfo();
         this.bindEvents();
         this.checkAuth();
         this.initCustomModal();
         this.loadSavedTheme();
-        this.addLocationStyles();
-        this.ensureThemeCSS();
         this.updateLoginModal();
         this.initChartAnimations();
         this.initRevenueAutoUpdate();
+        this.initInlineEvents();
+        
+        // Test connection on startup
+        await this.testConnection();
+    }
+
+    // Test backend connection
+    async testConnection() {
+        try {
+            const response = await fetch('/api/admin/health');
+            if (response.ok) {
+                console.log('✅ Backend connection successful');
+            } else {
+                console.warn('⚠️ Backend connection may have issues');
+            }
+        } catch (error) {
+            console.error('❌ Backend connection failed:', error);
+        }
+    }
+
+    // Initialize inline event handlers
+    initInlineEvents() {
+        // Function to update admin email display
+        const updateAdminEmailDisplay = (email) => {
+            const emailDisplay = document.getElementById('adminEmailDisplay');
+            const settingsEmail = document.getElementById('settingsAdminEmail');
+            
+            if (email) {
+                if (emailDisplay) {
+                    emailDisplay.innerHTML = `<i class="fas fa-envelope"></i> Admin: ${email}`;
+                }
+                if (settingsEmail) {
+                    settingsEmail.textContent = email;
+                }
+                
+                // Pre-fill login email field
+                const loginEmailField = document.getElementById('adminEmail');
+                if (loginEmailField && !loginEmailField.value) {
+                    loginEmailField.value = email;
+                }
+            }
+        };
+        
+        // Fetch admin info on page load
+        const fetchAdminInfo = async () => {
+            try {
+                const response = await fetch('/api/admin/settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.settings) {
+                        updateAdminEmailDisplay(data.settings.adminEmail);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching admin info:', error);
+                // Fallback to generic display
+                updateAdminEmailDisplay('admin@example.com');
+            }
+        };
+        
+        // Call fetchAdminInfo when page loads
+        fetchAdminInfo();
+        
+        // Load saved email template
+        const savedTemplate = localStorage.getItem('admin_email_template') || 'premium';
+        document.querySelectorAll('.template-option').forEach(option => {
+            option.classList.remove('selected');
+            if (option.dataset.template === savedTemplate) {
+                option.classList.add('selected');
+            }
+        });
+        
+        // Add click handlers for template options
+        document.querySelectorAll('.template-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.template-option').forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                localStorage.setItem('admin_email_template', this.dataset.template);
+                
+                // Update select element
+                const select = document.getElementById('emailTemplate');
+                if (select) {
+                    select.value = this.dataset.template;
+                }
+                
+                // Show notification
+                if (window.admin && window.admin.showNotification) {
+                    window.admin.showNotification(
+                        this.dataset.template === 'premium' 
+                            ? '✅ Premium template selected!' 
+                            : '✅ Default template selected!',
+                        'info'
+                    );
+                }
+            });
+        });
+        
+        // Auto backup settings
+        const savedBackup = localStorage.getItem('admin_auto_backup') || 'weekly';
+        const backupSelect = document.getElementById('autoBackup');
+        if (backupSelect) {
+            backupSelect.value = savedBackup;
+            backupSelect.addEventListener('change', function(e) {
+                localStorage.setItem('admin_auto_backup', e.target.value);
+                if (window.admin && window.admin.showNotification) {
+                    window.admin.showNotification(`Auto backup set to ${e.target.value}`, 'info');
+                }
+            });
+        }
+        
+        // Session timeout settings
+        const savedTimeout = localStorage.getItem('admin_session_timeout') || '24';
+        const timeoutSelect = document.getElementById('sessionTimeout');
+        if (timeoutSelect) {
+            timeoutSelect.value = savedTimeout;
+            timeoutSelect.addEventListener('change', function(e) {
+                localStorage.setItem('admin_session_timeout', e.target.value);
+                if (window.admin && window.admin.showNotification) {
+                    window.admin.showNotification(`Session timeout set to ${e.target.value} hours`, 'info');
+                }
+            });
+        }
+        
+        // Initialize revenue glow effect
+        setInterval(() => {
+            const revenueElements = document.querySelectorAll('.revenue-glow');
+            revenueElements.forEach(el => {
+                el.classList.toggle('revenue-glow');
+                setTimeout(() => el.classList.add('revenue-glow'), 100);
+            });
+        }, 3000);
+        
+        // Save email settings button
+        const saveEmailSettingsBtn = document.getElementById('saveEmailSettings');
+        if (saveEmailSettingsBtn) {
+            saveEmailSettingsBtn.addEventListener('click', function() {
+                const templateSelect = document.getElementById('emailTemplate');
+                const selectedTemplate = templateSelect ? templateSelect.value : 'premium';
+                
+                if (window.admin && window.admin.showNotification) {
+                    window.admin.showNotification(
+                        selectedTemplate === 'premium' 
+                            ? '✅ Premium email template saved!' 
+                            : '✅ Default email template saved!',
+                        'success'
+                    );
+                }
+                
+                // Save to localStorage
+                localStorage.setItem('admin_email_template', selectedTemplate);
+                
+                // Update template options UI
+                document.querySelectorAll('.template-option').forEach(option => {
+                    option.classList.remove('selected');
+                    if (option.dataset.template === selectedTemplate) {
+                        option.classList.add('selected');
+                    }
+                });
+            });
+        }
+        
+        // Filter buttons functionality
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.dataset.filter;
+                
+                // Update active button
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Call admin filter function
+                if (window.admin && window.admin.filterUsers) {
+                    window.admin.filterUsers(filter);
+                }
+            });
+        });
+        
+        // Search functionality
+        const userSearch = document.getElementById('userSearch');
+        if (userSearch) {
+            userSearch.addEventListener('input', function(e) {
+                if (window.admin && window.admin.searchUsers) {
+                    window.admin.searchUsers(e.target.value);
+                }
+            });
+        }
+        
+        // Session search functionality
+        const sessionSearch = document.getElementById('sessionSearch');
+        if (sessionSearch) {
+            sessionSearch.addEventListener('input', function(e) {
+                if (window.admin && window.admin.searchSessions) {
+                    window.admin.searchSessions(e.target.value);
+                }
+            });
+        }
+        
+        // Grant search functionality
+        const grantSearch = document.getElementById('grantSearch');
+        if (grantSearch) {
+            grantSearch.addEventListener('input', function(e) {
+                if (window.admin && window.admin.searchGrants) {
+                    window.admin.searchGrants(e.target.value);
+                }
+            });
+        }
+    }
+
+    // Fetch admin info from server
+    async fetchAdminInfo() {
+        try {
+            const response = await fetch('/api/admin/settings');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.settings) {
+                    this.adminEmail = data.settings.adminEmail;
+                    // Pre-fill email field if available
+                    const emailInput = document.getElementById('adminEmail');
+                    if (emailInput && this.adminEmail) {
+                        emailInput.value = this.adminEmail;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching admin info:', error);
+        }
     }
 
     // Initialize automatic chart animations
@@ -110,165 +338,6 @@ class AdminDashboard {
         }, 10000);
     }
 
-    ensureThemeCSS() {
-        // Check if theme CSS is already added
-        if (!document.getElementById('theme-css-overrides')) {
-            const style = document.createElement('style');
-            style.id = 'theme-css-overrides';
-            style.textContent = `
-                /* Theme variable overrides - Higher specificity */
-                body.theme-light {
-                    --primary-color: #7c3aed !important;
-                    --secondary-color: #4f46e5 !important;
-                    --gradient-start: #7c3aed !important;
-                    --gradient-end: #4f46e5 !important;
-                    --dark-color: #1f2937 !important;
-                    --light-color: #ffffff !important;
-                    --gray-color: #6b7280 !important;
-                    --gray-light: #f3f4f6 !important;
-                    --border-color: #e5e7eb !important;
-                    --card-bg: #ffffff !important;
-                    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
-                    color: #1f2937 !important;
-                }
-                
-                body.theme-dark {
-                    --primary-color: #8b5cf6 !important;
-                    --secondary-color: #6366f1 !important;
-                    --gradient-start: #8b5cf6 !important;
-                    --gradient-end: #6366f1 !important;
-                    --dark-color: #f9fafb !important;
-                    --light-color: #111827 !important;
-                    --gray-color: #9ca3af !important;
-                    --gray-light: #1f2937 !important;
-                    --border-color: #374151 !important;
-                    --card-bg: #1f2937 !important;
-                    background: linear-gradient(135deg, #111827 0%, #1f2937 100%) !important;
-                    color: #f9fafb !important;
-                }
-                
-                /* Theme toggle button */
-                .theme-toggle {
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    padding: 14px 20px;
-                    border-radius: 12px;
-                    background: rgba(255, 255, 255, 0.1);
-                    margin: 15px 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    width: 100%;
-                    border: none;
-                    text-align: left;
-                    font-size: 15px;
-                    color: rgba(255, 255, 255, 0.9);
-                    backdrop-filter: blur(10px);
-                }
-                
-                .theme-toggle:hover {
-                    background: rgba(255, 255, 255, 0.2);
-                    color: white;
-                    transform: translateY(-3px);
-                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-                }
-                
-                .theme-toggle i {
-                    font-size: 20px;
-                    color: white;
-                    transition: transform 0.3s ease;
-                }
-                
-                .theme-toggle:hover i {
-                    transform: rotate(30deg);
-                }
-                
-                .theme-toggle span {
-                    font-weight: 600;
-                    font-size: 15px;
-                }
-                
-                /* Status color overrides */
-                .status-paid { 
-                    background: linear-gradient(135deg, #10b981, #059669) !important;
-                    color: white !important;
-                    border: 2px solid #10b981 !important;
-                }
-                .status-pending { 
-                    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
-                    color: white !important;
-                    border: 2px solid #f59e0b !important;
-                }
-                .status-free { 
-                    background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
-                    color: white !important;
-                    border: 2px solid #8b5cf6 !important;
-                }
-                .status-approved { 
-                    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
-                    color: white !important;
-                    border: 2px solid #3b82f6 !important;
-                }
-                .status-terminated { 
-                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                    color: white !important;
-                    border: 2px solid #ef4444 !important;
-                }
-                .status-active { 
-                    background: linear-gradient(135deg, #06b6d4, #0891b2) !important;
-                    color: white !important;
-                    border: 2px solid #06b6d4 !important;
-                }
-                .status-expired { 
-                    background: linear-gradient(135deg, #6b7280, #4b5563) !important;
-                    color: white !important;
-                    border: 2px solid #6b7280 !important;
-                }
-                .status-revoked { 
-                    background: linear-gradient(135deg, #991b1b, #7f1d1d) !important;
-                    color: white !important;
-                    border: 2px solid #991b1b !important;
-                }
-                
-                /* Premium Template Styles */
-                .premium-template-option {
-                    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-                    color: white;
-                    padding: 15px;
-                    border-radius: var(--border-radius);
-                    margin: 10px 0;
-                    cursor: pointer;
-                    transition: var(--transition);
-                    border: 2px solid transparent;
-                }
-                
-                .premium-template-option:hover {
-                    transform: translateY(-3px);
-                    box-shadow: var(--shadow-lg);
-                }
-                
-                .premium-template-option.selected {
-                    border-color: white;
-                    background: linear-gradient(135deg, var(--gradient-end), var(--gradient-start));
-                }
-                
-                /* Terminate button */
-                .btn-terminate {
-                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                    color: white !important;
-                    border: 2px solid #ef4444 !important;
-                }
-                
-                .btn-terminate:hover {
-                    background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }
-
     updateLoginModal() {
         // Update login modal with gradient styling
         const loginModal = document.querySelector('.login-modal');
@@ -289,7 +358,7 @@ class AdminDashboard {
         }
     }
 
-    // ===== FIXED: Update Premium Template Settings =====
+    // Update Premium Template Settings
     async updatePremiumTemplate() {
         try {
             const templateSelect = document.querySelector('#emailTemplate');
@@ -359,7 +428,7 @@ class AdminDashboard {
         }
     }
 
-    // ===== FIXED: Edit Revenue with Auto Update =====
+    // Edit Revenue with Auto Update
     async editRevenue(email) {
         // First get user details to show current revenue
         try {
@@ -448,7 +517,7 @@ class AdminDashboard {
         }
     }
 
-    // ===== NEW: Terminate Token Function =====
+    // Terminate Token Function
     async terminateToken(email) {
         this.showCustomModal(
             'Terminate Token',
@@ -568,10 +637,6 @@ class AdminDashboard {
         const confirmBtn = document.getElementById('adminModalConfirm');
         
         titleEl.textContent = title;
-        titleEl.style.background = 'linear-gradient(135deg, var(--gradient-start), var(--gradient-end))';
-        titleEl.style.webkitBackgroundClip = 'text';
-        titleEl.style.webkitTextFillColor = 'transparent';
-        titleEl.style.backgroundClip = 'text';
         
         bodyEl.innerHTML = message;
         confirmBtn.textContent = confirmText;
@@ -596,9 +661,24 @@ class AdminDashboard {
     }
 
     bindEvents() {
-        // Login events
-        document.getElementById('remindMeBtn')?.addEventListener('click', () => this.remindPassword());
-        document.getElementById('loginBtn')?.addEventListener('click', () => this.login());
+        // Login events - FIXED: Added proper event listeners
+        document.getElementById('remindMeBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.remindPassword();
+        });
+        
+        document.getElementById('loginBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.login();
+        });
+        
+        // Enter key for login
+        document.getElementById('adminPassword')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.login();
+            }
+        });
         
         // Logout
         document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
@@ -631,7 +711,11 @@ class AdminDashboard {
         
         // Modal close buttons
         document.querySelectorAll('.modal-close').forEach(btn => {
-            btn.addEventListener('click', () => this.closeModal(btn.closest('.modal')));
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const modal = btn.closest('.modal');
+                if (modal) this.closeModal(modal);
+            });
         });
         
         // Click outside modal to close
@@ -645,7 +729,10 @@ class AdminDashboard {
         
         // Generate token
         document.getElementById('generateTokenBtn')?.addEventListener('click', () => this.showGenerateTokenModal());
-        document.getElementById('generateTokenConfirm')?.addEventListener('click', () => this.generateToken());
+        document.getElementById('generateTokenConfirm')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.generateToken();
+        });
         
         // Backup buttons
         document.getElementById('backupNowBtn')?.addEventListener('click', () => this.backupData());
@@ -673,8 +760,6 @@ class AdminDashboard {
                 const themeBtn = document.createElement('div');
                 themeBtn.className = 'theme-toggle';
                 themeBtn.id = 'themeToggleBtn';
-                themeBtn.style.cursor = 'pointer';
-                themeBtn.style.marginTop = '10px';
                 themeBtn.innerHTML = `
                     <i class="fas fa-moon"></i>
                     <span>Toggle Dark/Light</span>
@@ -693,17 +778,33 @@ class AdminDashboard {
             }, 100);
         });
 
-        // ===== NEW: Premium Template Update Event =====
+        // Premium Template Update Event
         const emailTemplateSelect = document.querySelector('#emailTemplate');
         if (emailTemplateSelect) {
             emailTemplateSelect.addEventListener('change', () => this.updatePremiumTemplate());
         }
 
-        // ===== NEW: Save Settings Button Event =====
+        // Save Settings Button Event
         const saveSettingsBtn = document.querySelector('#settingsTab .btn-primary');
         if (saveSettingsBtn) {
             saveSettingsBtn.addEventListener('click', () => this.saveAdminSettings());
         }
+
+        // Search sessions event
+        document.getElementById('sessionSearch')?.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            if (query.length > 0) {
+                this.searchSessions(query);
+            } else {
+                this.loadSessions();
+                
+                // Remove search info if exists
+                const searchInfo = document.querySelector('.search-results-info');
+                if (searchInfo) {
+                    searchInfo.remove();
+                }
+            }
+        });
     }
 
     async searchUsers(query) {
@@ -774,13 +875,23 @@ class AdminDashboard {
                 case 'paid':
                     show = paid === 'paid';
                     break;
+                case 'free':
+                    show = row.querySelector('.status-free') !== null;
+                    break;
+                case 'limited':
+                    // You'll need to implement grant-based filtering
+                    show = false; // Placeholder
+                    break;
+                case 'unlimited':
+                    // You'll need to implement grant-based filtering
+                    show = false; // Placeholder
+                    break;
             }
             
             row.style.display = show ? '' : 'none';
         });
     }
 
-    // ===== FIXED: Grant Free Tokens - No More Pending Status =====
     async grantFreeTokens(email, amount) {
         try {
             const token = localStorage.getItem('admin_token');
@@ -916,7 +1027,7 @@ class AdminDashboard {
         );
     }
 
-    // ===== FIXED: Show User Details Modal with Terminate Button =====
+    // Show User Details Modal with Terminate Button
     showUserDetailsModal(userDetails) {
         const modal = document.getElementById('userDetailsModal');
         const content = document.getElementById('userDetailsContent');
@@ -934,7 +1045,7 @@ class AdminDashboard {
         
         const user = userDetails.user;
         
-        // Get token status - FIXED: Free tokens should not show as pending
+        // Get token status - Fixed: Free tokens should not show as pending
         let tokenStatus = 'No Token';
         let tokenStatusClass = 'status-pending';
         let tokenType = 'No Token';
@@ -943,7 +1054,6 @@ class AdminDashboard {
         if (user.token) {
             const isFreeToken = user.freeToken || !user.paid;
             
-            // FIX: Free tokens should show as "Free" not "Pending"
             if (isFreeToken) {
                 tokenStatus = 'Free';
                 tokenStatusClass = 'status-free';
@@ -962,88 +1072,65 @@ class AdminDashboard {
             }
         }
         
-        // Parse location
-        const location = this.parseLocation(user.location);
-        const city = location.city || 'Unknown';
-        const country = location.country || 'Unknown';
-        const region = location.region || 'Unknown';
-        const ip = user.ip || 'Unknown';
-        const timezone = user.timezone || 'Unknown';
-        
         content.innerHTML = `
             <div class="user-details">
                 <div class="detail-item">
-                    <label><i class="fas fa-envelope" style="color: var(--primary-color);"></i> Email:</label>
-                    <span class="text-truncate" title="${user.email}" style="font-weight: 600; color: var(--dark-color);">${user.email}</span>
+                    <label><i class="fas fa-envelope"></i> Email:</label>
+                    <span class="text-truncate" title="${user.email}">${user.email}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-info-circle" style="color: var(--primary-color);"></i> Status:</label>
+                    <label><i class="fas fa-info-circle"></i> Status:</label>
                     <span class="status-badge status-${user.status || 'pending'}">
-                        <i class="fas fa-${user.status === 'approved' ? 'check-circle' : user.status === 'pending' ? 'clock' : 'ban'}" style="margin-right: 6px;"></i>
+                        <i class="fas fa-${user.status === 'approved' ? 'check-circle' : user.status === 'pending' ? 'clock' : 'ban'}"></i>
                         ${user.status || 'pending'}
                     </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-money-bill" style="color: var(--primary-color);"></i> Payment Status:</label>
+                    <label><i class="fas fa-money-bill"></i> Payment Status:</label>
                     <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
-                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}" style="margin-right: 6px;"></i>
+                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}"></i>
                         ${user.paid ? 'Paid' : 'Not Paid'}
                     </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-key" style="color: var(--primary-color);"></i> Token Status:</label>
+                    <label><i class="fas fa-key"></i> Token Status:</label>
                     <span class="status-badge ${tokenStatusClass}">
-                        <i class="fas ${tokenIcon}" style="margin-right: 6px;"></i>
+                        <i class="fas ${tokenIcon}"></i>
                         ${tokenType}
                     </span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-coins" style="color: var(--status-paid);"></i> Revenue Generated:</label>
-                    <span style="color: var(--status-paid); font-weight: 800; font-size: 20px;">₦${(user.amountPaid || 0).toLocaleString()}</span>
+                    <label><i class="fas fa-coins"></i> Revenue Generated:</label>
+                    <span>₦${(user.amountPaid || 0).toLocaleString()}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-database" style="color: var(--primary-color);"></i> Token Balance:</label>
-                    <span style="color: var(--dark-color); font-weight: 700; font-size: 18px;">${user.tokenBalance || 0} tokens</span>
-                </div>
-                <div class="detail-item">
-                    <label><i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i> Location:</label>
-                    <div class="location-details">
-                        <div><strong>City:</strong> <span style="color: var(--dark-color); font-weight: 500;">${city}</span></div>
-                        <div><strong>Region:</strong> <span style="color: var(--dark-color); font-weight: 500;">${region}</span></div>
-                        <div><strong>Country:</strong> <span style="color: var(--dark-color); font-weight: 500;">${country}</span></div>
-                        <div><strong>IP:</strong> <code style="background: var(--gray-light); padding: 4px 10px; border-radius: 8px; color: var(--dark-color); font-family: monospace; border: 1px solid var(--border-color);">${ip}</code></div>
-                        <div><strong>Timezone:</strong> <span style="color: var(--dark-color); font-weight: 500;">${timezone}</span></div>
-                    </div>
+                    <label><i class="fas fa-database"></i> Token Balance:</label>
+                    <span>${user.tokenBalance || 0} tokens</span>
                 </div>
                 
                 <div class="detail-item">
-                    <label><i class="fas fa-history" style="color: var(--primary-color);"></i> First Request:</label>
-                    <span style="color: var(--dark-color); font-weight: 500; background: var(--gray-light); padding: 4px 10px; border-radius: 6px;">${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
+                    <label><i class="fas fa-history"></i> First Request:</label>
+                    <span>${user.firstRequest ? new Date(user.firstRequest).toLocaleString() : 'Never'}</span>
                 </div>
                 <div class="detail-item">
-                    <label><i class="fas fa-chart-line" style="color: var(--primary-color);"></i> Total Requests:</label>
-                    <span style="color: var(--dark-color); font-weight: 800; font-size: 20px; background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); padding: 6px 14px; border-radius: 8px; display: inline-block;">${userDetails.totalRequests || 0}</span>
+                    <label><i class="fas fa-chart-line"></i> Total Requests:</label>
+                    <span>${userDetails.totalRequests || 0}</span>
                 </div>
                 
                 <div class="token-controls">
                     <h4><i class="fas fa-gift"></i> Token Management</h4>
-                    <div style="display: flex; gap: 12px; margin-bottom: 15px;">
-                        <input type="number" id="grantTokenAmount" placeholder="Amount" 
-                               style="flex: 1; padding: 12px 16px; border: 2px solid var(--border-color); 
-                                      border-radius: 12px; background: var(--card-bg); color: var(--dark-color);" 
-                               min="1" value="1">
+                    <div class="d-flex gap-10 mb-10">
+                        <input type="number" id="grantTokenAmount" placeholder="Amount" min="1" value="1">
                         <button class="btn-primary" onclick="admin.grantFreeTokens('${user.email}', document.getElementById('grantTokenAmount').value)">
                             <i class="fas fa-gift"></i> Grant Free Tokens
                         </button>
                     </div>
-                    <small style="color: var(--gray-color); display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-info-circle"></i> Free tokens work immediately without payment
-                    </small>
+                    <small><i class="fas fa-info-circle"></i> Free tokens work immediately without payment</small>
                 </div>
                 
-                <!-- ===== NEW: TERMINATE TOKEN SECTION ===== -->
+                <!-- TERMINATE TOKEN SECTION -->
                 <div class="terminate-section">
-                    <h4><i class="fas fa-ban" style="color: var(--status-terminated);"></i> Token Termination</h4>
+                    <h4><i class="fas fa-ban"></i> Token Termination</h4>
                     <div class="terminate-warning">
                         <i class="fas fa-exclamation-triangle"></i>
                         <strong>Warning:</strong> Terminating a token will immediately revoke access and notify the user.
@@ -1053,7 +1140,7 @@ class AdminDashboard {
                     </button>
                 </div>
                 
-                <div class="action-buttons d-flex gap-10 flex-wrap" style="margin-top: 25px; padding-top: 20px; border-top: 2px solid var(--border-color);">
+                <div class="action-buttons d-flex gap-10 flex-wrap">
                     <button class="btn-primary" onclick="admin.togglePaymentStatus('${user.email}', ${!user.paid})">
                         <i class="fas ${user.paid ? 'fa-times' : 'fa-check'}"></i>
                         ${user.paid ? 'Mark as Unpaid' : 'Mark as Paid'}
@@ -1079,7 +1166,7 @@ class AdminDashboard {
         modal.classList.add('active');
     }
 
-    // ===== FIXED: Render Users Table with Correct Token Status =====
+    // Render Users Table with Correct Token Status
     renderUsersTable(users) {
         const tableBody = document.querySelector('#usersTable tbody');
         if (!tableBody) return;
@@ -1090,9 +1177,9 @@ class AdminDashboard {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td colspan="8" style="text-align: center; padding: 40px;">
-                    <div style="color: var(--gray-color);">
-                        <i class="fas fa-users" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
-                        <h4 style="margin-bottom: 10px; color: var(--dark-color);">No users found</h4>
+                    <div>
+                        <i class="fas fa-users"></i>
+                        <h4>No users found</h4>
                         <p>Start by adding your first user</p>
                     </div>
                 </td>
@@ -1102,21 +1189,16 @@ class AdminDashboard {
         }
         
         Object.entries(users).forEach(([email, user]) => {
-            // Get location information
-            const location = this.parseLocation(user.location);
-            const city = location.city;
-            const country = location.country;
-            
             // Get revenue amount
             const revenue = user.amountPaid || 0;
             
-            // FIXED: Get token status - Free tokens should not show as pending
+            // Get token status - Free tokens should not show as pending
             let tokenStatus = 'No Token';
             let tokenStatusClass = 'status-pending';
             let tokenIcon = 'fa-key';
             
             if (user.token) {
-                // FIX: Check if it's a free token
+                // Check if it's a free token
                 if (user.freeToken) {
                     tokenStatus = 'Free';
                     tokenStatusClass = 'status-free';
@@ -1140,42 +1222,48 @@ class AdminDashboard {
                 case 'terminated': userStatusIcon = 'fa-ban'; break;
             }
             
+            // Get grant info
+            const currentSessions = user.currentSessions || 0;
+            const maxSessions = user.maxSessions || 1;
+            const grantUsage = maxSessions > 0 ? Math.round((currentSessions / maxSessions) * 100) : 0;
+            
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="text-truncate" style="max-width: 200px;" title="${email}">
-                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                <td class="text-truncate" title="${email}">
+                    <i class="fas fa-envelope"></i>
                     ${email}
                 </td>
                 <td>
                     <span class="status-badge status-${user.status || 'pending'}">
-                        <i class="fas ${userStatusIcon}" style="margin-right: 6px;"></i>
+                        <i class="fas ${userStatusIcon}"></i>
                         ${user.status || 'pending'}
                     </span>
                 </td>
                 <td>
                     <span class="status-badge ${user.paid ? 'status-paid' : 'status-pending'}">
-                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}" style="margin-right: 6px;"></i>
+                        <i class="fas ${user.paid ? 'fa-check-circle' : 'fa-clock'}"></i>
                         ${user.paid ? 'Paid' : 'Pending'}
                     </span>
                 </td>
-                <td class="revenue-cell ${revenue === 0 ? 'zero' : ''}" style="font-weight: 800; color: ${revenue > 0 ? 'var(--status-paid)' : 'var(--gray-color)'}; font-size: 16px;">
-                    <i class="fas fa-coins" style="margin-right: 8px; color: ${revenue > 0 ? 'var(--status-paid)' : 'var(--gray-color)'};"></i>
-                    ₦${revenue.toLocaleString()}
-                </td>
                 <td>
-                    <span class="status-badge ${tokenStatusClass}">
-                        <i class="fas ${tokenIcon}" style="margin-right: 6px;"></i>
-                        ${tokenStatus}
+                    <span class="session-count ${currentSessions >= maxSessions ? 'limit-reached' : ''}">
+                        ${currentSessions}/${maxSessions}
                     </span>
                 </td>
                 <td>
-                    <div class="location-display">
-                        <i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i>
-                        ${city || 'Unknown'}, ${country || 'Unknown'}
+                    <div class="grant-indicator">
+                        <div class="grant-bar">
+                            <div class="grant-fill" style="width: ${grantUsage}%;"></div>
+                        </div>
+                        <span class="grant-percentage">${grantUsage}%</span>
                     </div>
                 </td>
+                <td class="revenue-cell ${revenue === 0 ? 'zero' : ''}">
+                    <i class="fas fa-coins"></i>
+                    ₦${revenue.toLocaleString()}
+                </td>
                 <td>
-                    <div style="display: flex; align-items: center; gap: 8px; color: var(--gray-color);">
+                    <div>
                         <i class="fas fa-history"></i>
                         ${user.lastRequest ? new Date(user.lastRequest).toLocaleDateString() : 'Never'}
                     </div>
@@ -1206,11 +1294,12 @@ class AdminDashboard {
         });
     }
 
-    // ===== FIXED: Generate Token Function =====
+    // Generate Token Function
     async generateToken() {
         const emailInput = document.getElementById('tokenEmail');
         const email = emailInput.value.trim();
         const paid = document.getElementById('tokenPaymentStatus').value === 'true';
+        const sessionLimit = document.getElementById('tokenSessionLimit').value;
         const freeTokensAmount = document.getElementById('freeTokensAmount').value;
         const sendEmail = document.getElementById('sendEmailNotification').value === 'true';
         
@@ -1222,11 +1311,12 @@ class AdminDashboard {
         
         this.showCustomModal(
             'Generate Token',
-            `Generate a token for user <strong style="color: var(--primary-color);">${email}</strong>?<br>
-             <strong>Token Type:</strong> <span style="color: ${paid ? 'var(--status-paid)' : 'var(--status-free)'};">${paid ? 'Paid Token' : 'Free Token'}</span><br>
-             ${freeTokensAmount > 0 ? `<strong>Free tokens to add:</strong> <span style="color: var(--status-free);">${freeTokensAmount}</span><br>` : ''}
+            `Generate a token for user <strong>${email}</strong>?<br>
+             <strong>Token Type:</strong> <span>${paid ? 'Paid Token' : 'Free Token'}</span><br>
+             <strong>Session Limit:</strong> ${sessionLimit} sessions<br>
+             ${freeTokensAmount > 0 ? `<strong>Free tokens to add:</strong> <span>${freeTokensAmount}</span><br>` : ''}
              <strong>Email Notification:</strong> ${sendEmail ? '✅ Yes' : '❌ No'}<br><br>
-             ${paid ? '<span style="color: var(--status-paid);">⚠️ Note: Paid tokens require payment verification</span>' : '<span style="color: var(--status-free);">🎁 Free tokens work immediately</span>'}`,
+             ${paid ? '<span>⚠️ Note: Paid tokens require payment verification</span>' : '<span>🎁 Free tokens work immediately</span>'}`,
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -1247,7 +1337,7 @@ class AdminDashboard {
                         body: JSON.stringify({ 
                             email, 
                             paid,
-                            free: !paid, // Mark as free if not paid
+                            free: !paid,
                             sendEmail: sendEmail
                         })
                     });
@@ -1255,6 +1345,9 @@ class AdminDashboard {
                     const data = await response.json();
                     
                     if (data.success) {
+                        // Update session limit
+                        await this.updateUserGrant(email, parseInt(sessionLimit), paid);
+                        
                         // Add free tokens if specified
                         if (freeTokensAmount > 0) {
                             const freeResponse = await fetch('/api/admin/user/grant-tokens', {
@@ -1297,6 +1390,104 @@ class AdminDashboard {
         );
     }
 
+    // ===== FIXED: Update User Grant and Refresh Immediately =====
+    async updateUserGrant(email, maxSessions, isPaid = false) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
+            }
+            
+            const response = await fetch('/api/admin/user/update-grant', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    email: email,
+                    maxSessions: parseInt(maxSessions),
+                    grantType: isPaid ? 'paid' : 'free',
+                    grantUpdated: new Date().toISOString()
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification(`✅ Grant updated for ${email}`, 'success');
+                
+                // Immediately refresh all relevant data
+                this.loadGrants();
+                this.loadUsers();
+                this.loadStats();
+                
+                // Update active connections for this user
+                this.updateUserConnections(email, maxSessions);
+                
+                this.closeCustomModal();
+            } else {
+                this.showNotification(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error updating grant:', error);
+            this.showNotification('Failed to update grant', 'error');
+        }
+    }
+
+    // Update user connections with new grant limits
+    async updateUserConnections(email, maxSessions) {
+        try {
+            // Get all active sessions for this user
+            const response = await fetch('/api/admin/sessions', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.sessions[email]) {
+                    console.log(`✅ Updated grant limits for ${email}: ${maxSessions} sessions`);
+                    
+                    // Notify the user about the grant update
+                    await this.notifyUserAboutGrantUpdate(email, maxSessions);
+                }
+            }
+        } catch (error) {
+            console.error('Error updating user connections:', error);
+        }
+    }
+
+    // Notify user about grant update
+    async notifyUserAboutGrantUpdate(email, maxSessions) {
+        try {
+            const response = await fetch('/api/admin/notify-user-grant', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: email,
+                    maxSessions: maxSessions,
+                    message: `Your session limit has been updated to ${maxSessions} sessions`
+                })
+            });
+            
+            if (response.ok) {
+                console.log(`✅ User ${email} notified about grant update`);
+            }
+        } catch (error) {
+            console.error('Error notifying user:', error);
+        }
+    }
+
     async remindPassword() {
         try {
             const btn = document.getElementById('remindMeBtn');
@@ -1308,15 +1499,22 @@ class AdminDashboard {
             // Send password reminder email
             const adminEmail = document.getElementById('adminEmail').value || this.adminEmail;
             
+            if (!adminEmail) {
+                this.showMessage('Please enter admin email', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-key"></i> Remind Me';
+                return;
+            }
+            
             const reminderHtml = `
-                <h2 style="color: var(--primary-color);">🔐 Admin Password Reminder</h2>
-                <p>Your admin credentials for Tracle-Lite:</p>
-                <div style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid var(--border-color);">
-                    <p><strong style="color: var(--dark-color);">Email:</strong> ${adminEmail}</p>
-                    <p><strong style="color: var(--dark-color);">Password:</strong> ${this.adminPassword}</p>
+                <h2>🔐 Admin Password Reminder</h2>
+                <p>Your admin credentials:</p>
+                <div>
+                    <p><strong>Email:</strong> ${adminEmail}</p>
                 </div>
-                <p><strong>Login URL:</strong> <a href="${window.location.origin}/admin.html" style="color: var(--primary-color);">${window.location.origin}/admin.html</a></p>
-                <p><i style="color: var(--gray-color);">If you didn't request this reminder, please ignore this email.</i></p>
+                <p><strong>Login URL:</strong> <a href="${window.location.origin}/admin.html">${window.location.origin}/admin.html</a></p>
+                <p><i>If you didn't request this reminder, please ignore this email.</i></p>
+                <p><strong>Note:</strong> Password cannot be sent via email for security reasons.</p>
             `;
             
             // Use token manager to send email
@@ -1327,13 +1525,17 @@ class AdminDashboard {
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({ 
-                    email: adminEmail,
-                    password: this.adminPassword
+                    email: adminEmail
                 })
             });
             
             if (response.ok) {
-                this.showMessage('✅ Password reminder sent to your email!', 'success');
+                const data = await response.json();
+                if (data.success) {
+                    this.showMessage('✅ Password reminder sent to your email!', 'success');
+                } else {
+                    this.showMessage(data.message, 'error');
+                }
             } else {
                 this.showMessage('Failed to send reminder', 'error');
             }
@@ -1356,18 +1558,6 @@ class AdminDashboard {
         if (!email || !password) {
             this.showMessage('Please enter both email and password', 'error');
             emailInput.focus();
-            return;
-        }
-        
-        // Check credentials
-        if (email !== this.adminEmail) {
-            this.showMessage('Invalid admin email', 'error');
-            return;
-        }
-        
-        if (password !== this.adminPassword) {
-            this.showMessage('Invalid email or password', 'error');
-            passwordInput.focus();
             return;
         }
         
@@ -1453,18 +1643,6 @@ class AdminDashboard {
         });
     }
 
-    darkenColor(color, percent) {
-        let r = parseInt(color.substring(1, 3), 16);
-        let g = parseInt(color.substring(3, 5), 16);
-        let b = parseInt(color.substring(5, 7), 16);
-
-        r = Math.floor(r * (100 - percent) / 100);
-        g = Math.floor(g * (100 - percent) / 100);
-        b = Math.floor(b * (100 - percent) / 100);
-
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-    }
-
     toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('active');
     }
@@ -1531,7 +1709,7 @@ class AdminDashboard {
             () => {
                 localStorage.removeItem('admin_token');
                 localStorage.removeItem('admin_token_time');
-                localStorage.removeItem('admin_theme_index'); // Remove theme preference
+                localStorage.removeItem('admin_theme_index');
                 this.isAuthenticated = false;
                 this.showLogin();
                 this.closeSidebar();
@@ -1544,13 +1722,9 @@ class AdminDashboard {
     showLogin() {
         document.getElementById('loginModal').style.display = 'flex';
         document.getElementById('adminDashboard').classList.add('hidden');
-        // Clear inputs
+        // Clear password input only
         document.getElementById('adminPassword').value = '';
-        // Pre-fill the email field with admin email
-        const emailInput = document.getElementById('adminEmail');
-        if (emailInput) {
-            emailInput.value = this.adminEmail;
-        }
+        // Email field will be pre-filled by fetchAdminInfo
     }
 
     showDashboard() {
@@ -1596,16 +1770,21 @@ class AdminDashboard {
             tokens: 'Token Management',
             requests: 'Token Requests',
             reports: 'Reports & Analytics',
-            settings: 'Settings'
+            settings: 'Settings',
+            sessions: 'Active Sessions',
+            grants: 'Grants Management',
+            loginHistory: 'Login History'
         };
         
-        document.getElementById('pageTitle').textContent = titles[tabName];
-        document.getElementById('pageTitle').style.background = 'linear-gradient(135deg, var(--gradient-start), var(--gradient-end))';
-        document.getElementById('pageTitle').style.webkitBackgroundClip = 'text';
-        document.getElementById('pageTitle').style.webkitTextFillColor = 'transparent';
-        document.getElementById('pageTitle').style.backgroundClip = 'text';
+        const pageTitle = document.getElementById('pageTitle');
+        if (pageTitle) {
+            pageTitle.textContent = titles[tabName] || 'Dashboard';
+        }
         
-        document.getElementById('pageSubtitle').textContent = 'Admin Control Panel';
+        const pageSubtitle = document.getElementById('pageSubtitle');
+        if (pageSubtitle) {
+            pageSubtitle.textContent = 'Admin Control Panel';
+        }
         
         // Close sidebar on mobile
         if (window.innerWidth <= 992) {
@@ -1629,10 +1808,19 @@ class AdminDashboard {
                 break;
             case 'reports':
                 this.loadReports();
-                this.startChartAnimations(); // Start animations when reports tab is opened
+                this.startChartAnimations();
                 break;
             case 'settings':
                 this.loadSettings();
+                break;
+            case 'sessions':
+                this.loadSessions();
+                break;
+            case 'grants':
+                this.loadGrants();
+                break;
+            case 'loginHistory':
+                this.loadLoginHistory();
                 break;
         }
     }
@@ -1676,7 +1864,6 @@ class AdminDashboard {
         }
     }
 
-    // Update the updateStats function to properly show revenue
     updateStats(stats) {
         if (!stats) return;
         
@@ -1685,11 +1872,8 @@ class AdminDashboard {
             document.getElementById('pendingApprovals').textContent = stats.summary?.pendingApprovals || 0;
         }
         if (document.getElementById('totalRevenue')) {
-            // Calculate total revenue from paid users
             const totalRevenue = stats.summary?.revenue || 0;
             document.getElementById('totalRevenue').textContent = `₦${totalRevenue.toLocaleString()}`;
-            document.getElementById('totalRevenue').style.color = 'var(--status-paid)';
-            document.getElementById('totalRevenue').style.fontWeight = '800';
         }
         if (document.getElementById('totalUsers')) {
             document.getElementById('totalUsers').textContent = stats.users?.total || 0;
@@ -1703,43 +1887,55 @@ class AdminDashboard {
         // Update dashboard stats with vibrant colors
         if (document.getElementById('approvedCount')) {
             document.getElementById('approvedCount').textContent = stats.users?.approved || 0;
-            document.getElementById('approvedCount').style.color = 'var(--status-approved)';
         }
         if (document.getElementById('pendingUsersCount')) {
             document.getElementById('pendingUsersCount').textContent = stats.users?.pending || 0;
-            document.getElementById('pendingUsersCount').style.color = 'var(--status-pending)';
         }
         if (document.getElementById('terminatedCount')) {
             const terminated = (stats.users?.total || 0) - (stats.users?.approved || 0) - (stats.users?.pending || 0);
             document.getElementById('terminatedCount').textContent = terminated > 0 ? terminated : 0;
-            document.getElementById('terminatedCount').style.color = 'var(--status-terminated)';
         }
         if (document.getElementById('activeTokens')) {
             document.getElementById('activeTokens').textContent = stats.tokens?.unused || 0;
-            document.getElementById('activeTokens').style.color = 'var(--primary-color)';
         }
         
-        // Update revenue reports with accurate data
+        // Update grant counts
+        if (document.getElementById('totalGrants')) {
+            document.getElementById('totalGrants').textContent = stats.grants?.total || 0;
+        }
+        if (document.getElementById('dashboardActiveSessions')) {
+            document.getElementById('dashboardActiveSessions').textContent = stats.sessions?.active || 0;
+        }
+        
+        // Update revenue reports
         if (document.getElementById('revenueToday')) {
             const todayRevenue = Math.floor((stats.summary?.revenue || 0) / 30);
             document.getElementById('revenueToday').textContent = `₦${todayRevenue.toLocaleString()}`;
-            document.getElementById('revenueToday').style.color = 'var(--status-paid)';
-            // Add auto-update animation
-            document.getElementById('revenueToday').classList.add('revenue-auto-update');
         }
         if (document.getElementById('revenueWeek')) {
             const weekRevenue = (stats.summary?.revenue || 0) * 7 / 30;
             document.getElementById('revenueWeek').textContent = `₦${Math.floor(weekRevenue).toLocaleString()}`;
-            document.getElementById('revenueWeek').style.color = 'var(--status-paid)';
         }
         if (document.getElementById('revenueMonth')) {
             document.getElementById('revenueMonth').textContent = `₦${(stats.summary?.revenue || 0).toLocaleString()}`;
-            document.getElementById('revenueMonth').style.color = 'var(--status-paid)';
         }
         if (document.getElementById('revenueTotal')) {
             const totalRevenue = (stats.summary?.revenue || 0) * 3;
             document.getElementById('revenueTotal').textContent = `₦${totalRevenue.toLocaleString()}`;
-            document.getElementById('revenueTotal').style.color = 'var(--status-paid)';
+        }
+        
+        // Update grant distribution
+        if (document.getElementById('freeGrants')) {
+            document.getElementById('freeGrants').textContent = stats.grants?.free || 0;
+        }
+        if (document.getElementById('mediumGrants')) {
+            document.getElementById('mediumGrants').textContent = stats.grants?.medium || 0;
+        }
+        if (document.getElementById('largeGrants')) {
+            document.getElementById('largeGrants').textContent = stats.grants?.large || 0;
+        }
+        if (document.getElementById('unlimitedGrants')) {
+            document.getElementById('unlimitedGrants').textContent = stats.grants?.unlimited || 0;
         }
     }
 
@@ -1752,7 +1948,7 @@ class AdminDashboard {
         
         if (stats.requests.recent.length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="4" style="text-align: center; padding: 20px; color: var(--gray-color);">No recent requests</td>';
+            row.innerHTML = '<td colspan="5" style="text-align: center; padding: 20px; color: var(--gray-color);">No recent requests</td>';
             tableBody.appendChild(row);
             return;
         }
@@ -1760,15 +1956,18 @@ class AdminDashboard {
         stats.requests.recent.forEach(request => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="text-truncate" style="max-width: 150px;" title="${request.email}">
-                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                <td class="text-truncate" title="${request.email}">
+                    <i class="fas fa-envelope"></i>
                     ${request.email}
                 </td>
-                <td style="color: var(--gray-color);">
-                    <i class="fas fa-calendar" style="margin-right: 8px;"></i>
+                <td>
+                    <i class="fas fa-calendar"></i>
                     ${request.lastRequest ? new Date(request.lastRequest).toLocaleString() : 'N/A'}
                 </td>
                 <td><span class="status-badge status-${request.status || 'pending'}">${request.status || 'pending'}</span></td>
+                <td>
+                    <span class="grant-badge">${request.grant || '1 session'}</span>
+                </td>
                 <td>
                     <button class="btn-secondary small" onclick="admin.viewUserDetails('${request.email}')">
                         <i class="fas fa-eye"></i> View
@@ -1855,7 +2054,6 @@ class AdminDashboard {
         }
     }
 
-    // Update the renderTokensTable to show better token status with vibrant colors
     renderTokensTable(tokens) {
         const tableBody = document.querySelector('#tokensTable tbody');
         if (!tableBody) return;
@@ -1865,10 +2063,10 @@ class AdminDashboard {
         if (!tokens || Object.keys(tokens).length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td colspan="7" style="text-align: center; padding: 40px;">
-                    <div style="color: var(--gray-color);">
-                        <i class="fas fa-key" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
-                        <h4 style="margin-bottom: 10px; color: var(--dark-color);">No tokens found</h4>
+                <td colspan="8" style="text-align: center; padding: 40px;">
+                    <div>
+                        <i class="fas fa-key"></i>
+                        <h4>No tokens found</h4>
                         <p>Generate your first token</p>
                     </div>
                 </td>
@@ -1878,7 +2076,7 @@ class AdminDashboard {
         }
         
         Object.entries(tokens).forEach(([token, data]) => {
-            // Determine token status with vibrant colors
+            // Determine token status
             let status = 'Active';
             let statusClass = 'status-active';
             let statusIcon = 'fa-check-circle';
@@ -1902,39 +2100,43 @@ class AdminDashboard {
             let tokenTypeText = data.freeToken ? 'Free' : (data.paid ? 'Paid' : 'Pending');
             let tokenTypeIcon = data.freeToken ? 'fa-gift' : (data.paid ? 'fa-credit-card' : 'fa-clock');
             
+            // Get grant info
+            const currentSessions = data.currentSessions || 0;
+            const maxSessions = data.maxSessions || 1;
+            const grantText = maxSessions === 1 ? '1 session' : maxSessions >= 50 ? 'Unlimited' : `${maxSessions} sessions`;
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
-                    <code class="text-truncate" style="max-width: 250px; display: block; padding: 10px 14px; 
-                           background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.1)); 
-                           border-radius: 10px; color: var(--dark-color); border: 2px solid var(--border-color);" 
-                           title="${token}">${token}</code>
+                    <code class="text-truncate" title="${token}">${token}</code>
                 </td>
-                <td class="text-truncate" style="max-width: 180px;" title="${data.email}">
-                    <i class="fas fa-envelope" style="margin-right: 8px; color: var(--primary-color);"></i>
+                <td class="text-truncate" title="${data.email}">
+                    <i class="fas fa-envelope"></i>
                     ${data.email}
                 </td>
                 <td>
-                    <div style="display: flex; align-items: center; gap: 8px; color: var(--dark-color); background: var(--gray-light); padding: 6px 12px; border-radius: 8px;">
-                        <i class="fas fa-calendar-alt" style="color: var(--primary-color);"></i>
+                    <div>
+                        <i class="fas fa-calendar-alt"></i>
                         ${data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'}
                     </div>
                 </td>
                 <td>
-                    <span class="status-badge ${data.used ? 'status-terminated' : 'status-active'}">
-                        <i class="fas ${data.used ? 'fa-check' : 'fa-circle'}" style="margin-right: 6px;"></i>
-                        ${data.used ? 'Yes' : 'No'}
+                    <span class="session-count">
+                        ${currentSessions}/${maxSessions}
                     </span>
                 </td>
                 <td>
                     <span class="status-badge ${tokenTypeClass}">
-                        <i class="fas ${tokenTypeIcon}" style="margin-right: 6px;"></i>
+                        <i class="fas ${tokenTypeIcon}"></i>
                         ${tokenTypeText}
                     </span>
                 </td>
                 <td>
+                    <span class="grant-badge">${grantText}</span>
+                </td>
+                <td>
                     <span class="status-badge ${statusClass}">
-                        <i class="fas ${statusIcon}" style="margin-right: 6px;"></i>
+                        <i class="fas ${statusIcon}"></i>
                         ${status}
                     </span>
                 </td>
@@ -1986,7 +2188,6 @@ class AdminDashboard {
         }
     }
 
-    // Update the renderRequestsTable to show better location with vibrant colors
     renderRequestsTable(requests) {
         const tableBody = document.querySelector('#requestsTable tbody');
         if (!tableBody) return;
@@ -1996,9 +2197,9 @@ class AdminDashboard {
         if (!requests || Object.keys(requests).length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td colspan="7" style="text-align: center; padding: 40px; color: var(--gray-color);">
-                    <i class="fas fa-network-wired" style="font-size: 48px; margin-bottom: 20px; display: block; opacity: 0.5; color: var(--primary-color);"></i>
-                    <h4 style="color: var(--dark-color);">No requests found</h4>
+                <td colspan="6" style="text-align: center; padding: 40px; color: var(--gray-color);">
+                    <i class="fas fa-network-wired"></i>
+                    <h4>No requests found</h4>
                 </td>
             `;
             tableBody.appendChild(row);
@@ -2008,35 +2209,28 @@ class AdminDashboard {
         Object.entries(requests).forEach(([email, requestList]) => {
             if (requestList && requestList.length > 0) {
                 const lastRequest = requestList[requestList.length - 1];
-                const city = lastRequest.city || 'Unknown';
-                const country = lastRequest.country || 'Unknown';
-                const countryName = lastRequest.countryName || country;
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="text-truncate" style="max-width: 150px;" title="${email}">
-                        <i class="fas fa-user" style="margin-right: 8px; color: var(--primary-color);"></i>
+                    <td class="text-truncate" title="${email}">
+                        <i class="fas fa-user"></i>
                         ${email}
                     </td>
                     <td>
-                        <code style="background: var(--gray-light); padding: 6px 10px; border-radius: 6px; color: var(--dark-color); border: 1px solid var(--border-color);">${lastRequest.ip || 'Unknown'}</code>
+                        <code>${lastRequest.ip || 'Unknown'}</code>
                     </td>
-                    <td>
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-map-marker-alt" style="color: var(--primary-color);"></i>
-                            ${city}, ${countryName}
-                        </div>
-                    </td>
-                    <td style="color: var(--gray-color);">${lastRequest.region || 'Unknown'}</td>
-                    <td class="text-truncate" style="max-width: 200px; color: var(--dark-color);" title="${lastRequest.userAgent || 'Unknown'}">
-                        <i class="fas fa-desktop" style="margin-right: 8px; color: var(--primary-color);"></i>
+                    <td class="text-truncate" title="${lastRequest.userAgent || 'Unknown'}">
+                        <i class="fas fa-desktop"></i>
                         ${this.truncateString(lastRequest.userAgent || 'Unknown', 50)}
                     </td>
-                    <td style="color: var(--gray-color);">
-                        <i class="fas fa-clock" style="margin-right: 8px;"></i>
+                    <td>
+                        <i class="fas fa-clock"></i>
                         ${lastRequest.timestamp ? new Date(lastRequest.timestamp).toLocaleString() : 'Unknown'}
                     </td>
                     <td><span class="status-badge status-${lastRequest.status || 'pending'}">${lastRequest.status || 'pending'}</span></td>
+                    <td>
+                        <span class="grant-badge">${lastRequest.grant || '1 session'}</span>
+                    </td>
                 `;
                 tableBody.appendChild(row);
             }
@@ -2081,11 +2275,10 @@ class AdminDashboard {
         }
     }
 
-    // ===== FIXED: Render Charts with Automatic Animation =====
     renderCharts(stats) {
         if (!stats) return;
         
-        // User Distribution Chart with vibrant colors
+        // User Distribution Chart
         const userCtx = document.getElementById('userDistributionChart')?.getContext('2d');
         if (userCtx) {
             // Destroy existing chart if it exists
@@ -2104,9 +2297,9 @@ class AdminDashboard {
                     datasets: [{
                         data: [approved, pending, terminated > 0 ? terminated : 0],
                         backgroundColor: [
-                            'rgba(59, 130, 246, 0.8)',  // Blue for approved
-                            'rgba(245, 158, 11, 0.8)',  // Orange for pending
-                            'rgba(239, 68, 68, 0.8)'    // Red for terminated
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(239, 68, 68, 0.8)'
                         ],
                         borderColor: [
                             '#3b82f6',
@@ -2144,13 +2337,9 @@ class AdminDashboard {
                     }
                 }
             });
-            
-            // Add animation class to chart container
-            const chartContainer = document.querySelector('#userDistributionChart').parentElement;
-            chartContainer.classList.add('user-distribution-animation');
         }
         
-        // Daily Activity Chart with gradient and automatic animation
+        // Daily Activity Chart
         const activityCtx = document.getElementById('dailyActivityChart')?.getContext('2d');
         if (activityCtx) {
             // Destroy existing chart if it exists
@@ -2222,10 +2411,6 @@ class AdminDashboard {
                     }
                 }
             });
-            
-            // Add animation class to chart container
-            const activityContainer = document.querySelector('#dailyActivityChart').parentElement;
-            activityContainer.classList.add('daily-activity-animation');
         }
     }
 
@@ -2270,7 +2455,7 @@ class AdminDashboard {
     async togglePaymentStatus(email, paid) {
         this.showCustomModal(
             'Update Payment Status',
-            `Are you sure you want to mark user <strong style="color: var(--primary-color);">${email}</strong> as <strong style="color: ${paid ? 'var(--status-paid)' : 'var(--status-pending)'};">${paid ? 'paid' : 'not paid'}</strong>?`,
+            `Are you sure you want to mark user <strong>${email}</strong> as <strong>${paid ? 'paid' : 'not paid'}</strong>?`,
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -2321,8 +2506,8 @@ class AdminDashboard {
     async deleteUser(email) {
         this.showCustomModal(
             'Delete User',
-            `Are you sure you want to delete user <strong style="color: var(--primary-color);">${email}</strong>?<br><br>
-             <span style="color: var(--status-terminated); font-weight: 600;">
+            `Are you sure you want to delete user <strong>${email}</strong>?<br><br>
+             <span>
                 <i class="fas fa-exclamation-triangle"></i> This action cannot be undone!
              </span>`,
             async () => {
@@ -2436,7 +2621,7 @@ class AdminDashboard {
     async restoreBackup() {
         this.showCustomModal(
             'Restore Backup',
-            '⚠️ <strong style="color: var(--status-terminated);">WARNING:</strong> Are you sure you want to restore from backup?<br><br><span style="color: var(--dark-color);">This will overwrite current data!<br>All existing users, tokens, and requests will be replaced with backup data.</span>',
+            '⚠️ <strong>WARNING:</strong> Are you sure you want to restore from backup?<br><br><span>This will overwrite current data!<br>All existing users, tokens, and requests will be replaced with backup data.</span>',
             async () => {
                 try {
                     const token = localStorage.getItem('admin_token');
@@ -2480,7 +2665,7 @@ class AdminDashboard {
         );
     }
 
-    // ===== NEW: Load Admin Settings =====
+    // Load Admin Settings
     async loadSettings() {
         try {
             const token = localStorage.getItem('admin_token');
@@ -2520,9 +2705,18 @@ class AdminDashboard {
         if (autoBackupSelect && settings.autoBackup) {
             autoBackupSelect.value = settings.autoBackup;
         }
+        
+        // Update admin email display
+        if (settings.adminEmail) {
+            this.adminEmail = settings.adminEmail;
+            const emailInput = document.getElementById('adminEmail');
+            if (emailInput) {
+                emailInput.value = settings.adminEmail;
+            }
+        }
     }
 
-    // ===== NEW: Save Admin Settings =====
+    // Save Admin Settings
     async saveAdminSettings() {
         try {
             const token = localStorage.getItem('admin_token');
@@ -2577,8 +2771,8 @@ class AdminDashboard {
             case 'backupData':
                 this.backupData();
                 break;
-            case 'viewReports':
-                this.switchTab('reports');
+            case 'manageGrants':
+                this.switchTab('grants');
                 break;
         }
     }
@@ -2637,7 +2831,7 @@ class AdminDashboard {
         return str.substring(0, maxLength) + '...';
     }
 
-    // Add a new method to update the users table header
+    // Update the users table header
     updateUsersTableHeader() {
         const usersTable = document.querySelector('#usersTable thead tr');
         if (usersTable) {
@@ -2646,9 +2840,9 @@ class AdminDashboard {
                     <th><i class="fas fa-envelope"></i> Email</th>
                     <th><i class="fas fa-info-circle"></i> Status</th>
                     <th><i class="fas fa-money-bill"></i> Payment</th>
+                    <th><i class="fas fa-plug"></i> Sessions</th>
+                    <th><i class="fas fa-layer-group"></i> Grant</th>
                     <th><i class="fas fa-coins"></i> Revenue</th>
-                    <th><i class="fas fa-key"></i> Token Status</th>
-                    <th><i class="fas fa-map-marker-alt"></i> Location</th>
                     <th><i class="fas fa-history"></i> Last Active</th>
                     <th><i class="fas fa-cogs"></i> Actions</th>
                 </tr>
@@ -2656,478 +2850,1540 @@ class AdminDashboard {
         }
     }
 
-    // Add CSS for location details
-    addLocationStyles() {
-        const locationStyle = document.createElement('style');
-        locationStyle.textContent = `
-            /* Enhanced Status Badges */
-            .status-badge {
-                padding: 8px 18px;
-                border-radius: 20px;
-                font-size: 13px;
-                font-weight: 700;
-                white-space: nowrap;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                display: inline-flex;
-                align-items: center;
-                transition: all 0.3s ease;
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    // ===== ACTIVE SESSIONS MANAGEMENT =====
+    async loadSessions() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            .status-badge:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            const response = await fetch('/api/admin/sessions', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load sessions`);
             }
             
-            /* Button enhancements */
-            .btn-primary {
-                position: relative;
-                overflow: hidden;
+            const data = await response.json();
+            
+            if (data.success) {
+                this.renderSessionsTable(data.sessions);
+                this.updateSessionStats(data.sessions);
+            } else {
+                this.showNotification(data.message || 'Failed to load sessions', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            this.showNotification('Network error: Failed to load sessions', 'error');
+        }
+    }
+
+    updateSessionStats(sessions) {
+        if (!sessions) return;
+        
+        // Calculate stats
+        const totalSessions = Object.values(sessions).reduce((sum, user) => sum + user.totalSessions, 0);
+        const activeSessions = Object.values(sessions).reduce((sum, user) => sum + user.connectedSessions, 0);
+        const disconnectedSessions = totalSessions - activeSessions;
+        
+        // Update stat cards
+        const totalSessionsEl = document.getElementById('totalSessions');
+        const activeSessionsEl = document.getElementById('activeSessions');
+        const disconnectedSessionsEl = document.getElementById('disconnectedSessions');
+        
+        if (totalSessionsEl) totalSessionsEl.textContent = totalSessions;
+        if (activeSessionsEl) activeSessionsEl.textContent = activeSessions;
+        if (disconnectedSessionsEl) disconnectedSessionsEl.textContent = disconnectedSessions;
+        
+        // Update badge in sidebar
+        const badge = document.getElementById('activeSessionsCount');
+        if (badge) {
+            badge.textContent = activeSessions;
+        }
+    }
+
+    // ===== FIXED: Render Sessions Table with Delete Buttons =====
+    renderSessionsTable(sessions) {
+        const tableBody = document.querySelector('#sessionsTableBody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        if (!sessions || Object.keys(sessions).length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="6" class="session-no-results">
+                    <i class="fas fa-plug"></i>
+                    <h4>No active sessions found</h4>
+                    <p>Start by creating your first session</p>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            return;
+        }
+        
+        Object.entries(sessions).forEach(([email, userData]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <div class="session-email">
+                        <i class="fas fa-envelope"></i>
+                        ${email}
+                    </div>
+                </td>
+                <td>
+                    <div class="session-sessions-list">
+                        ${userData.sessions.map(session => `
+                            <div class="session-session-item">
+                                <div class="session-item-header">
+                                    <span class="session-item-number">${session.sessionNumber}</span>
+                                    <div class="session-item-status">
+                                        <span class="session-dot ${session.isConnected ? 'active' : 'disconnected'}"></span>
+                                        <small>${session.isConnected ? 'Connected' : 'Disconnected'}</small>
+                                    </div>
+                                </div>
+                                <div class="session-delete-buttons">
+                                    <button class="delete-single-btn" onclick="admin.deleteSession('${session.sessionNumber}', '${email}')">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </td>
+                <td>
+                    <div class="session-status">
+                        <span class="session-dot ${userData.connectedSessions > 0 ? 'active' : 'disconnected'}"></span>
+                        <span>${userData.connectedSessions > 0 ? 'Active' : 'Inactive'}</span>
+                    </div>
+                </td>
+                <td>
+                    <span>
+                        ${userData.connectedSessions}/${userData.totalSessions}
+                    </span>
+                </td>
+                <td>
+                    ${userData.lastActivity ? new Date(userData.lastActivity).toLocaleString() : 'Never'}
+                </td>
+                <td>
+                    <div class="session-actions">
+                        <button class="session-action-btn view" onclick="admin.viewSessionDetails('${email}')">
+                            <i class="fas fa-eye"></i> View All
+                        </button>
+                        ${userData.totalSessions > 0 ? `
+                            <button class="session-action-btn delete-all" onclick="admin.deleteAllUserSessions('${email}')">
+                                <i class="fas fa-trash-alt"></i> Delete All
+                            </button>
+                        ` : ''}
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+
+    async searchSessions(query) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            .btn-primary::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: -100%;
-                width: 100%;
-                height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-                transition: 0.5s;
+            const response = await fetch('/api/admin/sessions/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ query })
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to search sessions`);
             }
             
-            .btn-primary:hover::before {
-                left: 100%;
+            const data = await response.json();
+            
+            if (data.success) {
+                this.renderSessionsTable(data.sessions);
+                this.updateSessionStats(data.sessions);
+                
+                // Show search results count
+                if (query.length > 0) {
+                    const searchInfo = document.createElement('div');
+                    searchInfo.className = 'search-results-info';
+                    searchInfo.innerHTML = `
+                        <i class="fas fa-search"></i>
+                        Found ${data.totalResults} result(s) for "${query}"
+                    `;
+                    
+                    const tableContainer = document.querySelector('.session-table-container');
+                    const existingInfo = tableContainer.querySelector('.search-results-info');
+                    if (existingInfo) existingInfo.remove();
+                    
+                    tableContainer.insertBefore(searchInfo, tableContainer.querySelector('.table-container'));
+                }
+            } else {
+                this.showNotification(data.message || 'Failed to search sessions', 'error');
+            }
+        } catch (error) {
+            console.error('Error searching sessions:', error);
+            this.showNotification('Network error: Failed to search sessions', 'error');
+        }
+    }
+
+    async viewSessionDetails(email) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Card animations */
-            .card {
-                transition: all 0.3s ease;
+            // Get all sessions to find this user's sessions
+            const response = await fetch('/api/admin/sessions', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load sessions`);
             }
             
-            .card:hover {
-                transform: translateY(-8px);
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            const data = await response.json();
+            
+            if (data.success && data.sessions[email]) {
+                const userSessions = data.sessions[email];
+                
+                let sessionDetailsHtml = `
+                    <div class="user-sessions-details">
+                        <div class="detail-item">
+                            <label><i class="fas fa-envelope"></i> Email:</label>
+                            <span>${email}</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-plug"></i> Session Status:</label>
+                            <span class="status-badge ${userSessions.connectedSessions > 0 ? 'status-active' : 'status-terminated'}">
+                                <i class="fas ${userSessions.connectedSessions > 0 ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+                                ${userSessions.connectedSessions > 0 ? 'Active' : 'Inactive'}
+                            </span>
+                            <small>
+                                (${userSessions.connectedSessions} connected, ${userSessions.totalSessions} total)
+                            </small>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-clock"></i> Last Activity:</label>
+                            <span>
+                                ${userSessions.lastActivity ? new Date(userSessions.lastActivity).toLocaleString() : 'Never'}
+                            </span>
+                        </div>
+                        
+                        <div class="sessions-list">
+                            <h4>
+                                <i class="fas fa-list"></i> Active Sessions
+                            </h4>
+                `;
+                
+                if (userSessions.sessions && userSessions.sessions.length > 0) {
+                    userSessions.sessions.forEach((session, index) => {
+                        sessionDetailsHtml += `
+                            <div class="session-detail-card ${session.isConnected ? 'connected' : 'disconnected'}">
+                                <div class="session-card-header">
+                                    <div>
+                                        <strong>Session ${index + 1}:</strong>
+                                        <code>
+                                            ${session.sessionNumber}
+                                        </code>
+                                    </div>
+                                    <div class="session-status-indicator">
+                                        <span class="session-dot ${session.isConnected ? 'active' : 'disconnected'}"></span>
+                                        <span>${session.isConnected ? 'Connected' : 'Disconnected'}</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="session-card-body">
+                                    <div class="session-info">
+                                        <div>
+                                            <small>Created:</small>
+                                            <div>${session.createdAt ? new Date(session.createdAt).toLocaleString() : 'Unknown'}</div>
+                                        </div>
+                                        <div>
+                                            <small>Last Active:</small>
+                                            <div>${session.lastActivity ? new Date(session.lastActivity).toLocaleString() : 'Never'}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="session-actions">
+                                        <button class="btn-secondary small" onclick="admin.viewIndividualSessionDetails('${session.sessionNumber}')">
+                                            <i class="fas fa-info-circle"></i> Details
+                                        </button>
+                                        <button class="btn-secondary small danger" onclick="admin.deleteSession('${session.sessionNumber}', '${email}')">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    sessionDetailsHtml += `
+                        <div>
+                            <i class="fas fa-plug"></i>
+                            <p>No sessions found for this user</p>
+                        </div>
+                    `;
+                }
+                
+                sessionDetailsHtml += `
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="btn-primary" onclick="admin.refreshSessions()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            ${userSessions.totalSessions > 0 ? `
+                                <button class="btn-danger" onclick="admin.deleteAllUserSessions('${email}')">
+                                    <i class="fas fa-trash"></i> Delete All Sessions
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                this.showCustomModal(
+                    `Active Sessions: ${email}`,
+                    sessionDetailsHtml,
+                    null,
+                    'Close'
+                );
+            } else {
+                this.showNotification('No sessions found for this email', 'error');
+            }
+        } catch (error) {
+            console.error('Error viewing session details:', error);
+            this.showNotification('Failed to load session details', 'error');
+        }
+    }
+
+    async viewIndividualSessionDetails(sessionNumber) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Table row hover effect */
-            tr {
-                transition: all 0.2s ease;
+            const response = await fetch(`/api/admin/session/details/${sessionNumber}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load session details`);
             }
             
-            tr:hover {
-                background: linear-gradient(90deg, rgba(124, 58, 237, 0.05), transparent) !important;
+            const data = await response.json();
+            
+            if (data.success) {
+                const session = data.sessionDetails;
+                
+                let sessionDetailsHtml = `
+                    <div class="individual-session-details">
+                        <div class="detail-item">
+                            <label><i class="fas fa-hashtag"></i> Session Number:</label>
+                            <code>
+                                ${session.sessionNumber}
+                            </code>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-envelope"></i> Email:</label>
+                            <span>${session.userInfo.email || 'Unknown'}</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-plug"></i> Connection Status:</label>
+                            <span class="status-badge ${session.connection.isConnected ? 'status-active' : 'status-terminated'}">
+                                <i class="fas ${session.connection.isConnected ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+                                ${session.connection.isConnected ? 'Connected' : 'Disconnected'}
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-user-check"></i> WhatsApp Registered:</label>
+                            <span class="status-badge ${session.creds.registered ? 'status-approved' : 'status-pending'}">
+                                <i class="fas ${session.creds.registered ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                ${session.creds.registered ? 'Registered' : 'Not Registered'}
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-key"></i> Token Status:</label>
+                            <span class="status-badge ${session.tokenInfo.paid ? 'status-paid' : session.tokenInfo.status === 'approved' ? 'status-approved' : 'status-pending'}">
+                                <i class="fas ${session.tokenInfo.paid ? 'fa-credit-card' : session.tokenInfo.status === 'approved' ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                ${session.tokenInfo.paid ? 'Paid' : session.tokenInfo.status === 'approved' ? 'Approved' : 'Pending'}
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-coins"></i> Token Balance:</label>
+                            <span>
+                                ${session.tokenInfo.tokenBalance || 0} tokens
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-calendar"></i> Session Created:</label>
+                            <span>
+                                ${session.userInfo.createdAt ? new Date(session.userInfo.createdAt).toLocaleString() : 'Unknown'}
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-clock"></i> Last Activity:</label>
+                            <span>
+                                ${session.connection.lastActivity ? new Date(session.connection.lastActivity).toLocaleString() : 
+                                  session.userInfo.lastActivity ? new Date(session.userInfo.lastActivity).toLocaleString() : 'Never'}
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label><i class="fas fa-signal"></i> Connected Since:</label>
+                            <span>
+                                ${session.connection.connectedAt ? new Date(session.connection.connectedAt).toLocaleString() : 'Not connected'}
+                            </span>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="btn-primary" onclick="admin.refreshSessions()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn-danger" onclick="admin.deleteSession('${session.sessionNumber}', '${session.userInfo.email || ''}')">
+                                <i class="fas fa-trash"></i> Delete Session
+                            </button>
+                            ${session.tokenInfo.token ? `
+                                <button class="btn-secondary" onclick="admin.copyToken('${session.tokenInfo.token}')">
+                                    <i class="fas fa-copy"></i> Copy Token
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                this.showCustomModal(
+                    `Session Details: ${session.sessionNumber}`,
+                    sessionDetailsHtml,
+                    null,
+                    'Close'
+                );
+            } else {
+                this.showNotification(data.message || 'Failed to load session details', 'error');
+            }
+        } catch (error) {
+            console.error('Error viewing individual session details:', error);
+            this.showNotification('Failed to load session details', 'error');
+        }
+    }
+
+    async deleteSession(sessionNumber, email = '') {
+        this.showCustomModal(
+            'Delete Session',
+            `Are you sure you want to delete session <strong>${sessionNumber}</strong>?<br><br>
+             ${email ? `<strong>User:</strong> ${email}<br>` : ''}
+             <div class="warning-box">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>WARNING:</strong> This will:<br>
+                1. Immediately disconnect the bot<br>
+                2. Delete all session data<br>
+                3. Stop all bot activities for this session<br><br>
+                <span>This action cannot be undone!</span>
+             </div>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    const response = await fetch(`/api/admin/session/${sessionNumber}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification(`✅ Session ${sessionNumber} deleted successfully`, 'success');
+                        this.loadSessions();
+                        this.closeCustomModal();
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting session:', error);
+                    this.showNotification('Failed to delete session', 'error');
+                }
+            },
+            'Delete Session'
+        );
+    }
+
+    async deleteAllUserSessions(email) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Animated status indicators */
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
+            // Get user sessions first
+            const response = await fetch('/api/admin/sessions', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load sessions`);
             }
             
-            .status-indicator {
-                animation: pulse 2s infinite;
+            const data = await response.json();
+            
+            if (data.success && data.sessions[email]) {
+                const userSessions = data.sessions[email];
+                const sessionCount = userSessions.totalSessions;
+                
+                this.showCustomModal(
+                    'Delete All Sessions',
+                    `Are you sure you want to delete ALL sessions for user <strong>${email}</strong>?<br><br>
+                     <strong>Total Sessions:</strong> ${sessionCount}<br>
+                     <strong>Connected Sessions:</strong> ${userSessions.connectedSessions}<br><br>
+                     <div class="warning-box">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>WARNING:</strong> This will:<br>
+                        1. Disconnect ALL bot instances for this user<br>
+                        2. Delete ALL session data<br>
+                        3. Completely stop all bot activities for this user<br><br>
+                        <span>This action cannot be undone!</span>
+                     </div>`,
+                    async () => {
+                        try {
+                            // Delete each session individually
+                            let deletedCount = 0;
+                            let failedCount = 0;
+                            
+                            for (const session of userSessions.sessions) {
+                                try {
+                                    const deleteResponse = await fetch(`/api/admin/session/${session.sessionNumber}`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'Authorization': `Bearer ${token}`,
+                                            'Accept': 'application/json'
+                                        }
+                                    });
+                                    
+                                    if (deleteResponse.ok) {
+                                        deletedCount++;
+                                    } else {
+                                        failedCount++;
+                                    }
+                                } catch (error) {
+                                    failedCount++;
+                                    console.error(`Error deleting session ${session.sessionNumber}:`, error);
+                                }
+                                
+                                // Small delay between deletions
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                            }
+                            
+                            if (failedCount === 0) {
+                                this.showNotification(`✅ All ${deletedCount} sessions deleted for ${email}`, 'success');
+                            } else {
+                                this.showNotification(`✅ ${deletedCount} sessions deleted, ${failedCount} failed for ${email}`, 'warning');
+                            }
+                            
+                            this.loadSessions();
+                            this.closeCustomModal();
+                        } catch (error) {
+                            console.error('Error deleting all sessions:', error);
+                            this.showNotification('Failed to delete sessions', 'error');
+                        }
+                    },
+                    `Delete All (${sessionCount})`
+                );
+            } else {
+                this.showNotification('No sessions found for this user', 'error');
+            }
+        } catch (error) {
+            console.error('Error preparing to delete all sessions:', error);
+            this.showNotification('Failed to load session information', 'error');
+        }
+    }
+
+    async refreshSessions() {
+        await this.loadSessions();
+        this.showNotification('Sessions refreshed', 'success');
+    }
+
+    // ===== FIXED: Grants Management =====
+    async loadGrants() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Location display */
-            .location-display {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                color: var(--dark-color);
-                background: var(--gray-light);
-                padding: 6px 12px;
-                border-radius: 8px;
-                border: 1px solid var(--border-color);
+            // Get users data which contains grant information
+            const response = await fetch('/api/admin/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load grants`);
             }
             
-            /* Revenue cell styling */
-            .revenue-cell {
-                font-weight: 700 !important;
-                font-size: 16px !important;
+            const data = await response.json();
+            
+            if (data.success) {
+                this.renderGrantsTable(data.users);
+                this.updateGrantStats(data.users);
+                this.setupGrantSearch();
+                this.setupGrantFilters();
+            } else {
+                this.showNotification(data.message || 'Failed to load grants', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading grants:', error);
+            this.showNotification('Network error: Failed to load grants', 'error');
+        }
+    }
+
+    // Setup Grant Search
+    setupGrantSearch() {
+        const grantSearch = document.getElementById('grantSearch');
+        if (grantSearch) {
+            grantSearch.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                if (query.length > 0) {
+                    this.searchGrants(query);
+                } else {
+                    this.loadGrants();
+                    
+                    // Remove search info if exists
+                    const searchInfo = document.querySelector('.grant-search-results-info');
+                    if (searchInfo) {
+                        searchInfo.remove();
+                    }
+                }
+            });
+        }
+    }
+
+    // Setup Grant Filters
+    setupGrantFilters() {
+        document.querySelectorAll('.grant-filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const filter = e.currentTarget.dataset.filter;
+                
+                // Update active button
+                document.querySelectorAll('.grant-filter-btn').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                
+                // Filter grants
+                this.filterGrants(filter);
+            });
+        });
+    }
+
+    // Filter Grants
+    async filterGrants(filter) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) return;
+            
+            const response = await fetch('/api/admin/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (!data.success || !data.users) return;
+            
+            let filteredUsers = {};
+            
+            switch(filter) {
+                case 'all':
+                    filteredUsers = data.users;
+                    break;
+                case 'pending':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        if (user.status === 'pending') {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
+                case 'approved':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        if (user.status === 'approved') {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
+                case 'paid':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        if (user.paid) {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
+                case 'free':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        if (user.freeToken) {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
+                case 'limited':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        const maxSessions = user.maxSessions || 1;
+                        if (maxSessions > 1 && maxSessions <= 5) {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
+                case 'unlimited':
+                    Object.entries(data.users).forEach(([email, user]) => {
+                        const maxSessions = user.maxSessions || 1;
+                        if (maxSessions >= 50) {
+                            filteredUsers[email] = user;
+                        }
+                    });
+                    break;
             }
             
-            .revenue-cell.zero {
-                color: var(--gray-color) !important;
+            this.renderGrantsTable(filteredUsers);
+            
+        } catch (error) {
+            console.error('Error filtering grants:', error);
+        }
+    }
+
+    // Search Grants
+    async searchGrants(query) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Action buttons spacing */
-            .action-buttons {
-                display: flex;
-                gap: 8px;
-                flex-wrap: wrap;
+            const response = await fetch('/api/admin/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (!data.success || !data.users) return;
+            
+            const filteredUsers = {};
+            
+            Object.entries(data.users).forEach(([email, user]) => {
+                if (email.toLowerCase().includes(query.toLowerCase()) || 
+                    (user.token && user.token.toLowerCase().includes(query.toLowerCase()))) {
+                    filteredUsers[email] = user;
+                }
+            });
+            
+            this.renderGrantsTable(filteredUsers);
+            
+            // Show search results info
+            const tableContainer = document.querySelector('.grant-table-container');
+            if (tableContainer) {
+                const existingInfo = tableContainer.querySelector('.grant-search-results-info');
+                if (existingInfo) existingInfo.remove();
+                
+                if (Object.keys(filteredUsers).length > 0) {
+                    const searchInfo = document.createElement('div');
+                    searchInfo.className = 'grant-search-results-info';
+                    searchInfo.innerHTML = `
+                        <i class="fas fa-search"></i>
+                        Found ${Object.keys(filteredUsers).length} result(s) for "${query}"
+                    `;
+                    tableContainer.insertBefore(searchInfo, tableContainer.querySelector('.grant-table'));
+                }
             }
             
-            .action-buttons button {
-                min-width: 36px;
-                height: 36px;
-                padding: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 10px;
-                transition: all 0.3s ease;
+        } catch (error) {
+            console.error('Error searching grants:', error);
+        }
+    }
+
+    updateGrantStats(users) {
+        if (!users) return;
+        
+        // Calculate totals for percentages
+        let totalUsers = Object.keys(users).length;
+        let pendingCount = 0;
+        let approvedCount = 0;
+        let paidCount = 0;
+        let freeCount = 0;
+        let limitedCount = 0;
+        let unlimitedCount = 0;
+        
+        Object.values(users).forEach(user => {
+            if (user.status === 'pending') pendingCount++;
+            if (user.status === 'approved') approvedCount++;
+            if (user.paid) paidCount++;
+            if (user.freeToken) freeCount++;
+            
+            const maxSessions = user.maxSessions || 1;
+            if (maxSessions > 1 && maxSessions <= 5) limitedCount++;
+            if (maxSessions >= 50) unlimitedCount++;
+        });
+        
+        // Update filter counts
+        this.updateFilterCounts({
+            totalUsers,
+            pending: pendingCount,
+            approved: approvedCount,
+            paid: paidCount,
+            free: freeCount,
+            limited: limitedCount,
+            unlimited: unlimitedCount
+        });
+        
+        // Update grant count badge
+        const badge = document.getElementById('grantCount');
+        if (badge) {
+            badge.textContent = totalUsers;
+        }
+    }
+
+    // ===== FIXED: Render Grants Table with Percentage and Filter Display =====
+    renderGrantsTable(users) {
+        const tableBody = document.querySelector('#grantsTableBody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        if (!users || Object.keys(users).length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="8" class="grants-no-results">
+                    <i class="fas fa-layer-group"></i>
+                    <h4>No grants found</h4>
+                    <p>Token grants will appear here</p>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            return;
+        }
+        
+        // Calculate totals for percentages
+        let totalUsers = Object.keys(users).length;
+        let pendingCount = 0;
+        let approvedCount = 0;
+        let paidCount = 0;
+        let freeCount = 0;
+        let limitedCount = 0;
+        let unlimitedCount = 0;
+        
+        Object.values(users).forEach(user => {
+            if (user.status === 'pending') pendingCount++;
+            if (user.status === 'approved') approvedCount++;
+            if (user.paid) paidCount++;
+            if (user.freeToken) freeCount++;
+            
+            const maxSessions = user.maxSessions || 1;
+            if (maxSessions > 1 && maxSessions <= 5) limitedCount++;
+            if (maxSessions >= 50) unlimitedCount++;
+        });
+        
+        Object.entries(users).forEach(([email, user]) => {
+            const currentSessions = user.currentSessions || 0;
+            const maxSessions = user.maxSessions || 1;
+            const grantUsage = maxSessions > 0 ? Math.round((currentSessions / maxSessions) * 100) : 0;
+            const grantType = user.freeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
+            const grantTypeClass = user.freeToken ? 'status-free' : (user.paid ? 'status-paid' : 'status-pending');
+            const token = user.token || 'No token';
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <div class="grant-email">
+                        <i class="fas fa-envelope"></i>
+                        ${email}
+                    </div>
+                </td>
+                <td>
+                    <code class="text-truncate" title="${token}">
+                        ${token.length > 20 ? token.substring(0, 20) + '...' : token}
+                    </code>
+                </td>
+                <td>
+                    <span class="session-count ${currentSessions >= maxSessions ? 'limit-reached' : ''}">
+                        ${currentSessions}
+                    </span>
+                </td>
+                <td>
+                    <span class="max-sessions">${maxSessions === 50 ? 'Unlimited' : maxSessions}</span>
+                </td>
+                <td>
+                    <div class="grant-percentage-display">
+                        <div class="grant-percentage-bar">
+                            <div class="grant-percentage-fill" style="width: ${grantUsage}%;"></div>
+                        </div>
+                        <span class="grant-percentage-text">${grantUsage}%</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="status-badge ${grantTypeClass}">
+                        ${grantType}
+                    </span>
+                </td>
+                <td>
+                    ${user.grantUpdated ? new Date(user.grantUpdated).toLocaleDateString() : 'Never'}
+                </td>
+                <td>
+                    <div class="grant-actions">
+                        <button class="btn-secondary small" onclick="admin.editGrant('${email}')">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-secondary small" onclick="admin.viewUserDetails('${email}')">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+        
+        // Update filter counts
+        this.updateFilterCounts({
+            totalUsers,
+            pending: pendingCount,
+            approved: approvedCount,
+            paid: paidCount,
+            free: freeCount,
+            limited: limitedCount,
+            unlimited: unlimitedCount
+        });
+    }
+
+    // Update filter counts display
+    updateFilterCounts(counts) {
+        document.querySelectorAll('.filter-count').forEach(el => {
+            const filter = el.dataset.filter;
+            if (counts[filter] !== undefined) {
+                el.textContent = counts[filter];
+            }
+        });
+    }
+
+    async editGrant(email) {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            .action-buttons button:hover {
-                transform: translateY(-2px);
+            const response = await fetch(`/api/admin/user/${encodeURIComponent(email)}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (!data.success || !data.userDetails) return;
+            
+            const user = data.userDetails.user;
+            const currentSessions = user.currentSessions || 0;
+            const maxSessions = user.maxSessions || 1;
+            const isFree = user.freeToken || !user.paid;
+            
+            this.showCustomModal(
+                'Edit Grant',
+                `<div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="editGrantEmail" value="${email}" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Current Sessions: <strong>${currentSessions}</strong></label>
+                </div>
+                <div class="form-group">
+                    <label>Maximum Sessions Allowed:</label>
+                    <select id="editMaxSessions">
+                        <option value="1" ${maxSessions === 1 ? 'selected' : ''}>1 Session (Free)</option>
+                        <option value="2" ${maxSessions === 2 ? 'selected' : ''}>2 Sessions</option>
+                        <option value="3" ${maxSessions === 3 ? 'selected' : ''}>3 Sessions</option>
+                        <option value="5" ${maxSessions === 5 ? 'selected' : ''}>5 Sessions</option>
+                        <option value="10" ${maxSessions === 10 ? 'selected' : ''}>10 Sessions</option>
+                        <option value="20" ${maxSessions === 20 ? 'selected' : ''}>20 Sessions</option>
+                        <option value="50" ${maxSessions === 50 ? 'selected' : ''}>Unlimited (50+)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Grant Type:</label>
+                    <select id="editGrantType">
+                        <option value="free" ${isFree ? 'selected' : ''}>Free Grant</option>
+                        <option value="paid" ${!isFree ? 'selected' : ''}>Paid Grant</option>
+                    </select>
+                </div>
+                <div class="warning-box">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <small>Note: Changing grant settings will affect user's ability to create sessions.</small>
+                </div>`,
+                async () => {
+                    try {
+                        const maxSessions = document.getElementById('editMaxSessions').value;
+                        const grantType = document.getElementById('editGrantType').value;
+                        const isPaid = grantType === 'paid';
+                        
+                        // Use the new updateUserGrant function which immediately refreshes data
+                        await this.updateUserGrant(email, parseInt(maxSessions), isPaid);
+                    } catch (error) {
+                        console.error('Error updating grant:', error);
+                        this.showNotification('Failed to update grant', 'error');
+                    }
+                },
+                'Update Grant'
+            );
+        } catch (error) {
+            console.error('Error loading grant for edit:', error);
+            this.showNotification('Failed to load grant details', 'error');
+        }
+    }
+
+    async bulkUpdateGrants() {
+        this.showCustomModal(
+            'Bulk Update Grants',
+            'This feature allows you to update grants for multiple users at once.<br><br>Select users and choose new grant settings.',
+            null,
+            'Continue'
+        );
+    }
+
+    async exportGrants() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            .action-buttons button i {
-                font-size: 14px;
+            const response = await fetch('/api/admin/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (!data.success || !data.users) return;
+            
+            // Create CSV content
+            let csvContent = 'Email,Token,Current Sessions,Max Sessions,Grant Type,Last Updated\n';
+            
+            Object.entries(data.users).forEach(([email, user]) => {
+                const currentSessions = user.currentSessions || 0;
+                const maxSessions = user.maxSessions || 1;
+                const grantType = user.freeToken ? 'Free' : (user.paid ? 'Paid' : 'Pending');
+                const token = user.token || '';
+                const lastUpdated = user.grantUpdated || '';
+                
+                csvContent += `"${email}","${token}",${currentSessions},${maxSessions},"${grantType}","${lastUpdated}"\n`;
+            });
+            
+            // Create download link
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `grants_export_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.showNotification('Grants exported successfully', 'success');
+        } catch (error) {
+            console.error('Error exporting grants:', error);
+            this.showNotification('Failed to export grants', 'error');
+        }
+    }
+
+    // Helper methods for data management
+    async getUsersData() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) return {};
+            
+            const response = await fetch('/api/admin/users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) return {};
+            
+            const data = await response.json();
+            return data.success ? data.users : {};
+        } catch (error) {
+            console.error('Error getting users data:', error);
+            return {};
+        }
+    }
+
+    async saveUsersData(users) {
+        // This would typically be done via API
+        // For now, we'll just update the local display
+        console.log('Users data would be saved here:', users);
+    }
+
+    // ===== LOGIN HISTORY METHODS =====
+    
+    // Add new method for loading login history:
+    async loadLoginHistory() {
+        try {
+            const token = localStorage.getItem('admin_token');
+            if (!token) {
+                this.showNotification('Please login again', 'error');
+                this.showLogin();
+                return;
             }
             
-            /* Terminate button in action buttons */
-            .action-buttons .terminate {
-                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                color: white !important;
-                border: 2px solid #ef4444 !important;
+            // Load admin login history
+            const response = await fetch('/api/admin/login-history?type=admin&limit=100', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.showNotification('Session expired, please login again', 'error');
+                    this.showLogin();
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: Failed to load login history`);
             }
             
-            .action-buttons .terminate:hover {
-                background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+            const data = await response.json();
+            
+            if (data.success) {
+                this.loginHistory = data.logins || [];
+                this.renderLoginHistory(this.loginHistory);
+                this.updateLoginHistoryStats();
+            } else {
+                this.showNotification(data.message || 'Failed to load login history', 'error');
             }
             
-            /* Filter buttons */
-            .filter-buttons {
-                display: flex;
-                gap: 10px;
-                margin: 15px 0;
+        } catch (error) {
+            console.error('Error loading login history:', error);
+            this.showNotification('Network error: Failed to load login history', 'error');
+        }
+    }
+    
+    // Render login history table
+    renderLoginHistory(logins) {
+        const tableBody = document.querySelector('#loginHistoryTableBody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        if (!logins || logins.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="7" class="no-results">
+                    <i class="fas fa-history"></i>
+                    <h4>No login history found</h4>
+                    <p>Admin login history will appear here</p>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            return;
+        }
+        
+        logins.forEach((login, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <div class="login-email">
+                        <i class="fas fa-user-shield"></i>
+                        ${login.email}
+                    </div>
+                </td>
+                <td>
+                    <code>${login.ip || 'Unknown'}</code>
+                </td>
+                <td>
+                    <div class="location-info">
+                        <span class="country-flag">${this.getCountryFlag(login.location?.country)}</span>
+                        <div>
+                            <strong>${login.location?.country || 'Unknown'}</strong>
+                            <small>${login.location?.region || 'Unknown'}, ${login.location?.city || 'Unknown'}</small>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="device-info">
+                        <i class="fas ${this.getDeviceIcon(login.userAgent)}"></i>
+                        <span>${this.getDeviceName(login.userAgent)}</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="timestamp">
+                        <i class="fas fa-clock"></i>
+                        ${new Date(login.timestamp).toLocaleString()}
+                    </span>
+                </td>
+                <td>
+                    <span class="time-ago">
+                        ${this.getTimeAgo(login.timestamp)}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn-secondary small" onclick="admin.viewLoginDetails(${index})">
+                        <i class="fas fa-info-circle"></i> Details
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+    
+    // Helper methods for login history
+    getCountryFlag(country) {
+        if (!country) return '🌐';
+        const flags = {
+            'USA': '🇺🇸', 'United States': '🇺🇸',
+            'UK': '🇬🇧', 'United Kingdom': '🇬🇧',
+            'Canada': '🇨🇦',
+            'Australia': '🇦🇺',
+            'Germany': '🇩🇪',
+            'France': '🇫🇷',
+            'Japan': '🇯🇵',
+            'China': '🇨🇳',
+            'India': '🇮🇳',
+            'Brazil': '🇧🇷',
+            'Russia': '🇷🇺',
+            'Local': '🏠'
+        };
+        return flags[country] || '🌐';
+    }
+    
+    getDeviceIcon(userAgent) {
+        if (!userAgent) return 'fa-desktop';
+        if (userAgent.includes('Mobile')) return 'fa-mobile-alt';
+        if (userAgent.includes('Tablet')) return 'fa-tablet-alt';
+        if (userAgent.includes('Android')) return 'fa-android';
+        if (userAgent.includes('iPhone')) return 'fa-apple';
+        if (userAgent.includes('Windows')) return 'fa-windows';
+        if (userAgent.includes('Mac')) return 'fa-apple';
+        if (userAgent.includes('Linux')) return 'fa-linux';
+        return 'fa-desktop';
+    }
+    
+    getDeviceName(userAgent) {
+        if (!userAgent) return 'Unknown';
+        if (userAgent.includes('Chrome')) return 'Chrome';
+        if (userAgent.includes('Firefox')) return 'Firefox';
+        if (userAgent.includes('Safari')) return 'Safari';
+        if (userAgent.includes('Edge')) return 'Edge';
+        return 'Browser';
+    }
+    
+    getTimeAgo(timestamp) {
+        const now = new Date();
+        const past = new Date(timestamp);
+        const diff = now - past;
+        
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days < 7) return `${days}d ago`;
+        return `${Math.floor(days / 7)}w ago`;
+    }
+    
+    // Update login history statistics
+    updateLoginHistoryStats() {
+        if (!this.loginHistory || this.loginHistory.length === 0) {
+            document.getElementById('totalAdminLogins').textContent = '0';
+            document.getElementById('uniqueCountries').textContent = '0';
+            document.getElementById('loginHistoryCount').textContent = '0';
+            return;
+        }
+        
+        // Count unique countries
+        const countries = new Set();
+        this.loginHistory.forEach(login => {
+            if (login.location?.country) {
+                countries.add(login.location.country);
             }
-            
-            .filter-btn {
-                padding: 10px 20px;
-                border: 2px solid var(--border-color);
-                background: var(--card-bg);
-                border-radius: 12px;
-                cursor: pointer;
-                font-size: 14px;
-                font-weight: 600;
-                transition: all 0.3s ease;
-                color: var(--gray-color);
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            }
-            
-            .filter-btn.active {
-                background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-                border-color: var(--primary-color);
-                color: white;
-                transform: translateY(-2px);
-                box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
-            }
-            
-            .filter-btn:hover:not(.active) {
-                border-color: var(--primary-color);
-                color: var(--primary-color);
-                transform: translateY(-2px);
-            }
+        });
+        
+        // Update stats
+        document.getElementById('totalAdminLogins').textContent = this.loginHistory.length;
+        document.getElementById('uniqueCountries').textContent = countries.size;
+        document.getElementById('loginHistoryCount').textContent = this.loginHistory.length;
+    }
+    
+    // View login details
+    async viewLoginDetails(index) {
+        const login = this.loginHistory[index];
+        if (!login) return;
+        
+        let detailsHtml = `
+            <div class="login-details">
+                <div class="detail-item">
+                    <label><i class="fas fa-user-shield"></i> Admin:</label>
+                    <span>${login.email}</span>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-network-wired"></i> IP Address:</label>
+                    <code>${login.ip || 'Unknown'}</code>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-globe"></i> Location:</label>
+                    <div class="location-details">
+                        <div>
+                            <strong>Country:</strong> ${login.location?.country || 'Unknown'}
+                        </div>
+                        <div>
+                            <strong>Region:</strong> ${login.location?.region || 'Unknown'}
+                        </div>
+                        <div>
+                            <strong>City:</strong> ${login.location?.city || 'Unknown'}
+                        </div>
+                        ${login.location?.isp ? `
+                        <div>
+                            <strong>ISP:</strong> ${login.location?.isp}
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-desktop"></i> Device & Browser:</label>
+                    <div class="device-details">
+                        <pre style="background: var(--gray-light); padding: 10px; border-radius: 5px; font-size: 12px; max-height: 150px; overflow: auto;">${login.userAgent || 'Unknown'}</pre>
+                    </div>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-clock"></i> Timestamp:</label>
+                    <span>${new Date(login.timestamp).toLocaleString()}</span>
+                </div>
+                
+                <div class="detail-item">
+                    <label><i class="fas fa-history"></i> Time Ago:</label>
+                    <span>${this.getTimeAgo(login.timestamp)}</span>
+                </div>
+            </div>
         `;
-        document.head.appendChild(locationStyle);
+        
+        this.showCustomModal(
+            `Login Details - ${login.email}`,
+            detailsHtml,
+            null,
+            'Close'
+        );
     }
-
-    // Add this helper method to parse location
-    parseLocation(location) {
-        if (!location) return { city: 'Unknown', country: 'Unknown' };
-        
-        if (typeof location === 'object') {
-            return {
-                city: location.city || 'Unknown',
-                country: location.country || 'Unknown',
-                region: location.region || 'Unknown'
-            };
-        }
-        
-        if (typeof location === 'string') {
-            if (location.includes(',')) {
-                const parts = location.split(',');
-                return {
-                    city: parts[0]?.trim() || 'Unknown',
-                    country: parts[1]?.trim() || 'Unknown',
-                    region: parts[2]?.trim() || 'Unknown'
-                };
+    
+    // Refresh login history
+    async refreshLoginHistory() {
+        await this.loadLoginHistory();
+        this.showNotification('Login history refreshed', 'success');
+    }
+    
+    // Export login history
+    async exportLoginHistory() {
+        try {
+            if (!this.loginHistory || this.loginHistory.length === 0) {
+                this.showNotification('No login history to export', 'warning');
+                return;
             }
-            return { city: location, country: location, region: 'Unknown' };
+            
+            // Create CSV content
+            let csvContent = 'Email,IP Address,Country,Region,City,Device,Browser,Timestamp\n';
+            
+            this.loginHistory.forEach(login => {
+                const country = login.location?.country || 'Unknown';
+                const region = login.location?.region || 'Unknown';
+                const city = login.location?.city || 'Unknown';
+                const device = this.getDeviceName(login.userAgent);
+                const browser = this.getBrowserFromUserAgent(login.userAgent);
+                const timestamp = new Date(login.timestamp).toLocaleString();
+                
+                csvContent += `"${login.email}","${login.ip || 'Unknown'}","${country}","${region}","${city}","${device}","${browser}","${timestamp}"\n`;
+            });
+            
+            // Create download link
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `login_history_export_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.showNotification('Login history exported successfully', 'success');
+        } catch (error) {
+            console.error('Error exporting login history:', error);
+            this.showNotification('Failed to export login history', 'error');
         }
-        
-        return { city: 'Unknown', country: 'Unknown', region: 'Unknown' };
+    }
+    
+    // Get browser from user agent
+    getBrowserFromUserAgent(userAgent) {
+        if (!userAgent) return 'Unknown';
+        if (userAgent.includes('Chrome')) return 'Chrome';
+        if (userAgent.includes('Firefox')) return 'Firefox';
+        if (userAgent.includes('Safari')) return 'Safari';
+        if (userAgent.includes('Edge')) return 'Edge';
+        if (userAgent.includes('Opera')) return 'Opera';
+        if (userAgent.includes('MSIE') || userAgent.includes('Trident')) return 'Internet Explorer';
+        return 'Other';
+    }
+    
+    // Cleanup login history
+    async cleanupLoginHistory() {
+        this.showCustomModal(
+            'Cleanup Login History',
+            `Are you sure you want to cleanup login history?<br><br>
+             <div class="warning-box">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>WARNING:</strong> This will:<br>
+                1. Remove all login history records<br>
+                2. Cannot be undone<br>
+                3. Will reset all login statistics<br><br>
+                <span>This action cannot be undone!</span>
+             </div>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('admin_token');
+                    if (!token) {
+                        this.showNotification('Please login again', 'error');
+                        this.showLogin();
+                        return;
+                    }
+                    
+                    const response = await fetch('/api/admin/login-history/cleanup', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            type: 'admin',
+                            daysToKeep: 30 // Keep only last 30 days by default
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification('Login history cleaned up successfully', 'success');
+                        this.loadLoginHistory();
+                    } else {
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error cleaning up login history:', error);
+                    this.showNotification('Failed to cleanup login history', 'error');
+                }
+            },
+            'Cleanup History'
+        );
     }
 }
-
-// Add notification styles and custom modal styles
-const style = document.createElement('style');
-style.textContent = `
-/* Custom Modal Styles */
-.custom-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    backdrop-filter: blur(5px);
-}
-
-.custom-modal.hidden {
-    display: none;
-}
-
-.custom-modal .modal-content {
-    background: var(--card-bg);
-    border-radius: var(--border-radius);
-    width: 90%;
-    max-width: 500px;
-    box-shadow: var(--shadow-lg);
-    animation: modalSlideIn 0.3s ease;
-    border: 2px solid var(--border-color);
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.custom-modal .modal-header {
-    padding: 20px 25px;
-    border-bottom: 2px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: linear-gradient(to right, rgba(124, 58, 237, 0.05), transparent);
-}
-
-.custom-modal .modal-header h3 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--dark-color);
-}
-
-.custom-modal .modal-close {
-    background: none;
-    border: none;
-    color: var(--gray-color);
-    font-size: 24px;
-    cursor: pointer;
-    transition: var(--transition);
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-}
-
-.custom-modal .modal-close:hover {
-    background: var(--gray-light);
-    color: var(--dark-color);
-}
-
-.custom-modal .modal-body {
-    padding: 25px;
-    color: var(--gray-color);
-    line-height: 1.6;
-}
-
-.custom-modal .modal-footer {
-    padding: 20px 25px;
-    border-top: 2px solid var(--border-color);
-    display: flex;
-    gap: 15px;
-    justify-content: flex-end;
-}
-
-.custom-modal .modal-btn {
-    padding: 10px 20px;
-    border-radius: var(--border-radius);
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition);
-    font-size: 14px;
-    min-width: 100px;
-}
-
-.custom-modal .modal-btn.primary {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
-    color: white !important;
-}
-
-.custom-modal .modal-btn.primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
-}
-
-.custom-modal .modal-btn.secondary {
-    background: var(--gray-light);
-    color: var(--dark-color);
-    border: 2px solid var(--border-color);
-}
-
-.custom-modal .modal-btn.secondary:hover {
-    background: var(--light-color);
-    border-color: var(--primary-color);
-}
-
-.notification-container {
-    position: fixed;
-    top: 25px;
-    right: 25px;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    max-width: 450px;
-}
-
-.notification {
-    background: var(--card-bg);
-    padding: 20px 25px;
-    border-radius: var(--border-radius);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    min-width: 350px;
-    animation: slideInRight 0.3s ease;
-    border-left: 6px solid;
-    border: 2px solid var(--border-color);
-    backdrop-filter: blur(10px);
-}
-
-.notification.success {
-    border-left-color: var(--status-paid);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
-}
-
-.notification.error {
-    border-left-color: var(--status-terminated);
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
-}
-
-.notification.warning {
-    border-left-color: var(--status-pending);
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
-}
-
-.notification.info {
-    border-left-color: var(--status-approved);
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
-}
-
-.notification i {
-    font-size: 24px;
-    width: 50px;
-    height: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-}
-
-.notification.success i {
-    background: var(--status-paid);
-    color: white;
-}
-
-.notification.error i {
-    background: var(--status-terminated);
-    color: white;
-}
-
-.notification.warning i {
-    background: var(--status-pending);
-    color: white;
-}
-
-.notification.info i {
-    background: var(--status-approved);
-    color: white;
-}
-
-.notification span {
-    flex: 1;
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--dark-color);
-}
-
-.notification-close {
-    background: none;
-    border: none;
-    color: var(--gray-color);
-    cursor: pointer;
-    font-size: 16px;
-    padding: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: var(--transition);
-}
-
-.notification-close:hover {
-    color: var(--dark-color);
-    background: var(--gray-light);
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-/* Theme transitions */
-body {
-    transition: background-color 0.3s ease;
-}
-
-/* Ensure buttons use theme colors */
-.btn-primary {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
-    border-color: var(--primary-color) !important;
-}
-
-.btn-primary:hover {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)) !important;
-    border-color: var(--primary-color) !important;
-    transform: translateY(-3px);
-    box-shadow: 0 8px 30px rgba(124, 58, 237, 0.4);
-}
-
-/* Theme-specific stat item icons */
-.stat-item i {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* Theme-specific action button icons */
-.action-btn i {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-`;
-document.head.appendChild(style);
 
 // ===== ADMIN ACCESS CHECK =====
 function checkAdminAccess() {
@@ -3154,7 +4410,7 @@ function checkAdminAccess() {
             // Token expired, clear it
             localStorage.removeItem('admin_token');
             localStorage.removeItem('admin_token_time');
-            this.showMessage('Session expired. Please login again.', 'error');
+            console.log('Session expired. Please login again.');
         }
     }
 }

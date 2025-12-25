@@ -1,7 +1,8 @@
-// FILE: backup.js - UPDATED TO USE SUPABASE
+// FILE: backup.js - UPDATED WITH GRANTS AND LOGIN HISTORY
 const fs = require('fs-extra');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const axios = require('axios'); // For IP geolocation
 
 class BackupManager {
     constructor() {
@@ -12,6 +13,9 @@ class BackupManager {
         this.SUPABASE_URL = process.env.SUPABASE_URL;
         this.SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
         this.BUCKET_NAME = process.env.SUPABASE_BUCKET || 'tracle-backups';
+        
+        // IP Geolocation API (using free service)
+        this.IP_API_URL = 'http://ip-api.com/json/';
         
         this.initializeSupabase();
     }
@@ -614,7 +618,7 @@ class BackupManager {
         }
     }
 
-    // 🔄 Auto backup all data (sessions + tokens + users + requests)
+    // 🔄 Auto backup ALL data including grants and login history
     async backupAllData() {
         try {
             if (!this.isConfigured()) {
@@ -628,7 +632,10 @@ class BackupManager {
                 sessions: { success: false, count: 0 },
                 users: { success: false },
                 tokens: { success: false },
-                requests: { success: false }
+                requests: { success: false },
+                grants: { success: false },
+                loginHistory: { success: false },
+                adminSettings: { success: false }
             };
             
             // Backup sessions
@@ -638,15 +645,20 @@ class BackupManager {
                 count: sessionsResult.backedUp || 0 
             };
             
-            // Backup users.json
+            // Backup users.json (includes grants)
             const usersPath = path.join(__dirname, 'users.json');
             if (fs.existsSync(usersPath)) {
                 try {
                     const usersContent = fs.readFileSync(usersPath, 'utf8');
                     await this.uploadToDrive('users.json', usersContent);
                     results.users = { success: true };
+                    
+                    // Extract and backup grants separately
+                    await this.backupGrants(usersContent);
+                    results.grants = { success: true };
                 } catch (error) {
                     results.users = { success: false, error: error.message };
+                    results.grants = { success: false, error: error.message };
                 }
             }
             
@@ -674,12 +686,46 @@ class BackupManager {
                 }
             }
             
+            // Backup login history
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            if (fs.existsSync(loginHistoryPath)) {
+                try {
+                    const loginHistoryContent = fs.readFileSync(loginHistoryPath, 'utf8');
+                    await this.uploadToDrive('login_history.json', loginHistoryContent);
+                    results.loginHistory = { success: true };
+                } catch (error) {
+                    results.loginHistory = { success: false, error: error.message };
+                }
+            } else {
+                // Create initial login history if it doesn't exist
+                const initialLoginHistory = {
+                    admin_logins: [],
+                    user_logins: []
+                };
+                fs.writeFileSync(loginHistoryPath, JSON.stringify(initialLoginHistory, null, 2));
+                await this.uploadToDrive('login_history.json', JSON.stringify(initialLoginHistory, null, 2));
+                results.loginHistory = { success: true, created: true };
+            }
+            
+            // Backup admin settings
+            const adminSettingsPath = path.join(__dirname, 'admin_settings.json');
+            if (fs.existsSync(adminSettingsPath)) {
+                try {
+                    const adminSettingsContent = fs.readFileSync(adminSettingsPath, 'utf8');
+                    await this.uploadToDrive('admin_settings.json', adminSettingsContent);
+                    results.adminSettings = { success: true };
+                } catch (error) {
+                    results.adminSettings = { success: false, error: error.message };
+                }
+            }
+            
             console.log('✅ Complete data backup attempt finished');
             console.log('📊 Results:', results);
             
             return { 
                 success: true, 
-                message: 'Backup attempt completed',
+                message: 'Backup completed including grants and login history',
+                timestamp: new Date().toISOString(),
                 results: results
             };
             
@@ -689,7 +735,7 @@ class BackupManager {
         }
     }
 
-    // 🔄 Auto restore all data on startup
+    // 🔄 Auto restore ALL data on startup
     async restoreAllData() {
         try {
             if (!this.isConfigured()) {
@@ -704,7 +750,10 @@ class BackupManager {
                 sessions: { restored: 0, total: 0 },
                 users: { success: false },
                 tokens: { success: false },
-                requests: { success: false }
+                requests: { success: false },
+                grants: { success: false },
+                loginHistory: { success: false },
+                adminSettings: { success: false }
             };
             
             // Restore sessions FIRST
@@ -717,7 +766,7 @@ class BackupManager {
                 restoredItems += sessionsResult.restoredCount || 0;
             }
             
-            // Restore users.json
+            // Restore users.json (includes grants)
             const usersData = await this.downloadFromDrive('users.json');
             if (usersData) {
                 try {
@@ -725,8 +774,13 @@ class BackupManager {
                     console.log('✅ Restored users.json from Supabase');
                     results.users = { success: true };
                     restoredItems++;
+                    
+                    // Restore grants from users data
+                    await this.restoreGrants(usersData);
+                    results.grants = { success: true };
                 } catch (error) {
                     results.users = { success: false, error: error.message };
+                    results.grants = { success: false, error: error.message };
                 }
             }
             
@@ -756,19 +810,397 @@ class BackupManager {
                 }
             }
             
+            // Restore login history
+            const loginHistoryData = await this.downloadFromDrive('login_history.json');
+            if (loginHistoryData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'login_history.json'), loginHistoryData);
+                    console.log('✅ Restored login_history.json from Supabase');
+                    results.loginHistory = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.loginHistory = { success: false, error: error.message };
+                }
+            }
+            
+            // Restore admin settings
+            const adminSettingsData = await this.downloadFromDrive('admin_settings.json');
+            if (adminSettingsData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'admin_settings.json'), adminSettingsData);
+                    console.log('✅ Restored admin_settings.json from Supabase');
+                    results.adminSettings = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.adminSettings = { success: false, error: error.message };
+                }
+            }
+            
             console.log(`✅ ${restoredItems} data items restored successfully`);
             console.log('📊 Results:', results);
             
             return { 
                 success: true, 
                 restoredItems: restoredItems, 
-                message: 'Restore completed',
+                message: 'Restore completed including grants and login history',
+                timestamp: new Date().toISOString(),
                 results: results
             };
             
         } catch (error) {
             console.error('❌ Data restore failed:', error.message);
             return { success: false, message: error.message };
+        }
+    }
+
+    // 📊 Extract and backup grants from users data
+    async backupGrants(usersData) {
+        try {
+            const users = JSON.parse(usersData);
+            const grants = {};
+            
+            // Extract grant information from each user
+            Object.keys(users).forEach(email => {
+                const user = users[email];
+                grants[email] = {
+                    maxSessions: user.maxSessions || 1,
+                    currentSessions: user.currentSessions || 0,
+                    grantType: user.grantType || (user.freeToken ? 'free' : 'paid'),
+                    grantUpdated: user.grantUpdated || user.lastUpdated,
+                    status: user.status || 'pending',
+                    paid: user.paid || false
+                };
+            });
+            
+            // Save grants to separate file
+            const grantsPath = path.join(__dirname, 'grants_backup.json');
+            fs.writeFileSync(grantsPath, JSON.stringify(grants, null, 2));
+            
+            // Upload to Supabase
+            await this.uploadToDrive('grants_backup.json', JSON.stringify(grants, null, 2));
+            
+            console.log(`✅ Extracted and backed up ${Object.keys(grants).length} grants`);
+            return { success: true, count: Object.keys(grants).length };
+            
+        } catch (error) {
+            console.error('❌ Error backing up grants:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🔄 Restore grants from backup
+    async restoreGrants(usersData) {
+        try {
+            // First try to restore from dedicated grants backup
+            const grantsData = await this.downloadFromDrive('grants_backup.json');
+            if (grantsData) {
+                const grants = JSON.parse(grantsData);
+                const users = JSON.parse(usersData);
+                
+                // Apply grant settings to users
+                Object.keys(grants).forEach(email => {
+                    if (users[email]) {
+                        users[email].maxSessions = grants[email].maxSessions;
+                        users[email].grantType = grants[email].grantType;
+                        users[email].grantUpdated = grants[email].grantUpdated;
+                    }
+                });
+                
+                // Save updated users
+                fs.writeFileSync(path.join(__dirname, 'users.json'), JSON.stringify(users, null, 2));
+                console.log(`✅ Restored ${Object.keys(grants).length} grants from backup`);
+            }
+            
+            return { success: true };
+        } catch (error) {
+            console.error('❌ Error restoring grants:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🌍 Get location from IP address
+    async getLocationFromIP(ip) {
+        try {
+            // Skip local IPs
+            if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+                return {
+                    country: 'Local',
+                    region: 'Local Network',
+                    city: 'Local',
+                    isp: 'Local Network'
+                };
+            }
+            
+            const response = await axios.get(`${this.IP_API_URL}${ip}`);
+            if (response.data && response.data.status === 'success') {
+                return {
+                    country: response.data.country,
+                    region: response.data.regionName,
+                    city: response.data.city,
+                    isp: response.data.isp,
+                    lat: response.data.lat,
+                    lon: response.data.lon
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error('❌ Error getting location from IP:', error.message);
+            return null;
+        }
+    }
+
+    // 📝 Record admin login
+    async recordAdminLogin(email, ip, userAgent) {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            let loginHistory;
+            
+            if (fs.existsSync(loginHistoryPath)) {
+                loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            } else {
+                loginHistory = {
+                    admin_logins: [],
+                    user_logins: []
+                };
+            }
+            
+            // Get location from IP
+            const location = await this.getLocationFromIP(ip);
+            
+            const loginRecord = {
+                email: email,
+                ip: ip,
+                userAgent: userAgent,
+                timestamp: new Date().toISOString(),
+                location: location || {
+                    country: 'Unknown',
+                    region: 'Unknown',
+                    city: 'Unknown'
+                }
+            };
+            
+            // Add to admin logins
+            loginHistory.admin_logins.unshift(loginRecord); // Add to beginning
+            loginHistory.admin_logins = loginHistory.admin_logins.slice(0, 100); // Keep only last 100
+            
+            // Save locally
+            fs.writeFileSync(loginHistoryPath, JSON.stringify(loginHistory, null, 2));
+            
+            // Backup to Supabase
+            if (this.isConfigured()) {
+                await this.uploadToDrive('login_history.json', JSON.stringify(loginHistory, null, 2));
+            }
+            
+            console.log(`✅ Recorded admin login from ${ip} (${location ? location.country : 'Unknown'})`);
+            return { success: true, location };
+            
+        } catch (error) {
+            console.error('❌ Error recording admin login:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 📝 Record user login
+    async recordUserLogin(email, ip, userAgent, token) {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            let loginHistory;
+            
+            if (fs.existsSync(loginHistoryPath)) {
+                loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            } else {
+                loginHistory = {
+                    admin_logins: [],
+                    user_logins: []
+                };
+            }
+            
+            // Get location from IP
+            const location = await this.getLocationFromIP(ip);
+            
+            const loginRecord = {
+                email: email,
+                ip: ip,
+                userAgent: userAgent,
+                token: token ? (token.length > 10 ? token.substring(0, 10) + '...' : token) : 'No token',
+                timestamp: new Date().toISOString(),
+                location: location || {
+                    country: 'Unknown',
+                    region: 'Unknown',
+                    city: 'Unknown'
+                }
+            };
+            
+            // Add to user logins
+            loginHistory.user_logins.unshift(loginRecord);
+            loginHistory.user_logins = loginHistory.user_logins.slice(0, 500); // Keep only last 500
+            
+            // Save locally
+            fs.writeFileSync(loginHistoryPath, JSON.stringify(loginHistory, null, 2));
+            
+            // Backup to Supabase
+            if (this.isConfigured()) {
+                await this.uploadToDrive('login_history.json', JSON.stringify(loginHistory, null, 2));
+            }
+            
+            console.log(`✅ Recorded user login from ${email} (${location ? location.country : 'Unknown'})`);
+            return { success: true, location };
+            
+        } catch (error) {
+            console.error('❌ Error recording user login:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 📋 Get admin login history
+    async getAdminLoginHistory(limit = 50) {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            
+            if (!fs.existsSync(loginHistoryPath)) {
+                return { success: true, logins: [] };
+            }
+            
+            const loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            const adminLogins = loginHistory.admin_logins || [];
+            
+            // Return limited number of logins
+            return { 
+                success: true, 
+                logins: adminLogins.slice(0, limit),
+                total: adminLogins.length
+            };
+            
+        } catch (error) {
+            console.error('❌ Error getting admin login history:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 📋 Get user login history
+    async getUserLoginHistory(limit = 100) {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            
+            if (!fs.existsSync(loginHistoryPath)) {
+                return { success: true, logins: [] };
+            }
+            
+            const loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            const userLogins = loginHistory.user_logins || [];
+            
+            // Return limited number of logins
+            return { 
+                success: true, 
+                logins: userLogins.slice(0, limit),
+                total: userLogins.length
+            };
+            
+        } catch (error) {
+            console.error('❌ Error getting user login history:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 📊 Get login statistics
+    async getLoginStats() {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            
+            if (!fs.existsSync(loginHistoryPath)) {
+                return { 
+                    success: true, 
+                    stats: {
+                        adminLogins: 0,
+                        userLogins: 0,
+                        uniqueCountries: 0,
+                        recentActivity: []
+                    }
+                };
+            }
+            
+            const loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            const adminLogins = loginHistory.admin_logins || [];
+            const userLogins = loginHistory.user_logins || [];
+            
+            // Get unique countries
+            const allLogins = [...adminLogins, ...userLogins];
+            const uniqueCountries = new Set();
+            allLogins.forEach(login => {
+                if (login.location && login.location.country) {
+                    uniqueCountries.add(login.location.country);
+                }
+            });
+            
+            // Get recent activity (last 24 hours)
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const recentActivity = allLogins.filter(login => 
+                new Date(login.timestamp) > oneDayAgo
+            ).length;
+            
+            return {
+                success: true,
+                stats: {
+                    adminLogins: adminLogins.length,
+                    userLogins: userLogins.length,
+                    totalLogins: adminLogins.length + userLogins.length,
+                    uniqueCountries: uniqueCountries.size,
+                    recentActivity: recentActivity
+                }
+            };
+            
+        } catch (error) {
+            console.error('❌ Error getting login stats:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🗑️ Clear old login history (keep last N days)
+    async cleanupLoginHistory(daysToKeep = 30) {
+        try {
+            const loginHistoryPath = path.join(__dirname, 'login_history.json');
+            
+            if (!fs.existsSync(loginHistoryPath)) {
+                return { success: true, deleted: 0 };
+            }
+            
+            const loginHistory = JSON.parse(fs.readFileSync(loginHistoryPath, 'utf8'));
+            const cutoffDate = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000);
+            
+            let deletedCount = 0;
+            
+            // Clean admin logins
+            if (loginHistory.admin_logins) {
+                const originalCount = loginHistory.admin_logins.length;
+                loginHistory.admin_logins = loginHistory.admin_logins.filter(login => 
+                    new Date(login.timestamp) > cutoffDate
+                );
+                deletedCount += (originalCount - loginHistory.admin_logins.length);
+            }
+            
+            // Clean user logins
+            if (loginHistory.user_logins) {
+                const originalCount = loginHistory.user_logins.length;
+                loginHistory.user_logins = loginHistory.user_logins.filter(login => 
+                    new Date(login.timestamp) > cutoffDate
+                );
+                deletedCount += (originalCount - loginHistory.user_logins.length);
+            }
+            
+            // Save cleaned history
+            fs.writeFileSync(loginHistoryPath, JSON.stringify(loginHistory, null, 2));
+            
+            // Backup to Supabase
+            if (this.isConfigured()) {
+                await this.uploadToDrive('login_history.json', JSON.stringify(loginHistory, null, 2));
+            }
+            
+            console.log(`✅ Cleaned up ${deletedCount} old login records`);
+            return { success: true, deleted: deletedCount };
+            
+        } catch (error) {
+            console.error('❌ Error cleaning up login history:', error.message);
+            return { success: false, error: error.message };
         }
     }
 

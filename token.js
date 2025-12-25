@@ -19,7 +19,7 @@ class TokenManager {
         this.transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
-                user: process.env.EMAIL_USER || 'brenaldmedia@gmail.com',
+                user: process.env.EMAIL_USER || 'traclelitemain@gmail.com',
                 pass: process.env.EMAIL_PASS // Your Gmail App Password
             }
         });
@@ -84,7 +84,7 @@ class TokenManager {
     async sendEmail(to, subject, html) {
         try {
             const mailOptions = {
-                from: `"Tracle-Lite Admin" <${process.env.EMAIL_USER || 'brenaldmedia@gmail.com'}>`,
+                from: `"Tracle-Lite Admin" <${process.env.EMAIL_USER || 'traclelitemain@gmail.com'}>`,
                 to: to,
                 subject: subject,
                 html: html,

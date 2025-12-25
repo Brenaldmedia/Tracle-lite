@@ -218,14 +218,25 @@ body {
 
 .modal-content {
     background: var(--bg-secondary);
-    border-radius: var(--border-radius);
+    border-radius: var(--border-radius-lg);
     width: 90%;
     max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
     box-shadow: var(--shadow-lg);
     animation: modalSlideIn 0.3s ease;
     border: 1px solid var(--border-color);
+    margin: 20px;
+    position: relative;
 }
 
+.modal-body {
+    padding: 25px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-height: calc(90vh - 140px); /* Account for header and footer */
+    overflow-y: auto;
+}
 .modal-header {
     padding: 20px 25px;
     border-bottom: 1px solid var(--border-color);
@@ -1994,4 +2005,795 @@ button:disabled .fa-spinner {
         font-size: 28px;
         letter-spacing: 3px;
     }
+}
+
+
+/* Admin Application Styles */
+.application-card {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 2rem;
+    margin: 1.5rem 0;
+    border: 1px solid var(--border-color);
+}
+
+.application-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.input-group.full-width {
+    grid-column: 1 / -1;
+}
+
+.input-group textarea {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    resize: vertical;
+    min-height: 120px;
+    font-family: inherit;
+    transition: var(--transition);
+}
+
+.input-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.char-count {
+    text-align: right;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+
+.char-count span {
+    font-weight: bold;
+}
+
+.input-group select {
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    cursor: pointer;
+    appearance: none;
+    transition: var(--transition);
+}
+
+.input-group select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.application-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.info-card {
+    background: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    border-left: 4px solid var(--accent-primary);
+}
+
+.info-card i {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    margin-bottom: 1rem;
+}
+
+.info-card h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+}
+
+.info-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.info-card li {
+    padding: 0.5rem 0;
+    color: var(--text-secondary);
+    position: relative;
+    padding-left: 1.5rem;
+}
+
+.info-card li:before {
+    content: "•";
+    color: var(--accent-primary);
+    font-size: 1.2rem;
+    position: absolute;
+    left: 0;
+    top: 0.3rem;
+}
+
+.application-note {
+    background: rgba(var(--accent-info-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-info-rgb), 0.3);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    margin-top: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.application-note i {
+    color: var(--accent-info);
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.application-note p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* Admin Contact Details in Modal */
+.admin-contact-details {
+    background: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: left;
+}
+
+.admin-contact-details p {
+    margin: 0.75rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.admin-contact-details i {
+    color: var(--accent-primary);
+    width: 1.5rem;
+}
+
+.admin-contact-details strong {
+    color: var(--text-primary);
+}
+
+.success-message {
+    text-align: center;
+    padding: 1rem;
+}
+
+.success-message i {
+    font-size: 4rem;
+    color: var(--accent-success);
+    margin-bottom: 1.5rem;
+}
+
+.success-message h4 {
+    color: var(--text-primary);
+    margin: 1rem 0;
+    font-size: 1.5rem;
+}
+
+.success-message p {
+    color: var(--text-secondary);
+    margin: 0.75rem 0;
+    line-height: 1.6;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .application-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .application-card {
+        padding: 1.5rem;
+    }
+    
+    .info-card {
+        padding: 1.25rem;
+    }
+    
+    .admin-contact-details {
+        padding: 1rem;
+    }
+    
+    .success-message i {
+        font-size: 3rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .application-card {
+        padding: 1rem;
+    }
+    
+    .input-group textarea {
+        min-height: 100px;
+    }
+}
+/* Enhanced Modal Styles */
+.custom-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition);
+}
+
+.custom-modal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: translateY(-20px);
+    transition: transform var(--transition);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+}
+
+.custom-modal:not(.hidden) .modal-content {
+    transform: translateY(0);
+}
+
+/* Responsive Modal */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+        max-height: 80vh;
+    }
+}
+
+/* Enhanced Admin Contact Details */
+.admin-contact-details {
+    background: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: left;
+}
+
+.admin-contact-details p {
+    margin: 0.75rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.admin-contact-details i {
+    color: var(--accent-primary);
+    width: 1.5rem;
+    flex-shrink: 0;
+}
+
+.admin-contact-details strong {
+    color: var(--text-primary);
+    min-width: 80px;
+}
+
+/* Clickable Links */
+.clickable-link {
+    color: var(--accent-primary);
+    text-decoration: none;
+    transition: var(--transition);
+    padding: 4px 8px;
+    border-radius: var(--border-radius-sm);
+    background: rgba(var(--accent-primary-rgb), 0.1);
+    display: inline-block;
+    margin-left: 5px;
+}
+
+.clickable-link:hover {
+    background: rgba(var(--accent-primary-rgb), 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+.clickable-link i {
+    margin-right: 5px;
+}
+
+/* WhatsApp Link Specific */
+.whatsapp-link {
+    background: rgba(37, 211, 102, 0.1);
+    color: #25D366;
+}
+
+.whatsapp-link:hover {
+    background: rgba(37, 211, 102, 0.2);
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.2);
+}
+
+/* Email Link Specific */
+.email-link {
+    background: rgba(66, 133, 244, 0.1);
+    color: #4285F4;
+}
+
+.email-link:hover {
+    background: rgba(66, 133, 244, 0.2);
+    box-shadow: 0 4px 12px rgba(66, 133, 244, 0.2);
+}
+
+/* Telegram Link Specific */
+.telegram-link {
+    background: rgba(0, 136, 204, 0.1);
+    color: #0088cc;
+}
+
+.telegram-link:hover {
+    background: rgba(0, 136, 204, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 136, 204, 0.2);
+}
+
+/* Enhanced Success Message */
+.success-message {
+    text-align: center;
+    padding: 1rem;
+}
+
+.success-message i.fa-check-circle {
+    font-size: 4rem;
+    color: var(--accent-success);
+    margin-bottom: 1.5rem;
+    animation: pulse 2s infinite;
+}
+
+.success-message h4 {
+    color: var(--text-primary);
+    margin: 1rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.success-message p {
+    color: var(--text-secondary);
+    margin: 0.75rem 0;
+    line-height: 1.6;
+}
+
+/* Contact Actions */
+.contact-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.contact-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    font-weight: 500;
+    transition: var(--transition);
+    border: 2px solid transparent;
+}
+
+.contact-action-btn i {
+    font-size: 1.1rem;
+}
+
+.contact-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Application Note Enhanced */
+.application-note.enhanced {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: var(--border-radius);
+    padding: 1.2rem;
+    margin-top: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.application-note.enhanced:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--accent-primary);
+}
+
+.application-note.enhanced i {
+    color: var(--accent-primary);
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.application-note.enhanced p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+/* Animation for modal entrance */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 480px) {
+    .admin-contact-details {
+        padding: 1rem;
+    }
+    
+    .admin-contact-details p {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .admin-contact-details strong {
+        min-width: auto;
+    }
+    
+    .clickable-link {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        margin: 5px 0;
+        padding: 10px;
+    }
+    
+    .contact-actions {
+        flex-direction: column;
+    }
+    
+    .contact-action-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .success-message i.fa-check-circle {
+        font-size: 3rem;
+    }
+}
+/* Fix Modal Responsiveness */
+.modal-content {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh; /* This is good */
+    overflow-y: auto; /* This is good */
+    transform: translateY(-20px);
+    transition: transform var(--transition);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    /* Add these: */
+    margin: 20px; /* Add margin for mobile */
+    position: relative; /* For positioning */
+}
+
+/* Modal Body with scrolling */
+.modal-body {
+    padding: 20px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-height: calc(90vh - 140px); /* Account for header and footer */
+    overflow-y: auto;
+}
+
+/* Fix for small screens */
+@media (max-width: 768px) {
+    .modal-content {
+        width: calc(100% - 20px); /* Full width minus margins */
+        margin: 10px;
+        max-height: 85vh; /* Slightly less on mobile */
+        max-width: none; /* Remove max-width constraint */
+    }
+    
+    .modal-body {
+        padding: 15px;
+        max-height: calc(85vh - 130px);
+    }
+    
+    /* Make success message more compact */
+    .success-message i.fa-check-circle {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .success-message h4 {
+        font-size: 1.3rem;
+        margin: 0.5rem 0;
+    }
+    
+    .success-message p {
+        margin: 0.5rem 0;
+        font-size: 0.95rem;
+    }
+    
+    /* Compact contact details */
+    .admin-contact-details {
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .admin-contact-details p {
+        margin: 0.5rem 0;
+        flex-wrap: wrap;
+    }
+    
+    /* Stack contact actions vertically */
+    .contact-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .contact-action-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* Extra small devices */
+@media (max-width: 480px) {
+    .modal-content {
+        width: calc(100% - 16px);
+        margin: 8px;
+        max-height: 80vh;
+        border-radius: var(--border-radius);
+    }
+    
+    .modal-header {
+        padding: 15px 20px;
+    }
+    
+    .modal-body {
+        padding: 12px 15px;
+        max-height: calc(80vh - 120px);
+    }
+    
+    .modal-footer {
+        padding: 15px 20px;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .modal-btn {
+        width: 100%;
+    }
+    
+    /* Even more compact for very small screens */
+    .success-message {
+        padding: 0.5rem;
+    }
+    
+    .success-message i.fa-check-circle {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .success-message h4 {
+        font-size: 1.1rem;
+    }
+    
+    .success-message p {
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+    
+    /* Stack admin contact details */
+    .admin-contact-details p {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    
+    .admin-contact-details strong {
+        min-width: auto;
+    }
+    
+    .clickable-link {
+        width: 100%;
+        margin: 3px 0 0 0;
+        padding: 8px 12px;
+        text-align: center;
+    }
+    
+    /* Hide some decorative elements on very small screens */
+    .application-note.enhanced:before {
+        display: none;
+    }
+    
+    .application-note.enhanced {
+        padding: 0.75rem;
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
+/* Fix for landscape mode */
+@media (max-height: 600px) and (orientation: landscape) {
+    .modal-content {
+        max-height: 95vh;
+        max-width: 80%;
+    }
+    
+    .modal-body {
+        max-height: calc(95vh - 140px);
+    }
+    
+    .success-message i.fa-check-circle {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .success-message h4 {
+        font-size: 1.1rem;
+        margin: 0.25rem 0;
+    }
+    
+    .admin-contact-details {
+        padding: 0.75rem;
+        margin: 0.75rem 0;
+    }
+    
+    .admin-contact-details p {
+        margin: 0.35rem 0;
+    }
+}
+
+/* Prevent content from being too wide */
+.admin-contact-details,
+.contact-actions,
+.application-note.enhanced {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+/* Ensure text doesn't overflow */
+.clickable-link {
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
+/* Make email addresses break properly */
+.email-link,
+.whatsapp-link,
+.telegram-link {
+    word-break: break-word;
+    max-width: 100%;
+}
+
+/* Add smooth scrolling for modal content */
+.modal-body {
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
+/* Fix for very long email addresses */
+.clickable-link[href^="mailto:"] {
+    word-break: break-all;
+}
+
+/* Ensure buttons are tappable on mobile */
+.modal-btn,
+.contact-action-btn,
+.clickable-link {
+    min-height: 44px; /* Minimum touch target size */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+/* Style for country input */
+.input-group input#adminCountry {
+    text-transform: capitalize; /* Capitalizes first letter of each word */
+}
+
+/* Optional: Add suggestions styling */
+.country-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-top: 5px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+    display: none;
+}
+
+.country-suggestion {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: var(--transition);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.country-suggestion:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.country-suggestion:last-child {
+    border-bottom: none;
+}
+/* Hide admin link but keep it clickable */
+.nav-item[onclick*="admin.html"] {
+    opacity: 0.1;
+    position: relative;
+    transition: opacity 0.3s ease;
+}
+
+.nav-item[onclick*="admin.html"]:hover {
+    opacity: 0.3;
+}
+
+/* Or hide it completely but keep in DOM */
+.nav-item[onclick*="admin.html"] {
+    display: none; /* Completely hidden */
+}
+
+/* Alternative: Make it very small */
+.nav-item[onclick*="admin.html"] {
+    font-size: 0.1px;
+    height: 1px;
+    overflow: hidden;
 }

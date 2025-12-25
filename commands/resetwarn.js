@@ -81,7 +81,7 @@ module.exports = {
               externalAdReply: {
                 title: "Warnings Reset",
                 body: `@${userName}'s warnings cleared`,
-                thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+                thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
                 sourceUrl: "https://github.com/Brenaldmedia/Tracle",
                 mediaType: 1
               }

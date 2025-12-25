@@ -56,46 +56,50 @@ module.exports = {
 
       const fileName = `${videoTitle}.mp3`.replace(/[^\w\s.-]/gi, '');
       
-      // Enhanced context info with premium template
-      const contextInfo = {
-        externalAdReply: {
-          title: videoTitle,
-          body: 'Powered by Brenaldmedia',
-          mediaType: 1,
-          sourceUrl: videoUrl,
-          thumbnailUrl: videoThumbnail,
-          renderLargerThumbnail: false,
-          showAdAttribution: true
-        },
-        forwardingScore: 999,
-        isForwarded: false,
-        stanzaId: "CMD" + Date.now(),
-        participant: conn.user?.id
-      };
-
-      // Send audio stream with enhanced context
+      // Send audio stream with your menu-style context
       await conn.sendMessage(from, {
         audio: { url: downloadUrl },
         mimetype: "audio/mpeg",
         fileName,
         ptt: false,
-        contextInfo: contextInfo
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: 200,
+          },
+          externalAdReply: {
+            title: `🎵 ${videoTitle}`,
+            body: 'YouTube Audio - Powered by BrenaldMedia',
+            thumbnailUrl: videoThumbnail,
+            sourceUrl: videoUrl,
+            mediaType: 1
+          }
+        }
       }, { quoted: mek });
 
-      // Send document stream with enhanced context
+      // Send document stream with your menu-style context
       await conn.sendMessage(from, {
         document: { url: downloadUrl },
         mimetype: "audio/mpeg",
         fileName,
         contextInfo: {
-          externalAdReply: {
-            ...contextInfo.externalAdReply,
-            body: 'Document version - Powered by Brenaldmedia'
-          },
           forwardingScore: 999,
-          isForwarded: false,
-          stanzaId: "DOC" + Date.now(),
-          participant: conn.user?.id
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: 200,
+          },
+          externalAdReply: {
+            title: `📁 ${videoTitle}`,
+            body: 'Document Version - Powered by BrenaldMedia',
+            thumbnailUrl: videoThumbnail,
+            sourceUrl: videoUrl,
+            mediaType: 1
+          }
         }
       }, { quoted: mek });
 
@@ -103,11 +107,22 @@ module.exports = {
 
     } catch (error) {
       console.error("❌ Play command error:", error.message);
-      if (error.code === "ECONNABORTED") {
-        await reply("❌ Request timeout. Please try again.");
-      } else {
-        await reply("❌ API error. Please try another song or check your link.");
-      }
+      
+      // Send error with your menu-style context
+      await conn.sendMessage(from, { 
+        text: error.code === "ECONNABORTED" ? 
+          "❌ Request timeout. Please try again." : 
+          "❌ API error. Please try another song or check your link.",
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: 200,
+          }
+        }
+      }, { quoted: mek });
     }
   }
 };

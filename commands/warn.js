@@ -158,7 +158,7 @@ module.exports = {
           externalAdReply: {
             title: "⚠️ Warning System",
             body: `@${userName} warned (${newWarnings}/${maxWarnings})`,
-            thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+            thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
             sourceUrl: "https://github.com/Brenaldmedia/Tracle",
             mediaType: 1
           }
@@ -195,7 +195,7 @@ module.exports = {
           externalAdReply: {
             title: "Warning Failed",
             body: errorMessage.substring(0, 20) + "...",
-            thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+            thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
             sourceUrl: "https://github.com/Brenaldmedia/Tracle",
             mediaType: 1
           }

@@ -4,24 +4,50 @@ module.exports = {
     description: "Show bank details",
     tags: ["bank"],
     
-    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
+    async execute(conn, message, m, context) {
         try {
-            const userSettings = require('../server').getUserSettings(sessionId);
+            const { reply, userSettings, sendMessageWithContext, BOT_NAME, MENU_IMAGE_URL, REPO_LINK } = context;
             
-            await reply(`🏦 *BANK ACCOUNT DETAILS*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\nThese are the owner's bank details for transactions.`, {
+            // Format the bank details with your desired ASCII art style
+            const bankMessage = `
+￣￣￣￣￣￣￣￣￣￣￣￣￣￣
+       🏦  *${userSettings.bankName || "ZENITH Bank"}*
+           *${userSettings.accountName || "EMMANUEL ISIBOR"}* 
+                        ↓↓↓
+             *${userSettings.accountNumber || "2126335411"}*  
+       
+＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿
+                     \\(•◡•)/ 
+                       \\   / 
+                        ──
+                        |   |
+                        |_  |_
+            
+            `;
+
+            await sendMessageWithContext(conn, message.key.remoteJid, bankMessage, {
+                quoted: message,
+                externalAdReply: {
+                    title: "🏦 Bank Account Details",
+                    body: `${userSettings.bankName || "ZENITH Bank"} • ${userSettings.accountName || "EMMANUEL ISIBOR"}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                },
                 contextInfo: {
-                    externalAdReply: {
-                        title: "🏦 Bank Details",
-                        body: `${userSettings.bankName} - ${userSettings.accountName}`,
-                        thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
-                        sourceUrl: require('../server').REPO_LINK,
-                        mediaType: 1
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363401559573199@newsletter",
+                        newsletterName: "BrenaldMedia",
+                        serverMessageId: -1,
                     }
                 }
             });
+            
         } catch (error) {
             console.error("Error in bank command:", error);
-            await reply(`❌ Error: ${error.message}`);
+            await reply(`❌ Error fetching bank details: ${error.message}`);
         }
     }
 };

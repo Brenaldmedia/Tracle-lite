@@ -18,12 +18,15 @@
     "token": "Tracle_b0czU3RTO3F",
     "tokenGenerated": "2025-12-06T20:50:15.439Z",
     "paymentUpdated": "2025-12-06T20:50:15.437Z",
-    "lastTokenActivity": "2025-12-17T12:20:16.938Z",
-    "lastUpdated": "2025-12-17T12:20:16.938Z",
+    "lastTokenActivity": "2025-12-25T10:30:45.344Z",
+    "lastUpdated": "2025-12-25T10:30:45.344Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
-    "freeToken": false
+    "freeToken": false,
+    "maxSessions": 50,
+    "grantType": "paid",
+    "grantUpdated": "2025-12-23T17:07:27.199Z"
   },
   "danieladeyi001@gmail.com": {
     "email": "danieladeyi001@gmail.com",
@@ -580,5 +583,38 @@
     "amountPaid": 0,
     "freeToken": false,
     "lastTokenActivity": "2025-12-12T09:35:32.625Z"
+  },
+  "brenaldmedia3@gmail.com": {
+    "email": "brenaldmedia3@gmail.com",
+    "firstRequest": "2025-12-23T23:49:06.523Z",
+    "lastRequest": "2025-12-23T23:53:05.546Z",
+    "totalRequests": 2,
+    "ipAddresses": [
+      "::1"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "approved",
+    "paid": false,
+    "token": null,
+    "tokenGenerated": null,
+    "createdAt": "2025-12-23T23:49:06.524Z",
+    "lastUpdated": "2025-12-23T23:57:26.216Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 1000,
+    "freeToken": true,
+    "paymentUpdated": "2025-12-23T23:55:08.301Z",
+    "paymentDate": "2025-12-23T23:55:18.504Z",
+    "maxSessions": 2,
+    "grantType": "free",
+    "grantUpdated": "2025-12-23T23:57:26.204Z"
   }
 }

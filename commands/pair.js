@@ -15,7 +15,7 @@ module.exports = {
             const userNumber = from.split('@')[0];
             const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
             const APP_URL = process.env.APP_URL || "https://tracle-57a788202c97.herokuapp.com/";
-            const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/m3o9wj.jpg";
+            const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/zlu6dx.jpg";
             
             // Check if user already has a session - FIXED: Get activeConnections from server properly
             const mainSessionPath = path.join(__dirname, '../sessions', userNumber);
@@ -145,7 +145,7 @@ module.exports = {
                     externalAdReply: {
                         title: "❌ Connection Error",
                         body: "Visit link manually",
-                        thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+                        thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
                         sourceUrl: APP_URL,
                         mediaType: 1
                     }

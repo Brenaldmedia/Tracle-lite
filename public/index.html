@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tracle-Lite Pro - Advanced WhatsApp Bot</title>
+      <link rel="icon" type="image/x-icon" href="/images/favicon.jpg">
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -22,6 +23,36 @@
             <div class="modal-footer">
                 <button class="modal-btn secondary" onclick="closeModal()">Cancel</button>
                 <button class="modal-btn primary" id="modalConfirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Application Modal -->
+    <div class="custom-modal hidden" id="adminApplicationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-shield"></i> Application Submitted</h3>
+                <button class="modal-close" onclick="closeAdminApplicationModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <h4>Application Submitted Successfully!</h4>
+                    <p>Your admin application has been received.</p>
+                    <p><strong>Please contact the Tracle-Lite admin to complete your application:</strong></p>
+                    <div class="admin-contact-details">
+                        <p><i class="fas fa-envelope"></i> <strong>Email:</strong> brenaldmedia@gmail.com</p>
+                        <p><i class="fab fa-whatsapp"></i> <strong>WhatsApp:</strong> +234 815 022 1529</p>
+                        <p><i class="fab fa-telegram"></i> <strong>Telegram:</strong> @Brenaldmedia</p>
+                    </div>
+                    <div class="application-note">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Make sure to mention you've submitted an admin application.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn primary" onclick="closeAdminApplicationModal()">OK</button>
             </div>
         </div>
     </div>
@@ -67,6 +98,12 @@
             <div class="nav-item" data-section="sessions">
                 <i class="fas fa-link"></i>
                 <span>My Sessions</span>
+            </div>
+
+            <!-- Admin Application Menu Item -->
+            <div class="nav-item" data-section="adminApplication">
+                <i class="fas fa-user-shield"></i>
+                <span>Become Admin</span>
             </div>
 
             <div class="nav-item" onclick="window.open('admin.html', '_blank')">
@@ -294,6 +331,79 @@
                     </button>
                 </div>
             </section>
+
+          <!-- ADMIN APPLICATION SECTION -->
+<section class="content-section" id="adminApplicationSection">
+    <div class="section-header">
+        <h2><i class="fas fa-user-shield"></i> Admin Application Form</h2>
+        <p>Apply to become a Tracle-Lite Administrator</p>
+    </div>
+
+    <div class="application-card">
+        <div class="application-form">
+            <div class="input-group">
+                <div class="input-icon"><i class="fas fa-user"></i></div>
+                <input type="text" id="adminName" placeholder="Full Name" required>
+            </div>
+
+            <div class="input-group">
+                <div class="input-icon"><i class="fas fa-phone"></i></div>
+                <input type="tel" id="adminPhone" placeholder="Phone Number (with country code)" required>
+            </div>
+
+            <div class="input-group">
+                <div class="input-icon"><i class="fas fa-envelope"></i></div>
+                <input type="email" id="adminEmail" placeholder="Email Address" required>
+            </div>
+
+     <div class="input-group">
+                <div class="input-icon"><i class="fas fa-globe"></i></div>
+                <input type="text" id="adminCountry" placeholder="Enter your country (e.g., Nigeria, Russia, etc.)" required>
+            </div>
+
+            <div class="input-group full-width">
+                <div class="input-icon"><i class="fas fa-file-alt"></i></div>
+                <textarea id="adminReason" placeholder="Why do you want to be an admin? (Maximum 100 words)" rows="5" required></textarea>
+                <div class="char-count">
+                    <span id="charCount">0</span> / 100 characters minimum
+                </div>
+            </div>
+
+            <button class="primary-btn" onclick="submitAdminApplication()" id="submitApplicationBtn">
+                <i class="fas fa-paper-plane"></i> Submit Application
+            </button>
+
+            <div class="application-note">
+                <i class="fas fa-info-circle"></i>
+                <p>After submission, please contact the admin to complete your application process.</p>
+            </div>
+        </div>
+
+        <div class="application-info">
+            <div class="info-card">
+                <i class="fas fa-shield-alt"></i>
+                <h4>Admin Responsibilities</h4>
+                <ul>
+                    <li>Manage user token requests</li>
+                    <li>Monitor system activity</li>
+                    <li>Provide user support</li>
+                    <li>Review applications</li>
+                </ul>
+            </div>
+
+            <div class="info-card">
+                <i class="fas fa-question-circle"></i>
+                <h4>Requirements</h4>
+                <ul>
+                    <li>Active Tracle-Lite user</li>
+                    <li>Good communication skills</li>
+                    <li>Available for support</li>
+                    <li>Technical knowledge preferred</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
 
         </div>
     </main>

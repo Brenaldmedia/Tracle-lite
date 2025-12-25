@@ -1,48 +1,51 @@
 module.exports = {
-    pattern: "setbotname",
-    name: "setbotname",
-    description: "Set bot name",
-    tags: ["customization"],
+    name: 'setbotname',
+    description: 'Set bot name',
+    category: 'Settings',
     ownerOnly: true,
     
-    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
-        try {
-            const { PREFIX, userPrefixes, updateUserSettings, BOT_NAME } = require('../server');
-            const userSettings = require('../server').getUserSettings(sessionId);
-            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+    async execute(sock, message, m, context) {
+        const args = context.args || [];
+        const userSettings = context.userSettings || {};
+        const userPrefix = context.userPrefix || context.PREFIX;
+        
+        if (!args.length) {
+            const text = `🤖 *Bot Name Settings*\n\n` +
+                        `Current: ${userSettings.botName || context.BOT_NAME}\n\n` +
+                        `Usage: ${userPrefix}setbotname [name]\n\n` +
+                        `Example: ${userPrefix}setbotname "TRACLE - LITE"`;
             
-            if (args.length === 0) {
-                await reply(`🤖 *SET BOT NAME*\n\nUsage:\n• ${userPrefix}setbotname [new bot name]\n\nExample: ${userPrefix}setbotname MyBot\n\nCurrent: ${userSettings.botName || BOT_NAME}`, {
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🤖 Set Bot Name",
-                            body: "Change bot display name",
-                            thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
-                            sourceUrl: require('../server').REPO_LINK,
-                            mediaType: 1
-                        }
-                    }
-                });
-                return;
-            }
-
-            const newBotName = args.join(' ');
-            updateUserSettings(sessionId, { botName: newBotName });
-            
-            await reply(`✅ Bot name updated to: *${newBotName}*`, {
-                contextInfo: {
-                    externalAdReply: {
-                        title: "🤖 Bot Name Updated",
-                        body: `Set to: ${newBotName}`,
-                        thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
-                        sourceUrl: require('../server').REPO_LINK,
-                        mediaType: 1
-                    }
+            return await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Bot Name Settings",
+                    body: `Current: ${userSettings.botName || context.BOT_NAME}`,
+                    thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                    sourceUrl: context.REPO_LINK,
+                    mediaType: 1
                 }
             });
-        } catch (error) {
-            console.error("Error in setbotname command:", error);
-            await reply(`❌ Error: ${error.message}`);
         }
+        
+        const newBotName = args.join(' ');
+        
+        // Update settings
+        context.updateUserSettings({ botName: newBotName });
+        
+        const text = `✅ *Bot Name Updated*\n\n` +
+                    `• Previous: ${userSettings.botName || context.BOT_NAME}\n` +
+                    `• New: ${newBotName}\n\n` +
+                    `This name will be shown in menu and all messages.`;
+        
+        await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
+            quoted: message,
+            externalAdReply: {
+                title: "Bot Name Changed",
+                body: `New: ${newBotName}`,
+                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                sourceUrl: context.REPO_LINK,
+                mediaType: 1
+            }
+        });
     }
 };

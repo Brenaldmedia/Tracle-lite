@@ -53,7 +53,7 @@ module.exports = {
           externalAdReply: {
             title: "🎬 YouTube Search",
             body: `Results for: ${q}`,
-            thumbnailUrl: videos[0]?.thumbnail || "https://files.catbox.moe/m3o9wj.jpg",
+            thumbnailUrl: videos[0]?.thumbnail || "https://files.catbox.moe/zlu6dx.jpg",
             sourceUrl: "https://youtube.com",
             mediaType: 1
           }
@@ -104,7 +104,7 @@ module.exports = {
               externalAdReply: {
                 title: "🎬 YouTube (Fallback)",
                 body: `Results for: ${q}`,
-                thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+                thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
                 sourceUrl: "https://youtube.com",
                 mediaType: 1
               }

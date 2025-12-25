@@ -15,12 +15,12 @@ module.exports = {
         {
           text,
           contextInfo: {
-            forwardingScore: 999,
+            forwardingScore: 1,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
               newsletterJid: "120363401559573199@newsletter",
               newsletterName: "BrenaldMedia",
-              serverMessageId: 200,
+              serverMessageId: -1,
             },
           },
         },
@@ -49,12 +49,16 @@ module.exports = {
       // 3) Detect media type & node
       let mediaNode = null;
       let mediaType = null;
+      let originalCaption = "";
+      
       if (quotedMsg.imageMessage) {
         mediaNode = quotedMsg.imageMessage;
         mediaType = "image";
+        originalCaption = mediaNode.caption || "";
       } else if (quotedMsg.videoMessage) {
         mediaNode = quotedMsg.videoMessage;
         mediaType = "video";
+        originalCaption = mediaNode.caption || "";
       } else if (quotedMsg.audioMessage) {
         mediaNode = quotedMsg.audioMessage;
         mediaType = "audio";
@@ -89,22 +93,21 @@ module.exports = {
         );
       }
 
-      // 5) Prepare message content based on media type
+      // 5) Prepare message content with original caption
       let messageContent = {};
-      const caption = quotedMsg.caption || "";
 
       switch (mediaType) {
         case "image":
           messageContent = {
             image: buffer,
-            caption: caption || "📸 Saved Image",
+            caption: originalCaption, // Preserve original caption
             mimetype: mediaNode.mimetype || "image/jpeg"
           };
           break;
         case "video":
           messageContent = {
             video: buffer,
-            caption: caption || "🎥 Saved Video",
+            caption: originalCaption, // Preserve original caption
             mimetype: mediaNode.mimetype || "video/mp4"
           };
           break;
@@ -124,16 +127,10 @@ module.exports = {
           break;
       }
 
-      // 6) Send the media back to user
+      // 6) Send the media back to user with original caption - NO SUCCESS MESSAGE
       await conn.sendMessage(from, messageContent, { quoted: message });
 
-      // 7) Send confirmation message
-      await sendMessageWithContext(
-        `✅ Media saved successfully!\n` +
-        `📁 Type: ${mediaType.toUpperCase()}\n` +
-        `💾 Size: ${formatBytes(buffer.length)}\n\n` +
-        `> © Saved by *TRACLE - LITE* 💜`
-      );
+      // REMOVED: Success message send
 
     } catch (err) {
       console.error("Save execution error:", err);
@@ -143,11 +140,3 @@ module.exports = {
     }
   },
 };
-
-function formatBytes(bytes) {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-}

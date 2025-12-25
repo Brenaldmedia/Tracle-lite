@@ -21,7 +21,7 @@ module.exports = {
                     externalAdReply: {
                         title: "🆔 JID Information",
                         body: "BrenaldMedia",
-                        thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
+                        thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
                         sourceUrl: "https://github.com/Brenaldmedia/Tracle",  
                         mediaType: 1,
                         renderLargerThumbnail: true

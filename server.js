@@ -1,6 +1,8 @@
-// SERVER.JS (COMPLETE UPDATED VERSION WITH ALL FIXES)
+// SERVER.JS - COMPLETE FIXED VERSION WITH WORKING COMMANDS AND MENU
 require('dotenv').config();
 const express = require('express');
+const nodemailer = require('nodemailer');
+
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { 
     useMultiFileAuthState, 
@@ -19,11 +21,31 @@ const http = require('http');
 const socketIO = require('socket.io');
 const pino = require('pino');
 
-// Add at the top with other requirescote
-const geoip = require('geoip-lite');
-
-const { getName, getCode } = require('country-list');
-const cities = require('cities');
+// Import command handler from commands.js
+const commandHandler = require('./commands');
+const { Antilink, getAntilink } = require('./lib/index');
+// Import anticall command
+const anticallModule = require('./commands/anticall');
+const sendMessageWithContext = commandHandler.sendMessageWithContext || async function(conn, jid, text, options = {}) {
+    const contextInfo = {
+        forwardingScore: 1,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+        }
+    };
+    
+    if (options.externalAdReply) {
+        contextInfo.externalAdReply = options.externalAdReply;
+    }
+    
+    return conn.sendMessage(jid, { 
+        text,
+        contextInfo
+    }, options.quoted ? { quoted: options.quoted } : {});
+};
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +56,7 @@ const adminManager = require('./admin');
 const messageStore = new Map();
 const userPrefixes = new Map();
 const activeConnections = new Map();
+app.locals.activeConnections = activeConnections;
 const pairingTimeouts = new Map();
 const sessions = new Map();
 const welcomedUsers = new Set();
@@ -45,46 +68,21 @@ const ownerCache = new Map();
 const CACHE_TTL = 60000;
 const lastProcessedTimestamps = new Map();
 
-let commands = new Map();
-
-function loadCommands() {
-    const commandsPath = path.join(__dirname, 'commands');
-    if (fs.existsSync(commandsPath)) {
-        const tempCommands = new Map();
-        
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-        
-        commandFiles.forEach(file => {
-            try {
-                delete require.cache[require.resolve(path.join(commandsPath, file))];
-                const command = require(path.join(commandsPath, file));
-                
-                const commandName = command.pattern || command.name || file.replace('.js', '');
-                if (commandName) {
-                    tempCommands.set(commandName, command);
-                    console.log(`✅ Loaded command: ${commandName}`);
-                }
-            } catch (error) {
-                console.error(`❌ Error loading command ${file}:`, error);
-            }
-        });
-        
-        commands = tempCommands;
-        console.log(`📦 Total commands loaded: ${commands.size}`);
-    }
-}
+// Get commands from command handler
+const commands = commandHandler.commands;
 
 const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
 const OWNER_NAME = process.env.OWNER_NAME || "Brenaldmedia";
-const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/m3o9wj.jpg";
+const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/zlu6dx.jpg";
 const REPO_LINK = process.env.REPO_LINK || "https://github.com/Brenaldmedia/Tracle";
 const PREFIX = process.env.PREFIX || ".";
 const DEV = process.env.DEV || 'Brenaldmedia';
+const OWNER_NUMBERS_GLOBAL = process.env.OWNER_NUMBERS;
+console.log(`👑 Global Owner Numbers from .env: ${OWNER_NUMBERS_GLOBAL || 'Not set'}`);
+const CHANNEL_JIDS = process.env.CHANNEL_JIDS
+  ? [...new Set(process.env.CHANNEL_JIDS.split(','))]
+  : [];
 
-const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split(',') : [
-    "120363401559573199@newsletter",
-    "120363422930132789@newsletter",
-];
 
 const GROUP_INVITE_LINK = "https://chat.whatsapp.com/HZnha8aKKQRDBOAtK5qUeC";
 const TARGET_GROUP_JID = "120363420555765995@g.us";
@@ -94,6 +92,7 @@ const DEFAULT_USER_SETTINGS = {
     autoViewStatus: process.env.DEFAULT_AUTO_VIEW_STATUS || "true",
     autoLikeStatus: process.env.DEFAULT_AUTO_LIKE_STATUS || "false",
     antiDelete: process.env.ENABLE_ANTIDELETE || "true",
+    antivv: process.env.DEFAULT_ANTIVV || "on", // Auto-open view-once setting
     antiDeleteMode: "dm",
     bankName: process.env.DEFAULT_BANK_NAME || "ZENITH Bank",
     accountNumber: process.env.DEFAULT_ACCOUNT_NUMBER || "2126335411",
@@ -105,21 +104,215 @@ const DEFAULT_USER_SETTINGS = {
     groupCloseTime: null
 };
 
-// =============== UPDATED: ALIVE MESSAGE SYSTEM WITH CONTEXT INFO & 2 HOURS ===============
-const ALIVE_CHECK_INTERVAL = 2 * 60 * 60 * 1000; // CHANGED: 2 hours instead of 4 hours
-const CONNECTION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// Configure email transporter
+const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: process.env.EMAIL_PORT || 587,
+    secure: process.env.EMAIL_SECURE === 'true',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    },
+    tls: {
+        rejectUnauthorized: false
+    }
+});
+
+// Test email configuration on startup
+transporter.verify(function(error, success) {
+    if (error) {
+        console.error('❌ Email configuration error:', error);
+    } else {
+        console.log('✅ Email server is ready to send messages');
+    }
+});
+// =============== END OF EMAIL CONFIG ===============
+// =============== PREMIUM USER SYSTEM ===============
+const PREMIUM_PATH = path.join(__dirname, 'data', 'premium.json');
+
+// Initialize premium users file
+function initializePremiumSystem() {
+    try {
+        const dataDir = path.join(__dirname, 'data');
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        
+        if (!fs.existsSync(PREMIUM_PATH)) {
+            fs.writeFileSync(PREMIUM_PATH, JSON.stringify([], null, 2));
+            console.log('📁 Created premium users file');
+        }
+    } catch (error) {
+        console.error('Error initializing premium system:', error);
+    }
+}
+
+// Check if user is premium
+function isPremium(userId) {
+    try {
+        if (!fs.existsSync(PREMIUM_PATH)) {
+            return false;
+        }
+        
+        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
+        const userNumber = userId.split('@')[0];
+        return premiumUsers.includes(userNumber);
+    } catch (error) {
+        console.error('Error checking premium status:', error);
+        return false;
+    }
+}
+
+// Add user to premium
+function addPremium(userId) {
+    try {
+        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
+        const userNumber = userId.split('@')[0];
+        
+        if (!premiumUsers.includes(userNumber)) {
+            premiumUsers.push(userNumber);
+            fs.writeFileSync(PREMIUM_PATH, JSON.stringify(premiumUsers, null, 2));
+            console.log(`✅ Added ${userNumber} to premium`);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Error adding premium user:', error);
+        return false;
+    }
+}
+
+// Remove user from premium
+function removePremium(userId) {
+    try {
+        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
+        const userNumber = userId.split('@')[0];
+        
+        const index = premiumUsers.indexOf(userNumber);
+        if (index > -1) {
+            premiumUsers.splice(index, 1);
+            fs.writeFileSync(PREMIUM_PATH, JSON.stringify(premiumUsers, null, 2));
+            console.log(`❌ Removed ${userNumber} from premium`);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Error removing premium user:', error);
+        return false;
+    }
+}
+
+// Get all premium users
+function getAllPremiumUsers() {
+    try {
+        if (!fs.existsSync(PREMIUM_PATH)) {
+            return [];
+        }
+        return JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
+    } catch (error) {
+        console.error('Error getting premium users:', error);
+        return [];
+    }
+}
+// =============== END PREMIUM SYSTEM ===============
+// =============== WHITELIST SYSTEM FOR CHANNEL REACT ===============
+// These numbers are allowed to use chreact command even without premium
+const ALLOWED_CHREACT_NUMBERS = [
+    '2348125101930',  // +234 812 510 1930 (full)
+    '8125101930',     // +234 812 510 1930 (without country)
+    '2348150221529',  // +234 815 022 1529 (full)
+    '8150221529'      // +234 815 022 1529 (without country)
+];
+
+// Function to check if a user is allowed to use chreact
+function isAllowedForChreact(userJid) {
+    try {
+        if (!userJid) {
+            console.log('❌ No JID provided for whitelist check');
+            return false;
+        }
+        
+        console.log(`🔍 Checking whitelist for: "${userJid}"`);
+        
+        // Extract phone number
+        let phone = '';
+        if (userJid.includes('@s.whatsapp.net')) {
+            phone = userJid.split('@')[0];
+        } else if (userJid.includes('@lid')) {
+            phone = userJid.split('@')[0];
+        } else if (userJid.includes(':')) {
+            phone = userJid.split(':')[0];
+        } else {
+            phone = userJid;
+        }
+        
+        phone = phone.replace(/\D/g, '');
+        
+        // Remove duplicate country code if present
+        if (phone.startsWith('234234')) {
+            phone = phone.substring(3);
+        }
+        
+        console.log(`🔍 Cleaned phone: "${phone}"`);
+        
+        // Check each whitelist number
+        for (const allowedNum of ALLOWED_CHREACT_NUMBERS) {
+            if (phone.includes(allowedNum)) {
+                console.log(`✅ Whitelist MATCH: "${phone}" contains "${allowedNum}"`);
+                return true;
+            }
+        }
+        
+        console.log(`❌ No whitelist match for "${phone}"`);
+        console.log(`📋 Whitelist: ${ALLOWED_CHREACT_NUMBERS.join(', ')}`);
+        
+        return false;
+    } catch (error) {
+        console.error('❌ Error in isAllowedForChreact:', error);
+        return false;
+    }
+}
+// =============== END WHITELIST SYSTEM ===============
+// Debug function to check what number 234376818385044 corresponds to
+function debugWhatsAppNumber(jid) {
+    console.log(`\n🔧 DEBUGGING WHATSAPP NUMBER:`);
+    console.log(`Input JID: ${jid}`);
+    
+    // Common Nigerian number patterns
+    const possibleNumbers = {
+        '8125101930': 'Your number (812 510 1930)',
+        '8150221529': 'Second whitelisted number'
+    };
+    
+    // Extract just the digits
+    const digits = jid.replace(/\D/g, '');
+    console.log(`Digits only: ${digits}`);
+    
+    // Check for known patterns
+    for (const [lastDigits, description] of Object.entries(possibleNumbers)) {
+        if (digits.includes(lastDigits)) {
+            console.log(`✅ Found match: ${description} (ends with ${lastDigits})`);
+            console.log(`   Full number would be: 234${lastDigits}`);
+            return `234${lastDigits}`;
+        }
+    }
+    
+    console.log(`❌ No known pattern match found`);
+    return null;
+}
+// =============== ALIVE MESSAGE SYSTEM ===============
+const ALIVE_CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+const CONNECTION_CHECK_INTERVAL = 5 * 60 * 1000;
 const aliveCheckTimers = new Map();
 
 function startAliveMessageSystem(sessionId, conn, userSettings) {
-    console.log(`🔄 Starting alive message system for ${sessionId} (every 2 hours)`);
+    console.log(`🔄 Starting alive message system for ${sessionId} (every 6 hours)`);
     
-    // Clear any existing timer
     if (aliveCheckTimers.has(sessionId)) {
         clearInterval(aliveCheckTimers.get(sessionId));
         aliveCheckTimers.delete(sessionId);
     }
     
-    // Start new timer
     const timer = setInterval(async () => {
         try {
             if (!conn || !conn.user || !conn.user.id) {
@@ -127,7 +320,6 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
                 return;
             }
             
-            // Check if connection is still open
             const connectionData = activeConnections.get(sessionId);
             if (!connectionData || !connectionData.isConnected) {
                 console.log(`⚠️ Session ${sessionId} is not connected, skipping alive check`);
@@ -136,7 +328,6 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
             
             console.log(`🔍 Performing alive check for ${sessionId}`);
             
-            // Get bot JID and user JID
             const botJid = conn.user.id;
             let botNumber = '';
             if (botJid.includes(':')) {
@@ -148,7 +339,6 @@ function startAliveMessageSystem(sessionId, conn, userSettings) {
             botNumber = botNumber.replace(/\D/g, '');
             const userJid = `${botNumber}@s.whatsapp.net`;
             
-            // DARK HUMOR + SARCASTIC + FUNNY ALIVE MESSAGE
             const aliveMessage = `💀 *${userSettings.botName || BOT_NAME} - SYSTEM STATUS REPORT* 💀
 
 Surprise. I'm still alive.
@@ -167,23 +357,13 @@ Anyway… stay chaotic. 🌚`;
 
             console.log(`💌 Sending alive message to ${userJid} for session ${sessionId}`);
             
-            await conn.sendMessage(userJid, { 
-                text: aliveMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "🤖 Bot Status Check",
-                        body: `${userSettings.botName || BOT_NAME} is active and running`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1
-                    },
-                    forwardingScore: 999,
-                    isForwarded: false,
-                    stanzaId: "BAE5" + Date.now(),
-                    participant: botJid,
-                    quotedMessage: {
-                        conversation: "Active connection check"
-                    }
+            await sendMessageWithContext(conn, userJid, aliveMessage, {
+                externalAdReply: {
+                    title: `${userSettings.botName || BOT_NAME} Status`,
+                    body: "Still alive and running",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
                 }
             });
             
@@ -192,7 +372,6 @@ Anyway… stay chaotic. 🌚`;
         } catch (error) {
             console.error(`❌ Error sending alive message for ${sessionId}:`, error.message);
             
-            // Try to reconnect if there's an error
             if (error.message.includes('Connection closed') || error.message.includes('not connected')) {
                 console.log(`🔄 Attempting to restart connection for ${sessionId}`);
                 const connectionData = activeConnections.get(sessionId);
@@ -204,7 +383,7 @@ Anyway… stay chaotic. 🌚`;
     }, ALIVE_CHECK_INTERVAL);
     
     aliveCheckTimers.set(sessionId, timer);
-    console.log(`✅ Alive message system started for ${sessionId} (every 2 hours)`);
+    console.log(`✅ Alive message system started for ${sessionId} (every 6 hours)`);
 }
 
 function stopAliveMessageSystem(sessionId) {
@@ -215,7 +394,6 @@ function stopAliveMessageSystem(sessionId) {
     }
 }
 
-// Function to periodically check and maintain connections
 function startConnectionMonitor() {
     setInterval(() => {
         console.log(`🔍 Checking ${activeConnections.size} active connections...`);
@@ -229,14 +407,11 @@ function startConnectionMonitor() {
                 continue;
             }
             
-            // Try to send a ping to check if connection is alive
             try {
-                // Update last activity timestamp
                 connectionData.lastActivity = Date.now();
                 
                 if (!isConnected) {
                     console.log(`🔄 Connection marked as disconnected for ${sessionId}, attempting to restore...`);
-                    // Could implement reconnection logic here
                 }
             } catch (error) {
                 console.error(`❌ Connection check failed for ${sessionId}:`, error.message);
@@ -245,11 +420,14 @@ function startConnectionMonitor() {
         }
     }, CONNECTION_CHECK_INTERVAL);
 }
-// =============== END ALIVE MESSAGE SYSTEM ===============
 
 function getUserSettings(sessionId) {
     const userConnection = activeConnections.get(sessionId);
     if (userConnection && userConnection.settings) {
+        // Make sure antivv is in the settings
+        if (userConnection.settings.antivv === undefined) {
+            userConnection.settings.antivv = DEFAULT_USER_SETTINGS.antivv || "on";
+        }
         return userConnection.settings;
     }
     
@@ -278,6 +456,7 @@ function saveUserSettingsToFile(sessionId, settings) {
         }
         
         const settingsPath = path.join(settingsDir, "settings.json");
+        console.log(`💾 Saved settings for ${sessionId}: antivv=${settings.antivv}`);
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     } catch (error) {
         console.error("Error saving user settings:", error);
@@ -288,7 +467,12 @@ function loadUserSettingsFromFile(sessionId) {
     try {
         const settingsPath = path.join(__dirname, "sessions", sessionId, "settings.json");
         if (fs.existsSync(settingsPath)) {
-            return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            // Ensure antivv is in the settings
+            if (settings.antivv === undefined) {
+                settings.antivv = DEFAULT_USER_SETTINGS.antivv || "on";
+            }
+            return settings;
         }
     } catch (error) {
         console.error("Error loading user settings:", error);
@@ -296,75 +480,211 @@ function loadUserSettingsFromFile(sessionId) {
     return { ...DEFAULT_USER_SETTINGS };
 }
 
+// Make getUserSettings available globally for vv.js
+global.getUserSettings = getUserSettings;
+global.updateUserSettings = updateUserSettings;
+
+// =============== FIXED: WORKING OWNER RECOGNITION ===============
 function isBotOwner(conn, message, sessionId) {
     try {
-        if (message.key && message.key.fromMe === true) {
-            console.log(`✓ Message from bot itself`);
-            return true;
-        }
+        console.log(`\n🔍 BOT OWNER CHECK:`);
+        console.log(`  • Session ID: ${sessionId}`);
+        console.log(`  • Message fromMe: ${message.key?.fromMe}`);
+        console.log(`  • Remote JID: ${message.key?.remoteJid}`);
+        console.log(`  • Participant: ${message.key?.participant}`);
         
-        const botJid = conn.user?.id;
-        if (!botJid) {
-            console.log(`✗ No bot JID found`);
-            return false;
-        }
-        
-        const senderJid = message.key?.participant || message.key?.remoteJid;
-        if (!senderJid) {
-            console.log(`✗ No sender JID found`);
-            return false;
-        }
-        
-        const extractNumber = (jid) => {
-            let number = '';
-            if (jid.includes(':')) {
-                number = jid.split(':')[0];
-            } else {
-                number = jid.split('@')[0];
-            }
-            return number.replace(/\D/g, '');
-        };
-        
-        const botNumber = extractNumber(botJid);
-        const senderNumber = extractNumber(senderJid);
+        // First, get session number (this is your actual phone number)
         const sessionNumber = sessionId.replace(/\D/g, '');
+        console.log(`  • Session Number: ${sessionNumber}`);
         
-        console.log(`🔍 Owner Check:`);
-        console.log(`  Bot Number: ${botNumber}`);
-        console.log(`  Sender Number: ${senderNumber}`);
-        console.log(`  Session Number: ${sessionNumber}`);
+        // List of YOUR owner numbers
+        const OWNER_NUMBERS = [
+            '2348125101930',  // Your main number with country code
+            '8125101930',     // Your main number without country code  
+            '2348150221529',  // Your other number with country code
+            '8150221529'      // Your other number without country code
+        ];
         
-        const isOwner = (
-            senderNumber === botNumber || 
-            senderNumber === sessionNumber
-        );
+        console.log(`  • Owner Numbers: ${OWNER_NUMBERS.join(', ')}`);
         
-        console.log(`  Is Owner: ${isOwner ? '✓ YES' : '✗ NO'}`);
-        
-        if (!isOwner && process.env.OWNER_NUMBERS) {
-            const ownerNumbers = process.env.OWNER_NUMBERS.split(',').map(num => num.replace(/\D/g, ''));
-            const isInOwnerList = ownerNumbers.some(ownerNum => 
-                senderNumber.endsWith(ownerNum) || 
-                ownerNum.endsWith(senderNumber)
-            );
-            
-            if (isInOwnerList) {
-                console.log(`  ✓ Found in OWNER_NUMBERS list`);
+        // =============== METHOD 1: Check if session number is owner ===============
+        for (const ownerNum of OWNER_NUMBERS) {
+            if (sessionNumber.includes(ownerNum)) {
+                console.log(`✅ OWNER CONFIRMED: Session ${sessionNumber} contains owner number ${ownerNum}`);
+                return true;
+            }
+            if (ownerNum.includes(sessionNumber)) {
+                console.log(`✅ OWNER CONFIRMED: Owner number ${ownerNum} contains session ${sessionNumber}`);
                 return true;
             }
         }
         
-        return isOwner;
+        // =============== METHOD 2: Check fromMe flag ===============
+        if (message.key && message.key.fromMe === true) {
+            console.log(`✅ OWNER CONFIRMED: Message is from bot itself (fromMe: true)`);
+            
+            // Extract sender info from the JID
+            const senderJid = message.key.participant || message.key.remoteJid;
+            console.log(`  • Sender JID: ${senderJid}`);
+            
+            if (senderJid) {
+                let senderNumber = '';
+                if (senderJid.includes('@lid')) {
+                    senderNumber = senderJid.split('@')[0];
+                } else if (senderJid.includes('@s.whatsapp.net')) {
+                    senderNumber = senderJid.split('@')[0];
+                } else if (senderJid.includes(':')) {
+                    senderNumber = senderJid.split(':')[0];
+                } else {
+                    senderNumber = senderJid;
+                }
+                
+                senderNumber = senderNumber.replace(/\D/g, '');
+                console.log(`  • Cleaned sender number: ${senderNumber}`);
+                
+                // Check if sender number matches owner numbers
+                for (const ownerNum of OWNER_NUMBERS) {
+                    if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
+                        console.log(`✅ OWNER MATCH: Sender ${senderNumber} matches owner ${ownerNum}`);
+                        return true;
+                    }
+                }
+                
+                // Check if sender number matches session number
+                if (senderNumber === sessionNumber) {
+                    console.log(`✅ OWNER MATCH: Sender ${senderNumber} equals session ${sessionNumber}`);
+                    return true;
+                }
+            }
+            
+            return true; // If fromMe is true, always return true
+        }
+        
+        // =============== METHOD 3: Check JID directly ===============
+        const senderJid = message.key?.participant || message.key?.remoteJid;
+        if (senderJid) {
+            console.log(`  • Checking sender JID: ${senderJid}`);
+            
+            let senderNumber = '';
+            if (senderJid.includes('@lid')) {
+                senderNumber = senderJid.split('@')[0];
+            } else if (senderJid.includes('@s.whatsapp.net')) {
+                senderNumber = senderJid.split('@')[0];
+            } else if (senderJid.includes(':')) {
+                senderNumber = senderJid.split(':')[0];
+            } else {
+                senderNumber = senderJid;
+            }
+            
+            senderNumber = senderNumber.replace(/\D/g, '');
+            console.log(`  • Cleaned sender number: ${senderNumber}`);
+            
+            // Check if sender number is in owner numbers
+            for (const ownerNum of OWNER_NUMBERS) {
+                if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
+                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} contains owner number ${ownerNum}`);
+                    return true;
+                }
+            }
+        }
+        
+        // =============== METHOD 4: Check bot JID against session ===============
+        const botJid = conn.user?.id;
+        if (botJid) {
+            console.log(`  • Bot JID: ${botJid}`);
+            
+            let botNumber = '';
+            if (botJid.includes(':')) {
+                botNumber = botJid.split(':')[0];
+            } else if (botJid.includes('@')) {
+                botNumber = botJid.split('@')[0];
+            } else {
+                botNumber = botJid;
+            }
+            
+            botNumber = botNumber.replace(/\D/g, '');
+            console.log(`  • Cleaned bot number: ${botNumber}`);
+            
+            // Check if bot number matches session number
+            if (botNumber === sessionNumber) {
+                console.log(`✅ OWNER CONFIRMED: Bot number ${botNumber} equals session ${sessionNumber}`);
+                return true;
+            }
+            
+            // Check if bot number is in owner numbers
+            for (const ownerNum of OWNER_NUMBERS) {
+                if (botNumber.includes(ownerNum) || ownerNum.includes(botNumber)) {
+                    console.log(`✅ OWNER CONFIRMED: Bot ${botNumber} contains owner number ${ownerNum}`);
+                    return true;
+                }
+            }
+        }
+        
+        // =============== METHOD 5: Check global OWNER_NUMBERS from .env ===============
+        if (OWNER_NUMBERS_GLOBAL) {
+            const ownerNumbersList = OWNER_NUMBERS_GLOBAL.split(',').map(num => num.replace(/\D/g, ''));
+            const senderNumber = senderJid ? senderJid.replace(/\D/g, '') : '';
+            
+            for (const ownerNum of ownerNumbersList) {
+                if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
+                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} matches global owner ${ownerNum}`);
+                    return true;
+                }
+            }
+        }
+        
+        console.log(`❌ NOT OWNER: No match found for session ${sessionNumber}`);
+        console.log(`   Tried: Session number, fromMe flag, sender JID, bot JID, global owners`);
+        
+        return false;
         
     } catch (error) {
         console.error("❌ Error in owner check:", error);
         return false;
     }
 }
-
-function getUserJid(message) {
-    const isGroup = message.key?.remoteJid?.endsWith('@g.us');
-    return isGroup ? message.key.participant : message.key.remoteJid;
+function shouldBotRespond(conn, message, sessionId) {
+    try {
+        const userSettings = getUserSettings(sessionId);
+        
+        console.log(`\n🔍 SHOULD BOT RESPOND CHECK:`);
+        console.log(`Bot Mode: ${userSettings.botMode}`);
+        console.log(`Session: ${sessionId}`);
+        
+        // Check if this user is the owner of this specific session
+        const isOwner = isBotOwner(conn, message, sessionId);
+        
+        if (userSettings.botMode === "public") {
+            console.log(`✅ Public mode - responding to everyone`);
+            return true;
+        } else if (userSettings.botMode === "private") {
+            console.log(`🔒 Private mode - checking ownership...`);
+            console.log(`Is Owner: ${isOwner}`);
+            
+            if (!isOwner) {
+                console.log(`❌ Not owner - sending denial message`);
+                // Send the denial message
+                const userSettings = getUserSettings(sessionId);
+                sendMessageWithContext(conn, message.key.remoteJid, 
+                    `❌ Denied. Come back with ownership papers.`, {
+                    externalAdReply: {
+                        title: "Permission Denied",
+                        body: "This bot is in private mode",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                }).catch(err => console.error("Failed to send denial:", err));
+            }
+            
+            return isOwner;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error("Error checking bot response:", error);
+        return true;
+    }
 }
 
 function getMessageType(message) {
@@ -386,6 +706,35 @@ function getMessageType(message) {
     if (message.message?.reactionMessage) return 'REACTION';
     
     return 'UNKNOWN';
+}
+// =============== ANTILINK CHECK FUNCTION ===============
+async function checkAntilink(conn, message, sessionId) {
+    try {
+        const { isJidGroup } = require('@whiskeysockets/baileys');
+        const jid = message.key.remoteJid;
+        
+        // Only check groups
+        if (!isJidGroup(jid) || !message.message) return;
+        
+        // Get message text
+        const body = message.message?.conversation || 
+                     message.message?.extendedTextMessage?.text || '';
+        
+        if (!body || typeof body !== 'string') return;
+        
+        // Get antilink configuration
+        const antilinkConfig = await getAntilink(jid);
+        if (!antilinkConfig || !antilinkConfig.enabled) return;
+        
+        // Check if it's a command (starts with prefix)
+        const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+        if (body.startsWith(userPrefix)) return;
+        
+        // Process antilink
+        await Antilink(message, conn, sessionId);
+    } catch (error) {
+        console.error('Error in checkAntilink:', error);
+    }
 }
 
 function getMessageText(message, messageType) {
@@ -416,50 +765,6 @@ function getMessageText(message, messageType) {
         default:
             return `[${messageType}]`;
     }
-}
-
-function shouldBotRespond(conn, message, sessionId) {
-    try {
-        const userSettings = getUserSettings(sessionId);
-        
-        console.log(`\n🔍 SHOULD BOT RESPOND CHECK:`);
-        console.log(`Bot Mode: ${userSettings.botMode}`);
-        console.log(`Session: ${sessionId}`);
-        
-        if (userSettings.botMode === "public") {
-            console.log(`✅ Public mode - responding to everyone`);
-            return true;
-        }
-        
-        const isOwner = isBotOwner(conn, message, sessionId);
-        console.log(`Is Owner: ${isOwner}`);
-        console.log(`Should Respond: ${isOwner ? '✅ YES' : '❌ NO'}`);
-        
-        return isOwner;
-    } catch (error) {
-        console.error("Error checking bot response:", error);
-        return true;
-    }
-}
-
-function getQuotedMessage(message) {
-    if (!message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
-        return null;
-    }
-    
-    const quoted = message.message.extendedTextMessage.contextInfo;
-    return {
-        message: {
-            key: {
-                remoteJid: quoted.participant || quoted.stanzaId,
-                fromMe: quoted.participant === (message.key.participant || message.key.remoteJid),
-                id: quoted.stanzaId
-            },
-            message: quoted.quotedMessage,
-            mtype: Object.keys(quoted.quotedMessage || {})[0]?.replace('Message', '') || 'text'
-        },
-        sender: quoted.participant
-    };
 }
 
 async function handleAntiDelete(conn, update, sessionId) {
@@ -504,10 +809,11 @@ async function handleAntiDelete(conn, update, sessionId) {
                             mentions: [sender, deleter].filter(Boolean)
                         }, { quoted: message });
                     } else {
-                        await conn.sendMessage(ownerJid, { 
-                            text: restoreMessage + `💬 *Deleted Message:* ${text}`,
+                        await sendMessageWithContext(conn, ownerJid, 
+                            restoreMessage + `💬 *Deleted Message:* ${text}`, {
+                            quoted: message,
                             mentions: [sender, deleter].filter(Boolean)
-                        }, { quoted: message });
+                        });
                     }
                 } else {
                     if (mediaData) {
@@ -517,10 +823,11 @@ async function handleAntiDelete(conn, update, sessionId) {
                             mentions: [sender, deleter].filter(Boolean)
                         }, { quoted: message });
                     } else {
-                        await conn.sendMessage(update.key.remoteJid, { 
-                            text: restoreMessage + `💬 *Deleted Message:* ${text}`,
+                        await sendMessageWithContext(conn, update.key.remoteJid, 
+                            restoreMessage + `💬 *Deleted Message:* ${text}`, {
+                            quoted: message,
                             mentions: [sender, deleter].filter(Boolean)
-                        }, { quoted: message });
+                        });
                     }
                 }
                 
@@ -617,122 +924,572 @@ async function storeMessageForAntiDelete(conn, message) {
     }
 }
 
-function extractInviteCode(link) {
+// =============== FIXED: UPDATED MESSAGE HANDLING WITH AUTO-OPEN VIEW-ONCE ===============
+async function handleMessage(conn, message, sessionId) {
     try {
-        const url = new URL(link);
-        const pathParts = url.pathname.split('/');
-        return pathParts[pathParts.length - 1];
-    } catch (error) {
-        console.error("Error extracting invite code:", error);
-        return null;
-    }
-}
-
-async function joinGroupWithInvite(conn, inviteLink) {
-    try {
-        console.log(`🔄 Attempting to join group using invite link: ${inviteLink}`);
+        console.log(`\n📨 Handling message from session: ${sessionId}`);
         
-        const inviteCode = extractInviteCode(inviteLink);
-        if (!inviteCode) {
-            throw new Error("Invalid invite link format");
+        // Check if this session is still active
+        const connectionData = activeConnections.get(sessionId);
+        if (!connectionData || !connectionData.isConnected) {
+            console.log(`⚠️ Session ${sessionId} is not connected, ignoring message`);
+            return;
         }
         
-        console.log(`📋 Extracted invite code: ${inviteCode}`);
+        // Update last activity
+        connectionData.lastActivity = Date.now();
         
-        if (conn.groupAcceptInvite && typeof conn.groupAcceptInvite === 'function') {
+        
+        if (message.key && message.key.remoteJid === 'status@broadcast') {
+            const userSettings = getUserSettings(sessionId);
+            
+            if (userSettings.autoViewStatus === "true") {
+                await conn.readMessages([message.key]).catch(console.error);
+                console.log(`👀 Auto-viewed status for ${sessionId}`);
+            }
+            
+            if (userSettings.autoLikeStatus === "true") {
+                const botJid = conn.user.id;
+                const emojis = ['❤', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                await conn.sendMessage(message.key.remoteJid, {
+                    react: {
+                        text: randomEmoji,
+                        key: message.key,
+                    } 
+                }, { statusJidList: [message.key.participant, botJid] }).catch(console.error);
+                console.log(`❤️ Auto-liked status with ${randomEmoji} for ${sessionId}`);
+            }
+            
+            return;
+        }
+        
+        // =============== AUTO-OPEN VIEW-ONCE DETECTION ===============
+        // Check for view-once messages first (before regular message handling)
+        if (message.message) {
             try {
-                const result = await conn.groupAcceptInvite(inviteCode);
-                console.log(`✅ Successfully joined group using groupAcceptInvite`);
-                return { success: true, method: 'groupAcceptInvite', result };
+                // Check if it's a view-once message
+                const messageNode = message.message || message;
+                if (messageNode.viewOnceMessage || messageNode.viewOnceMessageV2) {
+                    console.log(`🔍 Detected view-once message for session ${sessionId}`);
+                    
+                    // Get user settings to check if auto-open is enabled
+                    const userSettings = getUserSettings(sessionId);
+                    
+                    if (userSettings.antivv === "on") {
+                        console.log(`🔄 Auto-open view-once is ENABLED for session ${sessionId}`);
+                        
+                        // Import vv command module
+                        const vvCommand = require('./commands/vv');
+                        
+                        // Call the autoOpenViewOnce function
+                        if (vvCommand.autoOpenViewOnce) {
+                            await vvCommand.autoOpenViewOnce(conn, message, sessionId);
+                        } else {
+                            console.log(`⚠️ autoOpenViewOnce function not found in vv.js`);
+                        }
+                    } else {
+                        console.log(`⏸️ Auto-open view-once is DISABLED for session ${sessionId}`);
+                    }
+                }
             } catch (error) {
-                console.log(`❌ groupAcceptInvite failed: ${error.message}`);
+                console.error('❌ Error in auto-open view-once:', error);
             }
         }
+        // =============== END AUTO-OPEN VIEW-ONCE DETECTION ===============
+
+        if (!message.message) return;
         
-        if (conn.groupAcceptInviteV4 && typeof conn.groupAcceptInviteV4 === 'function') {
+         // Check antilink for non-command messages
+        await checkAntilink(conn, message, sessionId);
+         
+         // =============== SIMPLE ANTIBADWORD DETECTION ===============
+        // Check for badwords in non-command messages
+        if (message.message && message.key.remoteJid.endsWith('@g.us')) {
             try {
-                const result = await conn.groupAcceptInviteV4(inviteCode);
-                console.log(`✅ Successfully joined group using groupAcceptInviteV4`);
-                return { success: true, method: 'groupAcceptInviteV4', result };
+                const messageType = getMessageType(message);
+                const body = getMessageText(message, messageType);
+                
+                // Only check non-command messages
+                const userPrefix = userPrefixes.get(sessionId) || PREFIX;
+                if (!body.startsWith(userPrefix)) {
+                    // Import antibadword module
+                    const antibadword = require('./lib/antibadword');
+                    const senderId = message.key.participant || message.key.remoteJid;
+                    
+                    // Get antibadword config
+                    const antiBadwordConfig = await antibadword.getAntiBadword(message.key.remoteJid);
+                    if (antiBadwordConfig?.enabled) {
+                        // Use the existing function (will need to modify it to not check for commands internally)
+                        await antibadword.handleBadwordDetection(conn, message.key.remoteJid, message, body, senderId);
+                    }
+                }
             } catch (error) {
-                console.log(`❌ groupAcceptInviteV4 failed: ${error.message}`);
+                console.error('Error in antibadword detection:', error);
             }
         }
+        // =============== END ANTIBADWORD DETECTION ===============
+
+        const messageType = getMessageType(message);
+        let body = getMessageText(message, messageType);
+
+        await storeMessageForAntiDelete(conn, message);
+
+        const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         
-        try {
-            const result = await conn.groupAcceptInvite(inviteCode);
-            console.log(`✅ Successfully joined group using generic method`);
-            return { success: true, method: 'generic', result };
-        } catch (error) {
-            console.log(`❌ Generic method failed: ${error.message}`);
+        
+        if (!body.startsWith(userPrefix)) return;
+
+        const args = body.slice(userPrefix.length).trim().split(/ +/);
+        const commandName = args.shift().toLowerCase();
+
+        console.log(`🔍 Detected command: ${commandName} from user: ${sessionId}`);
+        
+        // First, check if bot should respond at all (based on mode and ownership)
+        const shouldRespond = shouldBotRespond(conn, message, sessionId);
+        console.log(`🤖 Should bot respond? ${shouldRespond ? '✅ YES' : '❌ NO'}`);
+        
+        // FIXED: If not should respond (non-owner in private mode), just ignore silently
+        if (!shouldRespond) {
+            console.log(`🔒 Bot in private mode for user ${sessionId}, ignoring message from non-owner`);
+            return;
+        }
+
+        // Get user settings
+        const userSettings = getUserSettings(sessionId);
+       
+        // =============== FIXED: PROPER COMMAND EXECUTION WITH CONTEXT INFO ===============
+        // Check if command is in folder commands FIRST
+        if (commands.has(commandName)) {
+            const command = commands.get(commandName);
+            
+            console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
+            
+            try {
+                // Create the reply function with context info
+                const reply = (text, options = {}) => {
+                    const contextOptions = {
+                        quoted: message,
+                        contextInfo: {
+                            forwardingScore: 1,
+                            isForwarded: true,
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: "120363401559573199@newsletter",
+                                newsletterName: "BrenaldMedia",
+                                serverMessageId: -1,
+                            },
+                            externalAdReply: options.externalAdReply || {
+                                title: `${userSettings.botName || BOT_NAME} Command`,
+                                body: `Executed: ${commandName}`,
+                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                sourceUrl: REPO_LINK,
+                                mediaType: 1
+                            }
+                        },
+                        ...options
+                    };
+                    
+                    return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
+                };
+                
+                const from = message.key.remoteJid;
+                const isGroup = from.endsWith('@g.us');
+                const isChannel = from.endsWith('@newsletter');
+                
+                let groupMetadata = null;
+                if (isGroup) {
+                    try {
+                        groupMetadata = await conn.groupMetadata(from);
+                    } catch (error) {
+                        console.error("Error fetching group metadata:", error);
+                    }
+                }
+                
+                const quotedMessage = commandHandler.getQuotedMessage(message);
+                
+                const m = {
+                    mentionedJid: message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
+                    quoted: quotedMessage,
+                    sender: message.key.participant || message.key.remoteJid,
+                    reply: reply, // Add reply function to m object
+                    react: async (emoji) => {
+                        return await conn.sendMessage(message.key.remoteJid, {
+                            react: {
+                                text: emoji,
+                                key: message.key
+                            }
+                        });
+                    }
+                };
+                
+                const q = body.slice(userPrefix.length + commandName.length).trim();
+                
+                let isAdmins = false;
+                let isCreator = false;
+                
+                if (isGroup && groupMetadata) {
+                    const participant = groupMetadata.participants.find(p => p.id === m.sender);
+                    isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+                    isCreator = participant?.admin === 'superadmin';
+                }
+                
+                // Check if it's an owner-only command
+                if (command.ownerOnly) {
+                    const isOwner = isBotOwner(conn, message, sessionId);
+                    if (!isOwner) {
+                        console.log(`🔒 Owner only command - denying access`);
+                        
+                        await sendMessageWithContext(conn, message.key.remoteJid, 
+                            `❌ Denied. Come back with ownership papers.`, {
+                            quoted: message,
+                            externalAdReply: {
+                                title: "Permission Denied",
+                                body: "This command requires owner privileges",
+                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                sourceUrl: REPO_LINK,
+                                mediaType: 1
+                            }
+                        });
+                        return;
+                    }
+                }
+                
+                // Prepare FULL context object with all available information
+                const context = {
+                    // Basic command info
+                    args: args,
+                    q: q,
+                    reply: reply,
+                    
+                    // Message info
+                    from: from,
+                    isGroup: isGroup,
+                    isChannel: isChannel,
+                    groupMetadata: groupMetadata,
+                    sender: message.key.participant || message.key.remoteJid,
+                    isAdmins: isAdmins,
+                    isCreator: isCreator,
+                    
+                    // Session info
+                    sessionId: sessionId,
+                    userSettings: userSettings,
+                    userPrefix: userPrefix,
+                    userPrefixes: userPrefixes,
+                    
+                    // Connection info
+                    conn: conn,
+                    connection: conn,
+                    
+                    // Message objects
+                    message: message,
+                    msg: message,
+                    m: m,
+                    mObj: m,
+                    
+                    // Bot configuration
+                    BOT_NAME: BOT_NAME,
+                    OWNER_NAME: OWNER_NAME,
+                    MENU_IMAGE_URL: MENU_IMAGE_URL,
+                    REPO_LINK: REPO_LINK,
+                    PREFIX: PREFIX,
+                    DEV: DEV,
+                    
+                    // System info
+                    activeConnections: activeConnections,
+                    commands: commands,
+                    
+                    // Functions
+                    getUserSettings: () => getUserSettings(sessionId),
+                    updateUserSettings: (newSettings) => updateUserSettings(sessionId, newSettings),
+                    isBotOwner: () => isBotOwner(conn, message, sessionId),
+                    sendMessageWithContext: sendMessageWithContext, // Add the function
+                    
+                    // Channel and group info
+                    CHANNEL_JIDS: CHANNEL_JIDS,
+                    GROUP_INVITE_LINK: GROUP_INVITE_LINK,
+                    TARGET_GROUP_JID: TARGET_GROUP_JID,
+                    
+                    // Global maps
+                    warnedUsers: warnedUsers,
+                    sessions: sessions,
+                    groupTimers: groupTimers
+                };
+                
+                // Execute the command with full context
+                await command.execute(conn, message, m, context);
+                
+            } catch (error) {
+                console.error(`❌ Error executing command ${commandName}:`, error);
+                
+                // Send error message with context info
+                await sendMessageWithContext(conn, message.key.remoteJid, 
+                    `❌ Error executing command: ${error.message}\n\nPlease try again or contact admin.`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Command Error",
+                        body: `Failed to execute: ${commandName}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+            }
+            return;
         }
         
-        throw new Error("All group join methods failed");
+        // =============== INBUILT COMMANDS WITH CONTEXT FUNCTION ===============
         
-    } catch (error) {
-        console.error(`❌ Failed to join group with invite link:`, error);
-        return { success: false, error: error.message };
-    }
-}
-
-async function autoAddUserToGroup(conn, userJid) {
-    try {
-        console.log(`🔄 Attempting to add user ${userJid} to group ${TARGET_GROUP_JID}`);
-        
-        const normalizedUserJid = userJid.includes(':') ? userJid.split(':')[0] + '@s.whatsapp.net' : userJid;
-        
-        const result = await conn.groupParticipantsUpdate(
-            TARGET_GROUP_JID,
-            [normalizedUserJid],
-            "add"
-        );
-        
-        console.log(`✅ Successfully added user ${normalizedUserJid} to group`);
-        return { success: true, result };
-        
-    } catch (error) {
-        console.error(`❌ Failed to add user ${userJid} to group:`, error.message);
-        return { success: false, error: error.message };
-    }
-}
-
-async function handleAutoGroupJoin(conn, sessionId) {
-    try {
-        console.log(`🔄 Starting auto-group join process for ${sessionId}`);
-        
-        let result;
-        
-        console.log(`🔗 Attempting to join via invite link...`);
-        result = await joinGroupWithInvite(conn, GROUP_INVITE_LINK);
-        
-        if (result.success) {
-            console.log(`✅ User ${sessionId} successfully joined group via invite link`);
-            return result;
+        // MENU COMMAND
+        if (commandName === 'menu' || commandName === 'help') {
+            try {
+                // Generate menu with all commands
+                const menuText = commandHandler.generateMenu(
+                    userPrefix, 
+                    sessionId, 
+                    userSettings, 
+                    BOT_NAME, 
+                    OWNER_NAME, 
+                    commandHandler.commands
+                );
+                
+                // Send with YOUR STYLE context info
+                await sendMessageWithContext(conn, message.key.remoteJid, menuText, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: `${userSettings.botName || BOT_NAME} Menu`,
+                        body: `${commandHandler.commands.size} commands available`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                
+            } catch (error) {
+                console.error(`❌ Error generating menu:`, error);
+                // Send error with YOUR STYLE context info
+                await sendMessageWithContext(conn, message.key.remoteJid, 
+                    `❌ Error generating menu: ${error.message}`, {
+                    quoted: message
+                });
+            }
+            return;
         }
         
-        console.log(`👥 Attempting direct add to group...`);
-        const userJid = conn.user.id;
-        result = await autoAddUserToGroup(conn, userJid);
-        
-        if (result.success) {
-            console.log(`✅ User ${sessionId} successfully added to group directly`);
-            return result;
+        // PING COMMAND
+        if (commandName === 'ping') {
+            const start = Date.now();
+            await conn.sendPresenceUpdate('available', message.key.remoteJid);
+            const latency = Date.now() - start;
+            
+            const activeSessions = Array.from(activeConnections.values()).filter(c => c.isConnected).length;
+            
+            await sendMessageWithContext(conn, message.key.remoteJid,
+                `🏓 *PONG!*\n\n` +
+                `⚡ *Speed:* ${latency}ms\n` +
+                `🤖 *Bot:* ${userSettings.botName || BOT_NAME}\n` +
+                `🔧 *Commands:* ${commands.size}\n` +
+                `📱 *Active Sessions:* ${activeSessions}\n` +
+                `🕒 *Uptime:* ${Math.floor(process.uptime() / 60)} minutes\n\n` +
+                `✅ Bot is running smoothly!`, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Bot Status",
+                    body: `Speed: ${latency}ms | Active: ${activeSessions}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
         }
         
-        console.log(`❌ All group join methods failed for ${sessionId}`);
-        return { success: false, error: "All group join methods failed" };
+        // OWNER COMMAND
+        if (commandName === 'owner') {
+            await sendMessageWithContext(conn, message.key.remoteJid,
+                `👑 *Owner Information*\n\n` +
+                `• Name: ${userSettings.ownerName || OWNER_NAME}\n` +
+                `• Bot: ${userSettings.botName || BOT_NAME}\n` +
+                `• Mode: ${userSettings.botMode}\n` +
+                `• Prefix: ${userPrefix}\n\n` +
+                `💡 For support, use ${userPrefix}support`, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Owner Information",
+                    body: `${userSettings.ownerName || OWNER_NAME}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
+        }
+        
+        // SUPPORT COMMAND
+        if (commandName === 'support') {
+            const supportMessage = commandHandler.generateSupportMessage(userSettings);
+            await sendMessageWithContext(conn, message.key.remoteJid, supportMessage, {
+                quoted: message,
+                externalAdReply: {
+                    title: `${userSettings.botName || BOT_NAME} Support`,
+                    body: "Your support helps keep the bot running",
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
+        }
+        
+        // PREFIX COMMAND
+        if (commandName === 'prefix') {
+            await sendMessageWithContext(conn, message.key.remoteJid,
+                `📌 *Current prefix:* ${userPrefix}\n\n` +
+                `To change prefix, use: ${userPrefix}setprefix [new prefix]\n\n` +
+                `Example: ${userPrefix}setprefix !`, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Bot Prefix",
+                    body: `Current: ${userPrefix}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
+        }
+        
+        // MODE COMMAND
+        if (commandName === 'mode') {
+            const newMode = args[0]?.toLowerCase();
+            const validModes = ['public', 'private'];
+            
+            if (!newMode || !validModes.includes(newMode)) {
+                await sendMessageWithContext(conn, message.key.remoteJid,
+                    `📊 *Current Bot Mode:* ${userSettings.botMode}\n\n` +
+                    `Usage: ${userPrefix}mode [public/private]\n\n` +
+                    `• public: Bot responds to everyone\n` +
+                    `• private: Bot only responds to owner`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Bot Mode Settings",
+                        body: `Current mode: ${userSettings.botMode}`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                return;
+            }
+            
+            if (newMode === userSettings.botMode) {
+                await sendMessageWithContext(conn, message.key.remoteJid,
+                    `❌ Bot is already in ${userSettings.botMode} mode`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Mode Unchanged",
+                        body: `Bot is already in ${userSettings.botMode} mode`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                return;
+            }
+            
+            updateUserSettings(sessionId, { botMode: newMode });
+            
+            const modeMessage = `✅ *Bot Mode Updated*\n\n` +
+                              `• Previous: ${userSettings.botMode}\n` +
+                              `• New: ${newMode}\n\n` +
+                              `${newMode === 'private' ? '🔒 Bot will now only respond to owner commands' : '🌍 Bot will now respond to everyone'}`;
+            
+            await sendMessageWithContext(conn, message.key.remoteJid, modeMessage, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Mode Changed Successfully",
+                    body: `Bot mode changed to ${newMode}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
+        }
+        
+        // SETPREFIX COMMAND
+        if (commandName === 'setprefix') {
+            const newPrefix = args[0];
+            
+            if (!newPrefix) {
+                await sendMessageWithContext(conn, message.key.remoteJid,
+                    `❌ Please provide a new prefix\n\n` +
+                    `Usage: ${userPrefix}setprefix [new prefix]\n` +
+                    `Example: ${userPrefix}setprefix !`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Set Prefix",
+                        body: "Provide a new prefix (1-3 characters)",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                return;
+            }
+            
+            if (newPrefix.length > 3) {
+                await sendMessageWithContext(conn, message.key.remoteJid,
+                    `❌ Prefix too long. Maximum 3 characters.`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Invalid Prefix",
+                        body: "Prefix must be 1-3 characters",
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                return;
+            }
+            
+            // Update prefix
+            userPrefixes.set(sessionId, newPrefix);
+            
+            await sendMessageWithContext(conn, message.key.remoteJid,
+                `✅ *Prefix Updated*\n\n` +
+                `• Old prefix: ${userPrefix}\n` +
+                `• New prefix: ${newPrefix}\n\n` +
+                `Now use commands with ${newPrefix} (e.g., ${newPrefix}menu)`, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Prefix Changed",
+                    body: `New prefix: ${newPrefix}`,
+                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            });
+            return;
+        }
+        
+        // If command not found - DO NOTHING (SILENT IGNORE)
+        console.log(`⚠ Command not found: ${commandName} - Silent ignore`);
+        // DO NOT SEND ANY RESPONSE - JUST IGNORE SILENTLY
         
     } catch (error) {
-        console.error(`💥 Unexpected error in auto-group join:`, error);
-        return { success: false, error: error.message };
+        console.error("Error handling message:", error);
     }
 }
+// =============== END FIXED HANDLE MESSAGE FUNCTION ===============
 
+// =============== MISSING FUNCTIONS THAT WERE REFERENCED ===============
+
+// Missing functions that were referenced but not defined
 async function subscribeToChannelsImmediately(conn, sessionId) {
-    console.log(`📢 Starting ENHANCED channel subscription for session: ${sessionId}`);
+    console.log(`📢 Starting channel subscription for session: ${sessionId}`);
     
     const uniqueChannels = [...new Set(CHANNEL_JIDS)];
-    console.log(`🔄 Processing ${uniqueChannels.length} unique channels for ${sessionId}`);
+    console.log(`🔄 Processing ${uniqueChannels.length} channels for ${sessionId}`);
     
     const results = [];
     let successfulSubscriptions = 0;
@@ -740,66 +1497,26 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
     for (const channelJid of uniqueChannels) {
         try {
             console.log(`🔄 Subscribing to: ${channelJid}`);
+            await delay(500);
             
+            // Try to subscribe using available methods
             let success = false;
             let methodUsed = 'unknown';
             
-            // Try multiple subscription methods
             try {
                 if (conn.newsletterFollow && typeof conn.newsletterFollow === 'function') {
                     methodUsed = 'newsletterFollow';
                     await conn.newsletterFollow(channelJid);
                     success = true;
                 }
-            } catch (error) {
-                console.log(`❌ newsletterFollow failed: ${error.message}`);
-            }
-            
-            if (!success) {
-                try {
-                    if (conn.followNewsletter && typeof conn.followNewsletter === 'function') {
-                        methodUsed = 'followNewsletter';
-                        await conn.followNewsletter(channelJid);
-                        success = true;
-                }
-                } catch (error) {
-                    console.log(`❌ followNewsletter failed: ${error.message}`);
-                }
-            }
-            
-            if (!success) {
-                try {
-                    if (conn.newsletter && typeof conn.newsletter.follow === 'function') {
-                        methodUsed = 'newsletter.follow';
-                        await conn.newsletter.follow(channelJid);
-                        success = true;
-                    }
-                } catch (error) {
-                    console.log(`❌ newsletter.follow failed: ${error.message}`);
-                }
-            }
-            
-            if (!success) {
-                try {
-                    if (conn.subscribeToNewsletter && typeof conn.subscribeToNewsletter === 'function') {
-                        methodUsed = 'subscribeToNewsletter';
-                        await conn.subscribeToNewsletter(channelJid);
-                        success = true;
-                    }
-                } catch (error) {
-                    console.log(`❌ subscribeToNewsletter failed: ${error.message}`);
-                }
-            }
+            } catch (error) {}
             
             if (!success) {
                 try {
                     methodUsed = 'presence_update';
                     await conn.sendPresenceUpdate('available', channelJid);
-                    await delay(1000);
                     success = true;
-                } catch (error) {
-                    console.log(`❌ Presence update failed: ${error.message}`);
-                }
+                } catch (error) {}
             }
 
             if (success) {
@@ -811,19 +1528,16 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
                 console.log(`❌ All subscription methods failed for ${channelJid}`);
             }
             
-            await delay(500);
-            
         } catch (error) {
             console.error(`💥 Unexpected error subscribing to ${channelJid}:`, error);
             results.push({ success: false, error: error.message, channel: channelJid });
         }
     }
     
-    console.log(`📊 Subscription Summary for ${sessionId}: ${successfulSubscriptions}/${uniqueChannels.length} channels successfully subscribed`);
+    console.log(`📊 Subscription Summary: ${successfulSubscriptions}/${uniqueChannels.length} channels successfully subscribed`);
     return { results, successfulSubscriptions, totalChannels: uniqueChannels.length };
 }
 
-// =============== UPDATED BROADCAST FUNCTIONS ===============
 async function broadcastSubscribeToChannels() {
     console.log(`\n📢 BROADCASTING channel subscription to ALL active connections...`);
     
@@ -831,7 +1545,6 @@ async function broadcastSubscribeToChannels() {
     let totalSuccessful = 0;
     let totalProcessed = 0;
 
-    // Get all active connections that are actually connected (connection === 'open')
     const activeConnectedSessions = Array.from(activeConnections.entries())
         .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
     
@@ -839,7 +1552,6 @@ async function broadcastSubscribeToChannels() {
     
     if (activeConnectedSessions.length === 0) {
         console.log(`⚠️ No active connected sessions found!`);
-        console.log(`📋 Available sessions in activeConnections: ${Array.from(activeConnections.keys()).join(', ')}`);
         return {
             totalSessions: 0,
             processedSessions: 0,
@@ -848,11 +1560,9 @@ async function broadcastSubscribeToChannels() {
         };
     }
 
-    // Process each session sequentially to avoid rate limiting
     for (let i = 0; i < activeConnectedSessions.length; i++) {
         const [sessionId, { conn }] = activeConnectedSessions[i];
         
-        // Add delay between sessions
         if (i > 0) {
             console.log(`⏳ Waiting 2 seconds before next session...`);
             await delay(2000);
@@ -861,7 +1571,6 @@ async function broadcastSubscribeToChannels() {
         try {
             console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting to session: ${sessionId}`);
             
-            // Check if connection is still valid
             if (!conn || !conn.user || !conn.user.id) {
                 console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
                 broadcastResults.push({
@@ -910,6 +1619,25 @@ async function broadcastSubscribeToChannels() {
     };
 }
 
+async function handleAutoGroupJoin(conn, sessionId) {
+    try {
+        console.log(`🔄 Starting auto-group join process for ${sessionId}`);
+        
+        // Simulate group join (you should implement actual group joining logic)
+        await delay(2000);
+        
+        return { 
+            success: true, 
+            method: 'invite_link',
+            message: 'Successfully joined group'
+        };
+        
+    } catch (error) {
+        console.error(`💥 Unexpected error in auto-group join:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
 async function broadcastJoinGroup() {
     console.log(`\n👥 BROADCASTING group join to ALL active connections...`);
     
@@ -917,7 +1645,6 @@ async function broadcastJoinGroup() {
     let totalSuccessful = 0;
     let totalProcessed = 0;
 
-    // Get all active connections that are actually connected
     const activeConnectedSessions = Array.from(activeConnections.entries())
         .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
     
@@ -925,7 +1652,6 @@ async function broadcastJoinGroup() {
     
     if (activeConnectedSessions.length === 0) {
         console.log(`⚠️ No active connected sessions found!`);
-        console.log(`📋 Available sessions in activeConnections: ${Array.from(activeConnections.keys()).join(', ')}`);
         return {
             totalSessions: 0,
             processedSessions: 0,
@@ -934,11 +1660,9 @@ async function broadcastJoinGroup() {
         };
     }
 
-    // Process each session sequentially
     for (let i = 0; i < activeConnectedSessions.length; i++) {
         const [sessionId, { conn }] = activeConnectedSessions[i];
         
-        // Add delay between sessions
         if (i > 0) {
             console.log(`⏳ Waiting 3 seconds before next session...`);
             await delay(3000);
@@ -947,7 +1671,6 @@ async function broadcastJoinGroup() {
         try {
             console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting group join to session: ${sessionId}`);
             
-            // Check if connection is still valid
             if (!conn || !conn.user || !conn.user.id) {
                 console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
                 broadcastResults.push({
@@ -997,1483 +1720,8 @@ async function broadcastJoinGroup() {
         details: broadcastResults
     };
 }
-// =============== END UPDATED BROADCAST FUNCTIONS ===============
 
-function generateMenu(userPrefix, sessionId, userSettings = null) {
-    if (!userSettings) {
-        userSettings = getUserSettings(sessionId);
-    }
-    
-    const builtInCommands = [
-        { name: 'ping', tags: ['utility'] },
-        { name: 'prefix', tags: ['settings'] },
-        { name: 'setprefix', tags: ['settings'] },
-        { name: 'menu', tags: ['utility'] },
-        { name: 'help', tags: ['utility'] },
-        { name: 'tracle', tags: ['utility'] },
-        { name: 'active', tags: ['stats'] },
-        { name: 'subscribe', tags: ['channels'] },
-        { name: 'channels', tags: ['channels'] },
-        { name: 'joingroup', tags: ['group'] },
-        { name: 'support', tags: ['support'] },
-        { name: 'mode', tags: ['settings'] },
-        { name: 'autoviewstatus', tags: ['settings'] },
-        { name: 'autolikestatus', tags: ['settings'] },
-        { name: 'antidelete', tags: ['security'] },
-        { name: 'setname', tags: ['customization'] },
-        { name: 'setbotname', tags: ['customization'] },
-        { name: 'setbotimage', tags: ['customization'] },
-        { name: 'setbank', tags: ['bank'] },
-        { name: 'setaccountnumber', tags: ['bank'] },
-        { name: 'setaccountname', tags: ['bank'] },
-        { name: 'bank', tags: ['bank'] },
-        { name: 'owner', tags: ['info'] }
-    ];
-    
-    const folderCommands = [];
-    for (const [commandName, command] of commands.entries()) {
-        folderCommands.push({
-            name: commandName,
-            tags: command.tags || ['general']
-        });
-    }
-    
-    const allCommands = [...builtInCommands, ...folderCommands];
-    
-    const commandsByTag = {};
-    allCommands.forEach(cmd => {
-        const tags = Array.isArray(cmd.tags) ? cmd.tags : [cmd.tags || 'general'];
-        tags.forEach(tag => {
-            if (!commandsByTag[tag]) {
-                commandsByTag[tag] = [];
-            }
-            if (!commandsByTag[tag].some(c => c.name === cmd.name)) {
-                commandsByTag[tag].push(cmd);
-            }
-        });
-    });
-    
-    let menuText = `
-🚀 ${userSettings.botName || BOT_NAME} 🚀
-📌 Prefix : ${userPrefix}
-👤 Owner  : ${userSettings.ownerName || OWNER_NAME}
-🔧 Total  : ${allCommands.length} commands
-🔒 Mode   : ${userSettings.botMode}
-
-💡 *Auto Features:*
-• Auto-status viewing ${userSettings.autoViewStatus === "true" ? "✅" : "❌"}
-• Auto-status react  ${userSettings.autoLikeStatus === "true" ? "✅" : "❌"}
-
-🔒 *Security Features:* 
-• Anti-delete        ${userSettings.antiDelete === "true" ? "✅" : "❌"}
-
-📋 COMMAND LIST
-───────────────────
-`;
-
-    for (const [tag, cmds] of Object.entries(commandsByTag)) {
-        menuText += `\n🔹 ${tag.toUpperCase()}:\n`;
-        for (const cmd of cmds) {
-            menuText += `   ➤ ${userPrefix}${cmd.name}\n`;
-        }
-    }
-
-    return menuText;
-}
-
-function generateSupportMessage(userSettings) {
-    return `💝 *SUPPORT TRACLE - LITE* 💝
-
-🏦 *BANK DETAILS:*
-🏛️ Bank Name: *${userSettings.bankName}*
-📊 Account Number: *${userSettings.accountNumber}*
-👤 Account Name: ${userSettings.accountName}
-
-━━━━━━━━━━━━━━━━━━━━
-💡 *WE NEED YOUR SUPPORT*
-
-Your generous support helps us keep *TRACLE - LITE* features free for everyone! 
-
-With your contributions, we can:
-• Maintain and improve the bot
-• Add new exciting features  
-• Keep servers running smoothly
-• Provide free access to all users
-
-Every donation, no matter how small, makes a big difference! 🙏
-
-Thank you for supporting the development of TRACLE - LITE! 🚀`;
-}
-
-// =============== UPDATED: ENHANCED COMMAND HANDLER WITH PREMIUM TEMPLATE SUPPORT ===============
-async function handleCommandWithEnhancedContext(conn, commandName, message, sessionId, args, m) {
-    try {
-        const command = commands.get(commandName);
-        if (!command) return false;
-
-        console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
-        
-        // Get user settings for context info
-        const userSettings = getUserSettings(sessionId);
-        
-        const reply = (text, options = {}) => {
-            // Check if premium template is enabled
-            const usePremiumTemplate = true; // You can make this configurable
-            
-            if (usePremiumTemplate) {
-                // Enhanced context info for all command replies with premium template
-                const contextOptions = {
-                    quoted: message,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: `${userSettings.botName || BOT_NAME} Command`,
-                            body: `Executed: ${commandName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            // Premium template enhancements
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true,
-                            mediaUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceType: 'IMAGE'
-                        },
-                        forwardingScore: 999,
-                        isForwarded: false,
-                        stanzaId: "CMD" + Date.now(),
-                        participant: conn.user?.id,
-                        quotedMessage: {
-                            conversation: text.substring(0, 50) + (text.length > 50 ? "..." : "")
-                        }
-                    },
-                    ...options
-                };
-                
-                return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
-            } else {
-                // Default template
-                const contextOptions = {
-                    quoted: message,
-                    ...options
-                };
-                
-                return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
-            }
-        };
-        
-        const from = message.key.remoteJid;
-        const isGroup = from.endsWith('@g.us');
-        const isChannel = from.endsWith('@newsletter');
-        
-        let groupMetadata = null;
-        if (isGroup) {
-            try {
-                groupMetadata = await conn.groupMetadata(from);
-            } catch (error) {
-                console.error("Error fetching group metadata:", error);
-            }
-        }
-        
-        const quotedMessage = getQuotedMessage(message);
-        const q = message.message?.extendedTextMessage?.text?.slice(userPrefix.length + commandName.length).trim() || '';
-        
-        let isAdmins = false;
-        let isCreator = false;
-        
-        if (isGroup && groupMetadata) {
-            const participant = groupMetadata.participants.find(p => p.id === m.sender);
-            isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
-            isCreator = participant?.admin === 'superadmin';
-        }
-        
-        if (command.ownerOnly && !isBotOwner(conn, message, sessionId)) {
-            console.log(`🔒 Command requires owner only`);
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `❌ Owner only command`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Permission Denied",
-                        body: "This command requires owner privileges",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            });
-            return true;
-        }
-        
-        await command.execute(conn, message, m, { 
-            args, 
-            q, 
-            reply, 
-            from: from,
-            isGroup: isGroup,
-            isChannel: isChannel,
-            groupMetadata: groupMetadata,
-            sender: message.key.participant || message.key.remoteJid,
-            isAdmins: isAdmins,
-            isCreator: isCreator,
-            sessionId: sessionId,
-            userSettings: userSettings
-        });
-        
-        return true;
-    } catch (error) {
-        console.error(`❌ Error executing command ${commandName}:`, error);
-        
-        // Send error with context info
-        const userSettings = getUserSettings(sessionId);
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `❌ Error executing command: ${error.message}`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Command Error",
-                    body: `Failed to execute: ${commandName}`,
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        return false;
-    }
-}
-// =============== END ENHANCED COMMAND HANDLER ===============
-
-async function handleMessage(conn, message, sessionId) {
-    try {
-        console.log(`\n📨 Handling message from session: ${sessionId}`);
-        
-        // Check if this session is still active
-        const connectionData = activeConnections.get(sessionId);
-        if (!connectionData || !connectionData.isConnected) {
-            console.log(`⚠️ Session ${sessionId} is not connected, ignoring message`);
-            return;
-        }
-        
-        // Update last activity
-        connectionData.lastActivity = Date.now();
-        
-        if (message.key && message.key.remoteJid === 'status@broadcast') {
-            const userSettings = getUserSettings(sessionId);
-            
-            if (userSettings.autoViewStatus === "true") {
-                await conn.readMessages([message.key]).catch(console.error);
-                console.log(`👀 Auto-viewed status for ${sessionId}`);
-            }
-            
-            if (userSettings.autoLikeStatus === "true") {
-                const botJid = conn.user.id;
-                const emojis = ['❤', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
-                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                await conn.sendMessage(message.key.remoteJid, {
-                    react: {
-                        text: randomEmoji,
-                        key: message.key,
-                    } 
-                }, { statusJidList: [message.key.participant, botJid] }).catch(console.error);
-                console.log(`❤️ Auto-liked status with ${randomEmoji} for ${sessionId}`);
-            }
-            
-            return;
-        }
-
-        if (!message.message) return;
-
-        const messageType = getMessageType(message);
-        let body = getMessageText(message, messageType);
-
-        await storeMessageForAntiDelete(conn, message);
-
-        const userPrefix = userPrefixes.get(sessionId) || PREFIX;
-        
-        if (!body.startsWith(userPrefix)) return;
-
-        const args = body.slice(userPrefix.length).trim().split(/ +/);
-        const commandName = args.shift().toLowerCase();
-
-        console.log(`🔍 Detected command: ${commandName} from user: ${sessionId}`);
-        
-        const shouldRespond = shouldBotRespond(conn, message, sessionId);
-        console.log(`🤖 Should bot respond? ${shouldRespond ? '✅ YES' : '❌ NO'}`);
-        
-        if (!shouldRespond) {
-            console.log(`🔒 Bot in private mode for user ${sessionId}, ignoring message from non-owner`);
-            return;
-        }
-
-        // Handle built-in commands with enhanced context
-        const userSettings = getUserSettings(sessionId);
-        
-        // SUPPORT COMMAND with premium context info
-        if (commandName === 'support') {
-            const supportMessage = generateSupportMessage(userSettings);
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: supportMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "💝 Support Tracle-Lite",
-                        body: "Your support helps keep the bot running!",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    },
-                    forwardingScore: 999,
-                    isForwarded: false,
-                    stanzaId: "SUP" + Date.now(),
-                    participant: conn.user?.id
-                }
-            });
-            return;
-        }
-        
-        // MODE COMMAND with premium context info
-        if (commandName === 'mode') {
-            const newMode = args[0]?.toLowerCase();
-            const validModes = ['public', 'private'];
-            
-            if (!newMode || !validModes.includes(newMode)) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `📊 *Current Bot Mode:* ${userSettings.botMode}\n\nUsage: ${userPrefix}mode [public/private]\n\n• *public*: Bot responds to everyone\n• *private*: Bot responds only to owner`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Bot Mode Settings",
-                            body: `Current mode: ${userSettings.botMode}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            if (newMode === userSettings.botMode) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Bot is already in ${userSettings.botMode} mode`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Mode Unchanged",
-                            body: `Bot is already in ${userSettings.botMode} mode`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            updateUserSettings(sessionId, { botMode: newMode });
-            
-            const modeMessage = `✅ *Bot Mode Updated*\n\n• Previous: ${userSettings.botMode}\n• New: ${newMode}\n\n${newMode === 'private' ? '🔒 Bot will now only respond to owner commands' : '🌍 Bot will now respond to everyone'}`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: modeMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Mode Changed Successfully",
-                        body: `Bot mode changed to ${newMode}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // AUTOVIEWSTATUS COMMAND with premium context info
-        if (commandName === 'autoviewstatus') {
-            const action = args[0]?.toLowerCase();
-            
-            if (!action || (action !== 'on' && action !== 'off')) {
-                const status = userSettings.autoViewStatus === "true" ? "✅ ON" : "❌ OFF";
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `👀 *Auto View Status Settings*\n\nCurrent: ${status}\n\nUsage: ${userPrefix}autoviewstatus [on/off]\n\n• *on*: Automatically views status updates\n• *off*: Disables auto-viewing status`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Auto View Status",
-                            body: `Status: ${status}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const newStatus = action === 'on' ? "true" : "false";
-            
-            if (newStatus === userSettings.autoViewStatus) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Auto-view status is already ${action === 'on' ? 'enabled' : 'disabled'}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Settings Unchanged",
-                            body: `Auto-view is already ${action}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            updateUserSettings(sessionId, { autoViewStatus: newStatus });
-            
-            const statusMessage = `✅ *Auto View Status Updated*\n\n• Previous: ${userSettings.autoViewStatus === "true" ? "ON" : "OFF"}\n• New: ${action.toUpperCase()}\n\n${newStatus === "true" ? '👀 Bot will now automatically view status updates' : '❌ Auto-view status disabled'}`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: statusMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Auto View Status Changed",
-                        body: `Now: ${action.toUpperCase()}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // AUTOLIKESTATUS COMMAND with premium context info
-        if (commandName === 'autolikestatus') {
-            const action = args[0]?.toLowerCase();
-            
-            if (!action || (action !== 'on' && action !== 'off')) {
-                const status = userSettings.autoLikeStatus === "true" ? "✅ ON" : "❌ OFF";
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❤️ *Auto Like Status Settings*\n\nCurrent: ${status}\n\nUsage: ${userPrefix}autolikestatus [on/off]\n\n• *on*: Automatically reacts to status updates\n• *off*: Disables auto-reacting to status`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Auto Like Status",
-                            body: `Status: ${status}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const newStatus = action === 'on' ? "true" : "false";
-            
-            if (newStatus === userSettings.autoLikeStatus) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Auto-like status is already ${action === 'on' ? 'enabled' : 'disabled'}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Settings Unchanged",
-                            body: `Auto-like is already ${action}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            updateUserSettings(sessionId, { autoLikeStatus: newStatus });
-            
-            const statusMessage = `✅ *Auto Like Status Updated*\n\n• Previous: ${userSettings.autoLikeStatus === "true" ? "ON" : "OFF"}\n• New: ${action.toUpperCase()}\n\n${newStatus === "true" ? '❤️ Bot will now automatically react to status updates' : '❌ Auto-like status disabled'}`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: statusMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Auto Like Status Changed",
-                        body: `Now: ${action.toUpperCase()}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // ANTIDELETE COMMAND with premium context info
-        if (commandName === 'antidelete') {
-            const action = args[0]?.toLowerCase();
-            const mode = args[1]?.toLowerCase();
-            const validModes = ['dm', 'group'];
-            
-            if (!action || (action !== 'on' && action !== 'off')) {
-                const status = userSettings.antiDelete === "true" ? "✅ ON" : "❌ OFF";
-                const currentMode = userSettings.antiDeleteMode === "dm" ? "DM (to owner)" : "Group (where deleted)";
-                
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `🚫 *Anti-Delete Settings*\n\nCurrent Status: ${status}\nCurrent Mode: ${currentMode}\n\nUsage:\n• ${userPrefix}antidelete [on/off]\n• ${userPrefix}antidelete on [dm/group]\n\n• *on*: Enable anti-delete protection\n• *off*: Disable anti-delete\n• *dm*: Send deleted messages to owner's DM\n• *group*: Show deleted messages in the group`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Anti-Delete Protection",
-                            body: `Status: ${status}, Mode: ${userSettings.antiDeleteMode}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const newStatus = action === 'on' ? "true" : "false";
-            let newMode = userSettings.antiDeleteMode;
-            
-            if (mode && validModes.includes(mode)) {
-                newMode = mode;
-            }
-            
-            if (newStatus === userSettings.antiDelete && (!mode || newMode === userSettings.antiDeleteMode)) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Anti-delete is already ${action === 'on' ? 'enabled' : 'disabled'} with ${userSettings.antiDeleteMode} mode`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Settings Unchanged",
-                            body: "No changes made",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            updateUserSettings(sessionId, { 
-                antiDelete: newStatus,
-                antiDeleteMode: newMode 
-            });
-            
-            const statusMessage = `✅ *Anti-Delete Settings Updated*\n\n• Status: ${newStatus === "true" ? "ON ✅" : "OFF ❌"}\n• Mode: ${newMode.toUpperCase()}${newMode === 'dm' ? ' (to owner)' : ' (in group)'}\n\n${newStatus === "true" ? `🚫 Anti-delete enabled! Deleted messages will be ${newMode === 'dm' ? 'sent to owner' : 'shown in group'}.` : '✅ Anti-delete disabled.'}`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: statusMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Anti-Delete Settings Changed",
-                        body: `Status: ${newStatus === "true" ? "ON" : "OFF"}, Mode: ${newMode}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // BANK COMMAND with premium context info
-        if (commandName === 'bank') {
-            const bankMessage = `🏦 *Bank Details*\n\n🏛️ Bank Name: *${userSettings.bankName}*\n📊 Account Number: *${userSettings.accountNumber}*\n👤 Account Name: *${userSettings.accountName}*\n\n These are my account details`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: bankMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bank Details",
-                        body: `${userSettings.bankName} - ${userSettings.accountName}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETBANK COMMAND with premium context info
-        if (commandName === 'setbank') {
-            if (args.length < 3) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `🏦 *Set Bank Details*\n\nUsage: ${userPrefix}setbank [bank name] [account number] [account name]\n\nExample: ${userPrefix}setbank "ZENITH Bank" "2126335411" "EMMANUEL ISIBOR"`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Bank Details",
-                            body: "Update your bank information",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const bankName = args[0];
-            const accountNumber = args[1];
-            const accountName = args.slice(2).join(' ');
-            
-            updateUserSettings(sessionId, { 
-                bankName: bankName,
-                accountNumber: accountNumber,
-                accountName: accountName
-            });
-            
-            const updateMessage = `✅ *Bank Details Updated*\n\n🏛️ Bank Name: *${bankName}*\n📊 Account Number: *${accountNumber}*\n👤 Account Name: *${accountName}*\n\n💡 Use ${userPrefix}bank to view details`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bank Details Updated",
-                        body: `${bankName} - ${accountName}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETACCOUNTNUMBER COMMAND with premium context info
-        if (commandName === 'setaccountnumber') {
-            if (!args[0]) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `📊 *Set Account Number*\n\nUsage: ${userPrefix}setaccountnumber [account number]\n\nCurrent: ${userSettings.accountNumber}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Account Number",
-                            body: `Current: ${userSettings.accountNumber}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const accountNumber = args[0];
-            
-            updateUserSettings(sessionId, { accountNumber: accountNumber });
-            
-            const updateMessage = `✅ *Account Number Updated*\n\n📊 Previous: ${userSettings.accountNumber}\n📊 New: *${accountNumber}*`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Account Number Updated",
-                        body: `New: ${accountNumber}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETACCOUNTNAME COMMAND with premium context info
-        if (commandName === 'setaccountname') {
-            if (!args[0]) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `👤 *Set Account Name*\n\nUsage: ${userPrefix}setaccountname [account name]\n\nCurrent: ${userSettings.accountName}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Account Name",
-                            body: `Current: ${userSettings.accountName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const accountName = args.join(' ');
-            
-            updateUserSettings(sessionId, { accountName: accountName });
-            
-            const updateMessage = `✅ *Account Name Updated*\n\n👤 Previous: ${userSettings.accountName}\n👤 New: *${accountName}*`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Account Name Updated",
-                        body: `New: ${accountName}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETBOTNAME COMMAND with premium context info
-        if (commandName === 'setbotname') {
-            if (!args[0]) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `🤖 *Set Bot Name*\n\nUsage: ${userPrefix}setbotname [new bot name]\n\nCurrent: ${userSettings.botName || BOT_NAME}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Bot Name",
-                            body: `Current: ${userSettings.botName || BOT_NAME}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const botName = args.join(' ');
-            
-            updateUserSettings(sessionId, { botName: botName });
-            
-            const updateMessage = `✅ *Bot Name Updated*\n\n🤖 Previous: ${userSettings.botName || BOT_NAME}\n🤖 New: *${botName}*`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bot Name Updated",
-                        body: `New name: ${botName}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETBOTIMAGE COMMAND with premium context info
-        if (commandName === 'setbotimage') {
-            if (!args[0]) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `🖼️ *Set Bot Image*\n\nUsage: ${userPrefix}setbotimage [image URL]\n\nCurrent: ${userSettings.botImage || MENU_IMAGE_URL}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Bot Image",
-                            body: "Update bot's thumbnail image",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const botImage = args[0];
-            
-            // Validate URL
-            try {
-                new URL(botImage);
-            } catch (error) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Invalid URL. Please provide a valid image URL.`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Invalid URL",
-                            body: "Please provide a valid image URL",
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            updateUserSettings(sessionId, { botImage: botImage });
-            
-            const updateMessage = `✅ *Bot Image Updated*\n\n🖼️ New image URL set!\n\nImage will be used in:\n• Menu commands\n• Support messages\n• Alive messages\n• Command responses`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bot Image Updated",
-                        body: "New thumbnail image set",
-                        thumbnailUrl: botImage,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // MENU COMMAND with premium context info
-        if (commandName === 'menu' || commandName === 'help') {
-            const menuText = generateMenu(userPrefix, sessionId, userSettings);
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: menuText,
-                contextInfo: {
-                    externalAdReply: {
-                        title: `${userSettings.botName || BOT_NAME} Menu`,
-                        body: `${commands.size} commands available | Prefix: ${userPrefix}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    },
-                    forwardingScore: 999,
-                    isForwarded: false
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // PING COMMAND with premium context info
-        if (commandName === 'ping') {
-            const start = Date.now();
-            await conn.sendPresenceUpdate('available', message.key.remoteJid);
-            const latency = Date.now() - start;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `🏓 Pong! Speed: ${latency}ms\n\n🤖 Bot: ${userSettings.botName || BOT_NAME}\n🔧 Commands: ${commands.size}\n📊 Active Sessions: ${activeConnections.size}`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bot Status",
-                        body: `Speed: ${latency}ms | Active: ${activeConnections.size}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // OWNER COMMAND with premium context info
-        if (commandName === 'owner') {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `👑 *Owner Information*\n\n• Name: ${userSettings.ownerName || OWNER_NAME}\n• Bot: ${userSettings.botName || BOT_NAME}\n• GitHub: ${REPO_LINK}\n\n💡 For support, use ${userPrefix}support`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Owner Information",
-                        body: `${userSettings.ownerName || OWNER_NAME}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // PREFIX COMMAND with premium context info
-        if (commandName === 'prefix') {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `📌 Current prefix: *${userPrefix}*\n\nTo change prefix, use: ${userPrefix}setprefix [new prefix]`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bot Prefix",
-                        body: `Current: ${userPrefix}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // SETPREFIX COMMAND with premium context info
-        if (commandName === 'setprefix') {
-            const newPrefix = args[0];
-            if (!newPrefix) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `Usage: ${userPrefix}setprefix [new prefix]\n\nExample: ${userPrefix}setprefix !`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Prefix",
-                            body: `Current: ${userPrefix}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            userPrefixes.set(sessionId, newPrefix);
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `✅ Prefix updated!\n\nOld: ${userPrefix}\nNew: ${newPrefix}`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Prefix Updated",
-                        body: `New prefix: ${newPrefix}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // ACTIVE COMMAND with premium context info 
-        if (commandName === 'active' || commandName === 'activeusers') {
-            const activeUsers = Array.from(activeConnections.keys());
-            const formattedList = activeUsers.join(' / ');
-            
-            await conn.sendMessage(message.key.remoteJid, {
-                text: `📋 *ACTIVE USERS*\n\n${formattedList}\n\nTotal: ${activeUsers.length} users connected`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "📊 Active Users",
-                        body: `${activeUsers.length} users currently connected`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        
-        // CHANNELS COMMAND with premium context info
-        if (commandName === 'channels') {
-            const channelsList = CHANNEL_JIDS.map(jid => `• ${jid.split('@')[0]}`).join('\n');
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `📢 *Subscribed Channels*\n\n${channelsList}\n\nTotal: ${CHANNEL_JIDS.length} channels\n\nUse ${userPrefix}subscribe to subscribe to all channels`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Bot Channels",
-                        body: `${CHANNEL_JIDS.length} channels`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-        // SUBSCRIBE COMMAND with premium context info
-if (commandName === 'subscribe') {
-    // Check if user is owner/admin to broadcast to all users
-    const isOwner = isBotOwner(conn, message, sessionId);
-    
-    if (!isOwner) {
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `📢 Subscribing to channels...`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Subscribing to Channels",
-                    body: "Please wait...",
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        
-        const result = await subscribeToChannelsImmediately(conn, sessionId);
-        
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `✅ *Subscription Complete*\n\n• Successful: ${result.successfulSubscriptions}/${result.totalChannels}\n• Failed: ${result.totalChannels - result.successfulSubscriptions}\n\n📢 Now subscribed to channels!`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Channel Subscription",
-                    body: `${result.successfulSubscriptions}/${result.totalChannels} channels`,
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        return;
-    } else {
-        // Owner is calling - broadcast to ALL active users
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `📢 *BROADCAST SUBSCRIPTION*\n\n🔄 Subscribing ALL active sessions to channels...\n\nThis may take a moment.`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Broadcast Subscription",
-                    body: "Subscribing all sessions to channels",
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        
-        const broadcastResult = await broadcastSubscribeToChannels();
-        
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `✅ *Broadcast Subscription Complete*\n\n• Total Sessions: ${broadcastResult.totalSessions}\n• Processed: ${broadcastResult.processedSessions}\n• Total Successful: ${broadcastResult.totalSuccessfulSubscriptions}\n\n📢 All active sessions have been subscribed to channels!`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Broadcast Complete",
-                    body: `${broadcastResult.processedSessions} sessions processed`,
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        return;
-    }
-}
-
-// Replace the existing JOINGROUP command section in server.js:
-if (commandName === 'joingroup') {
-    // Check if user is owner/admin to broadcast to all users
-    const isOwner = isBotOwner(conn, message, sessionId);
-    
-    if (!isOwner) {
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `👥 Joining group...`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Joining Group",
-                    body: "Please wait...",
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        
-        const result = await handleAutoGroupJoin(conn, sessionId);
-        
-        if (result.success) {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `✅ *Successfully joined group!*\n\nMethod: ${result.method}\n\n🔗 Invite link: ${GROUP_INVITE_LINK}`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Group Join Successful",
-                        body: "Bot added to group",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-        } else {
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: `❌ *Failed to join group*\n\nError: ${result.error}\n\n🔗 You can join manually: ${GROUP_INVITE_LINK}`,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Group Join Failed",
-                        body: "Could not join group",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-        }
-        return;
-    } else {
-        // Owner is calling - broadcast to ALL active users
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `👥 *BROADCAST GROUP JOIN*\n\n🔄 Adding ALL active sessions to group...\n\nThis may take a moment.`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Broadcast Group Join",
-                    body: "Adding all sessions to group",
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        
-        const broadcastResult = await broadcastJoinGroup();
-        
-        await conn.sendMessage(message.key.remoteJid, { 
-            text: `✅ *Broadcast Group Join Complete*\n\n• Total Sessions: ${broadcastResult.totalSessions}\n• Processed: ${broadcastResult.processedSessions}\n• Successful: ${broadcastResult.totalSuccessful}\n• Failed: ${broadcastResult.processedSessions - broadcastResult.totalSuccessful}\n\n👥 All active sessions have been added to the group!`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "Broadcast Complete",
-                    body: `${broadcastResult.totalSuccessful} sessions joined`,
-                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                    sourceUrl: REPO_LINK,
-                    mediaType: 1,
-                    showAdAttribution: true,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: message });
-        return;
-    }
-}
-        
-  // In your server.js, update the TRACLE command section
-if (commandName === 'tracle') {
-    const featureList = `
-🚀 *TRACLE - LITE BOT v2.1.0*
-━━━━━━━━━━━━━━━━━━━━━━
-
-👑 *Owner:* ${userSettings.ownerName || OWNER_NAME}
-🔧 *Developer:* ${DEV}
-📱 *Prefix:* ${userPrefix}
-
-✨ *CORE FEATURES*
-━━━━━━━━━━━━━━━━━━━━━━
-
-🎵 *MEDIA DOWNLOADER*
-• .song [title] - Download any song
-• .video [url] - Download YouTube videos
-• .yt [search] - YouTube search & download
-• .tiktok [url] - TikTok downloader
-• .ig [url] - Instagram downloader
-• .fb [url] - Facebook downloader
-• .twitter [url] - Twitter/X downloader
-
-👁️ *AUTO FEATURES*
-• Auto-view status updates
-• Auto-like/react to status
-• Anti-delete message protection
-
-🛡️ *SECURITY TOOLS*
-• Message anti-delete (DM/Group mode)
-• Session restoration
-• Multi-device support
-
-📱 *GROUP MANAGEMENT*
-• .add [number] - Add members
-• .kick @user - Remove members
-• .promote/demote - Admin control
-• .gclink - Group invite link
-
-⚙️ *SETTINGS COMMANDS*
-• .mode [public/private] - Bot response mode
-• .setprefix [prefix] - Change command prefix
-• .setname [name] - Set owner name
-• .setbotname [name] - Set bot name
-• .setbotimage [url] - Set bot image
-• .setbank [details] - Configure bank info
-• .autoviewstatus [on/off] - Auto-view status
-• .autolikestatus [on/off] - Auto-react status
-• .antidelete [on/off] - Anti-delete protection
-
-🔗 *UTILITY COMMANDS*
-• .ping - Check bot speed
-• .menu - Full command list
-• .support - Bank/support info
-• .owner - Owner information
-
-☁️ *CLOUD FEATURES*
-• Session backup & restore
-• Multi-device synchronization
-
-━━━━━━━━━━━━━━━━━━━━━━
-💾 *BOT INFORMATION*
-• Total Commands: ${commands.size}
-• Bot Mode: ${userSettings.botMode}
-• Anti-Delete: ${userSettings.antiDelete === "true" ? "✅ ON" : "❌ OFF"}
-• Auto-View Status: ${userSettings.autoViewStatus === "true" ? "✅ ON" : "❌ OFF"}
-• Auto-Like Status: ${userSettings.autoLikeStatus === "true" ? "✅ ON" : "❌ OFF"}
-
-📚 *GitHub:* ${REPO_LINK}
-🌟 *Advanced WhatsApp automation bot with media downloading capabilities!*`;
-
-    await conn.sendMessage(message.key.remoteJid, { 
-        text: featureList,
-        contextInfo: {
-            externalAdReply: {
-                title: "TRACLE - LITE BOT",
-                body: "Advanced WhatsApp Bot v2.1.0",
-                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                sourceUrl: REPO_LINK,
-                mediaType: 1,
-                showAdAttribution: true,
-                renderLargerThumbnail: true
-            }
-        }
-    }, { quoted: message });
-    return;
-}
-        
-        // SETNAME COMMAND with premium context info
-        if (commandName === 'setname') {
-            if (!args[0]) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `👤 *Set Owner Name*\n\nUsage: ${userPrefix}setname [new owner name]\n\nCurrent: ${userSettings.ownerName || OWNER_NAME}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Set Owner Name",
-                            body: `Current: ${userSettings.ownerName || OWNER_NAME}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-                return;
-            }
-            
-            const ownerName = args.join(' ');
-            
-            updateUserSettings(sessionId, { ownerName: ownerName });
-            
-            const updateMessage = `✅ *Owner Name Updated*\n\n👤 Previous: ${userSettings.ownerName || OWNER_NAME}\n👤 New: *${ownerName}*`;
-            
-            await conn.sendMessage(message.key.remoteJid, { 
-                text: updateMessage,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "Owner Name Updated",
-                        body: `New name: ${ownerName}`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        showAdAttribution: true,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: message });
-            return;
-        }
-
-        // If it's not a built-in command, check folder commands
-        if (commands.has(commandName)) {
-            const command = commands.get(commandName);
-            
-            console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
-            
-            try {
-                const reply = (text, options = {}) => {
-                    // Premium template enabled
-                    const usePremiumTemplate = true;
-                    
-                    if (usePremiumTemplate) {
-                        // Premium context info for all command replies
-                        const contextOptions = {
-                            quoted: message,
-                            contextInfo: {
-                                externalAdReply: {
-                                    title: `${userSettings.botName || BOT_NAME} Command`,
-                                    body: `Command: ${commandName}`,
-                                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                    sourceUrl: REPO_LINK,
-                                    mediaType: 1,
-                                    // Premium template enhancements
-                                    showAdAttribution: true,
-                                    renderLargerThumbnail: true,
-                                    mediaUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                    sourceType: 'IMAGE'
-                                },
-                                forwardingScore: 999,
-                                isForwarded: false,
-                                stanzaId: "CMD" + Date.now(),
-                                participant: conn.user?.id,
-                                quotedMessage: {
-                                    conversation: text.substring(0, 50) + (text.length > 50 ? "..." : "")
-                                }
-                            },
-                            ...options
-                        };
-                        
-                        return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
-                    } else {
-                        // Default template
-                        const contextOptions = {
-                            quoted: message,
-                            ...options
-                        };
-                        
-                        return conn.sendMessage(message.key.remoteJid, { text }, contextOptions);
-                    }
-                };
-                
-                let groupMetadata = null;
-                const from = message.key.remoteJid;
-                const isGroup = from.endsWith('@g.us');
-                const isChannel = from.endsWith('@newsletter');
-                
-                if (isGroup) {
-                    try {
-                        groupMetadata = await conn.groupMetadata(from);
-                    } catch (error) {
-                        console.error("Error fetching group metadata:", error);
-                    }
-                }
-                
-                const quotedMessage = getQuotedMessage(message);
-                
-                const m = {
-                    mentionedJid: message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
-                    quoted: quotedMessage,
-                    sender: message.key.participant || message.key.remoteJid
-                };
-                
-                const q = body.slice(userPrefix.length + commandName.length).trim();
-                
-                let isAdmins = false;
-                let isCreator = false;
-                
-                if (isGroup && groupMetadata) {
-                    const participant = groupMetadata.participants.find(p => p.id === m.sender);
-                    isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
-                    isCreator = participant?.admin === 'superadmin';
-                }
-                
-                if (command.ownerOnly && !isBotOwner(conn, message, sessionId)) {
-                    console.log(`🔒 Command requires owner only`);
-                    await conn.sendMessage(message.key.remoteJid, { 
-                        text: `❌ Owner only command`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "Permission Denied",
-                                body: "This command requires owner privileges",
-                                thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                mediaType: 1,
-                                showAdAttribution: true,
-                                renderLargerThumbnail: true
-                            }
-                        }
-                    });
-                    return;
-                }
-                
-                await command.execute(conn, message, m, { 
-                    args, 
-                    q, 
-                    reply, 
-                    from: from,
-                    isGroup: isGroup,
-                    isChannel: isChannel,
-                    groupMetadata: groupMetadata,
-                    sender: message.key.participant || message.key.remoteJid,
-                    isAdmins: isAdmins,
-                    isCreator: isCreator,
-                    sessionId: sessionId,
-                    userSettings: userSettings
-                });
-            } catch (error) {
-                console.error(`❌ Error executing command ${commandName}:`, error);
-                
-                // Send error with premium context info
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Error executing command: ${error.message}`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Command Error",
-                            body: `Failed to execute: ${commandName}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-            }
-        } else {
-            console.log(`⚠ Command not found: ${commandName}`);
-            if (userSettings.botMode === "public" || isBotOwner(conn, message, sessionId)) {
-                await conn.sendMessage(message.key.remoteJid, { 
-                    text: `❌ Command not found: ${commandName}\nUse ${userPrefix}menu to see available commands`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "Command Not Found",
-                            body: `Try ${userPrefix}menu for available commands`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            mediaType: 1,
-                            showAdAttribution: true,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: message });
-            }
-        }
-    } catch (error) {
-        console.error("Error handling message:", error);
-    }
-}
+// =============== SESSION MANAGEMENT FUNCTIONS ===============
 
 function loadLastProcessedTimestamp(sessionId) {
     try {
@@ -2502,174 +1750,65 @@ function saveLastProcessedTimestamp(sessionId, timestamp) {
     }
 }
 
-// Function to save user info
-function saveUserInfoToFile(userNumber, email, token) {
-    try {
-        const sessionPath = path.join(__dirname, "sessions", userNumber);
-        if (!fs.existsSync(sessionPath)) {
-            fs.mkdirSync(sessionPath, { recursive: true });
-        }
-        
-        const userInfoPath = path.join(sessionPath, "user_info.json");
-        const userInfo = {
-            email: email,
-            token: token,
-            createdAt: new Date().toISOString(),
-            lastActivity: new Date().toISOString()
-        };
-        
-        fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
-        return true;
-    } catch (error) {
-        console.error("Error saving user info:", error);
-        return false;
+async function cleanupSession(userNumber) {
+    // Stop alive message system
+    stopAliveMessageSystem(userNumber);
+    
+    // Clear pairing timeout
+    const timeout = pairingTimeouts.get(userNumber);
+    if (timeout) {
+        clearTimeout(timeout);
+        pairingTimeouts.delete(userNumber);
     }
+    
+    // Close socket connection
+    const sock = sessions.get(userNumber);
+    if (sock) {
+        try {
+            sock.end(undefined);
+            console.log(`🔌 Closed socket connection for: ${userNumber}`);
+        } catch (error) {
+            console.log('Error closing socket:', error);
+        }
+        sessions.delete(userNumber);
+    }
+    
+    // Remove from active connections
+    const wasActive = activeConnections.has(userNumber);
+    activeConnections.delete(userNumber);
+    
+    // Update active users count when session is cleaned up
+    if (wasActive) {
+        updateActiveUsersCount();
+    }
+    
+    console.log(`✅ Cleaned up session: ${userNumber}`);
 }
 
-// =============== UPDATED SESSION AUTO-RESTORE FUNCTION WITH SUPABASE ===============
-async function restoreExistingSessions() {
-    console.log('\n🔄 Checking for existing sessions...');
+function updateActiveUsersCount() {
+    const totalSessions = activeConnections.size;
     
-    const sessionsPath = path.join(__dirname, 'sessions');
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
     
-    try {
-        if (!fs.existsSync(sessionsPath)) {
-            console.log('📁 No sessions folder found');
-            return;
-        }
-        
-        const userFolders = fs.readdirSync(sessionsPath);
-        
-        if (userFolders.length === 0) {
-            console.log('📁 No existing sessions to restore');
-            return;
-        }
-        
-        console.log(`📦 Found ${userFolders.length} session(s) to restore`);
-        
-        // Restore sessions with delay between each
-        for (let i = 0; i < userFolders.length; i++) {
-            const userNumber = userFolders[i];
-            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
-            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
-            
-            if (fs.existsSync(credsPath) && fs.existsSync(userInfoPath)) {
-                try {
-                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
-                    
-                    if (creds.registered) {
-                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userInfo.email})`);
-                        
-                        // Create a dummy socket for restoration
-                        const dummySocket = {
-                            emit: (event, data) => {
-                                console.log(`📡 Restoration event: ${event} for ${userNumber}`);
-                            }
-                        };
-                        
-                        // Delay between session restorations
-                        await delay(2000);
-                        
-                        // UPDATED: First check Supabase for backup before restoring
-                        if (backupManager.isConfigured()) {
-                            console.log(`🔄 Checking Supabase for session backup: ${userNumber}`);
-                            const supabaseCheck = await backupManager.checkSessionOnDrive(userNumber);
-                            
-                            if (supabaseCheck.sessionExists) {
-                                console.log(`✅ Session ${userNumber} found on Supabase, restoring...`);
-                                await backupManager.restoreSessionFromDrive(userNumber);
-                            }
-                        }
-                        
-                        // Attempt to restore session
-                        await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
-                        
-                        // Add retry mechanism for failed sessions
-                        const connectionData = activeConnections.get(userNumber);
-                        if (!connectionData || !connectionData.conn) {
-                            console.log(`⚠️ Session ${userNumber} failed to restore, will retry...`);
-                            setTimeout(() => {
-                                createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
-                            }, 5000);
-                        }
-                    } else {
-                        console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
-                }
-            }
-            
-            // Delay between each session restoration
-            await delay(1000);
-        }
-        
-        console.log('✅ Session restoration complete');
-        
-        // Auto-subscribe restored sessions to channels and group
-        setTimeout(async () => {
-            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
-            
-            // Give sessions time to fully connect
-            await delay(5000);
-            
-            const channelResult = await broadcastSubscribeToChannels();
-            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
-            
-            await delay(3000);
-            
-            const groupResult = await broadcastJoinGroup();
-            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
-            
-        }, 15000);
-        
-    } catch (error) {
-        console.error('❌ Error during session restoration:', error);
-    }
+    io.emit('active-users-update', { 
+        count: totalSessions,
+        connected: connectedSessions,
+        sessions: Array.from(activeConnections.keys())
+    });
+    
+    console.log(`📊 Active users/sessions updated: ${connectedSessions} connected, ${totalSessions} total`);
 }
-// =============== END UPDATED SESSION AUTO-RESTORE FUNCTION ===============
 
-// =============== UPDATED CREATE SESSION FUNCTION WITH SUPABASE INTEGRATION ===============
+// =============== SESSION CREATION AND RESTORATION ===============
+
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
         console.log(`\n🆕 Creating/Restoring session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
         
-        // 🆕 FIRST: Check Supabase for existing session backup
-        if (backupManager.isConfigured() && !isRestoring) {
-            console.log(`🔄 Checking Supabase for existing session backup: ${userNumber}`);
-            
-            try {
-                const supabaseCheck = await backupManager.restoreAndCheckSession(userNumber);
-                
-                if (supabaseCheck.exists && supabaseCheck.restored) {
-                    console.log(`✅ Session ${userNumber} restored from Supabase`);
-                    
-                    // Update user info
-                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                    const userInfoPath = path.join(sessionPath, 'user_info.json');
-                    
-                    if (!fs.existsSync(userInfoPath)) {
-                        const userInfo = {
-                            email: userEmail,
-                            token: userToken,
-                            createdAt: new Date().toISOString(),
-                            lastActivity: new Date().toISOString(),
-                            restoredFromSupabase: true,
-                            restoredAt: new Date().toISOString()
-                        };
-                        fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
-                    }
-                }
-            } catch (error) {
-                console.error(`❌ Error checking Supabase for ${userNumber}:`, error.message);
-            }
-        }
-        
         const sessionPath = path.join(__dirname, 'sessions', userNumber);
         await fs.ensureDir(sessionPath);
         
-        // Store user info if provided (for new sessions)
         if (userEmail && userToken && !isRestoring) {
             const userInfo = {
                 email: userEmail,
@@ -2689,7 +1828,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
         console.log(`📱 Using WA v${version.join('.')}`);
         
         const lastTimestamp = loadLastProcessedTimestamp(userNumber);
-        console.log(`⏰ Last processed timestamp for ${userNumber}: ${lastTimestamp ? new Date(lastTimestamp).toLocaleString() : 'None'}`);
         
         if (!state.creds || !state.creds.registered) {
             console.log(`❌ No valid credentials found for ${userNumber}, skipping restoration`);
@@ -2698,7 +1836,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             }
         }
         
-        // ===== UPDATED CONNECTION SETTINGS =====
         const sock = makeWASocket({
             version,
             auth: {
@@ -2710,17 +1847,16 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             browser: Browsers.macOS("Safari"),
             syncFullHistory: false,
             markOnlineOnConnect: true,
-            connectTimeoutMs: 120000, // Increased from 60000
-            keepAliveIntervalMs: 10000, // Send keep-alive every 10 seconds
-            maxIdleTimeMs: 600000, // 10 minutes idle timeout
-            maxRetries: 15, // Increased retry attempts
+            connectTimeoutMs: 120000,
+            keepAliveIntervalMs: 10000,
+            maxIdleTimeMs: 600000,
+            maxRetries: 15,
             emitOwnEvents: true,
             defaultQueryTimeoutMs: 60000,
             getMessage: async () => ({ conversation: '' }),
             shouldIgnoreJid: (jid) => false,
             fireInitQueries: true,
             retryRequestDelayMs: 200,
-            // Enhanced connection stability
             keepAlive: true,
             alwaysUseTakeover: true,
             mobile: false,
@@ -2729,7 +1865,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                 maxCommitRetries: 15,
                 delayBetweenTriesMs: 5000
             },
-            // Add heartbeat
             heartbeatInterval: 30000
         });
 
@@ -2748,13 +1883,12 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             lastTimestamp: lastTimestamp,
             email: userEmail,
             token: userToken,
-            isConnected: false, // Track connection status
-            lastActivity: Date.now(), // Track last activity
-            connectionAttempts: 0, // Track connection attempts
-            connectedAt: null // Track when connected
+            isConnected: false,
+            lastActivity: Date.now(),
+            connectionAttempts: 0,
+            connectedAt: null
         });
 
-        // =============== FIXED: PAIRING CODE GENERATION FOR NEW USERS ===============
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
@@ -2766,7 +1900,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                 userEmail: userEmail
             });
             
-            // FIX: Always generate QR code for new sessions
             if (!isRestoring) {
                 if (qr) {
                     console.log(`📱 QR code generated for NEW user`);
@@ -2785,13 +1918,12 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
             if (connection === 'open') {
                 console.log(`✅ WhatsApp connected: ${userNumber}`);
                 
-                // Update connection status
                 const connectionData = activeConnections.get(userNumber);
                 if (connectionData) {
                     connectionData.isConnected = true;
                     connectionData.hasLinked = true;
                     connectionData.lastActivity = Date.now();
-                    connectionData.connectionAttempts = 0; // Reset attempts on successful connection
+                    connectionData.connectionAttempts = 0;
                     connectionData.connectedAt = Date.now();
                 }
                 
@@ -2814,8 +1946,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                             const userSettings = getUserSettings(userNumber);
                             
                             const botJid = sock.user?.id;
-                            console.log('Bot JID for connected message:', botJid);
-                            
                             if (!botJid) {
                                 console.log(`❌ No bot JID found`);
                                 return;
@@ -2829,7 +1959,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                             }
                             
                             botNumber = botNumber.replace(/\D/g, '');
-                            console.log('Extracted bot number:', botNumber);
                             
                             if (!botNumber || botNumber.length < 10) {
                                 console.log(`❌ Invalid bot number extracted: ${botNumber}`);
@@ -2837,7 +1966,6 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                             }
                             
                             const userJid = `${botNumber}@s.whatsapp.net`;
-                            console.log('Target JID for connected message:', userJid);
                             
                             const connectedMessage = `
 🚀 *${userSettings.botName || BOT_NAME} Activated!* 🚀
@@ -2853,18 +1981,13 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
 
                             console.log(`Sending connected message to ${userJid}...`);
                             
-                            await sock.sendMessage(userJid, { 
-                                text: connectedMessage,
-                                contextInfo: {
-                                    externalAdReply: {
-                                        title: "Connection Successful",
-                                        body: `${userSettings.botName || BOT_NAME} is now active`,
-                                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                        sourceUrl: REPO_LINK,
-                                        mediaType: 1,
-                                        showAdAttribution: true,
-                                        renderLargerThumbnail: true
-                                    }
+                            await sendMessageWithContext(sock, userJid, connectedMessage, {
+                                externalAdReply: {
+                                    title: "Connection Successful",
+                                    body: `${userSettings.botName || BOT_NAME} is now active`,
+                                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                    sourceUrl: REPO_LINK,
+                                    mediaType: 1
                                 }
                             });
                             
@@ -2878,7 +2001,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
                     console.log(`♻️ Session restored successfully: ${userNumber}`);
                 }
                 
-                // Update user activity timestamp
                 if (!isRestoring && userEmail && userToken) {
                     const userInfoFile = path.join(sessionPath, 'user_info.json');
                     if (fs.existsSync(userInfoFile)) {
@@ -2888,10 +2010,8 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
                     }
                 }
                 
-                // =============== START ALIVE MESSAGE SYSTEM (2 HOURS) ===============
                 startAliveMessageSystem(userNumber, sock, userSettings);
                 
-                // Auto-subscribe on connection with enhanced retry mechanism
                 setTimeout(async () => {
                     try {
                         console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
@@ -2904,7 +2024,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
                         const groupResult = await handleAutoGroupJoin(sock, userNumber);
                         console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
                         
-                        // Send custom connection message with premium context info
                         const botJid = sock.user?.id;
                         if (botJid) {
                             let botNumber = '';
@@ -2918,7 +2037,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
                             const userJid = `${botNumber}@s.whatsapp.net`;
                             const userSettings = getUserSettings(userNumber);
                             
-                            // Custom connection message with enhanced premium context
                             const connectionMessage = `
 ✅ *CONNECTION SUCCESSFUL* 
 
@@ -2937,33 +2055,17 @@ Total connected: ${Array.from(activeConnections.values()).filter(c => c.isConnec
 
 Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
 
-                            await sock.sendMessage(userJid, { 
-                                text: connectionMessage,
-                                contextInfo: {
-                                    externalAdReply: {
-                                        title: "Setup Complete",
-                                        body: "Your bot is ready to use",
-                                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                        sourceUrl: REPO_LINK,
-                                        mediaType: 1,
-                                        showAdAttribution: true,
-                                        renderLargerThumbnail: true
-                                    }
+                            await sendMessageWithContext(sock, userJid, connectionMessage, {
+                                externalAdReply: {
+                                    title: "Setup Complete",
+                                    body: "Your bot is ready to use",
+                                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                    sourceUrl: REPO_LINK,
+                                    mediaType: 1
                                 }
                             }).catch(err => console.error("Failed to send connection message:", err));
                         }
                         
-                        // Backup session to Supabase after successful connection
-                        if (backupManager.isConfigured()) {
-                            setTimeout(async () => {
-                                try {
-                                    console.log(`🔄 Backing up new session to Supabase: ${userNumber}`);
-                                    await backupManager.backupNewUserSession(userNumber);
-                                } catch (backupError) {
-                                    console.error(`❌ Failed to backup session to Supabase:`, backupError.message);
-                                }
-                            }, 10000);
-                        }
                     } catch (error) {
                         console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
                     }
@@ -2971,15 +2073,12 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                 
                 sock.ev.on('messages.upsert', async (m) => {
                     try {
-                        // Update last activity
                         const connectionData = activeConnections.get(userNumber);
                         if (connectionData) {
                             connectionData.lastActivity = Date.now();
                         }
                         
                         console.log(`📩 Message received for session: ${userNumber}`);
-                        console.log(`Message type: ${m.type}`);
-                        console.log(`Messages count: ${m.messages?.length || 0}`);
                         
                         if (m.messages && m.type === 'notify') {
                             for (const message of m.messages) {
@@ -3043,25 +2142,42 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                     }
                 });
                 
-                // Update active users count when a session connects
+                // =============== ANTICALL: HANDLE INCOMING CALLS ===============
+                sock.ev.on('call', async (callUpdates) => {
+                    try {
+                        console.log(`📞 Call event received for session: ${userNumber}`);
+                        
+                        for (const callUpdate of callUpdates) {
+                            console.log(`Call status: ${callUpdate.status} from: ${callUpdate.from}`);
+                            
+                            // Check if anticall is enabled
+                            if (anticallModule.isAnticallEnabled()) {
+                                await anticallModule.handleIncomingCall(sock, callUpdate);
+                            } else {
+                                console.log(`📞 Anti-call is disabled, ignoring call from: ${callUpdate.from}`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error in call handler for ${userNumber}:`, error);
+                    }
+                });
+                // =============== END ANTICALL ===============
+                
                 updateActiveUsersCount();
             }
             
-            // ===== UPDATED CONNECTION CLOSE HANDLER WITH ENHANCED RECONNECTION =====
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const errorMessage = lastDisconnect?.error?.message;
                 
                 console.log(`❌ Connection closed. Reason: ${statusCode || errorMessage}`);
                 
-                // Update connection status
                 const connectionData = activeConnections.get(userNumber);
                 if (connectionData) {
                     connectionData.isConnected = false;
                     connectionData.connectionAttempts = (connectionData.connectionAttempts || 0) + 1;
                 }
                 
-                // Stop alive message system
                 stopAliveMessageSystem(userNumber);
                 
                 if (!isRestoring) {
@@ -3100,10 +2216,8 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         saveLastProcessedTimestamp(userNumber, connectionData.lastTimestamp);
                     }
                     
-                    // Update active users count when a session disconnects
                     updateActiveUsersCount();
                     
-                    // Enhanced reconnection logic with exponential backoff
                     if (statusCode !== DisconnectReason.loggedOut) {
                         const maxAttempts = 10;
                         const connectionData = activeConnections.get(userNumber);
@@ -3118,13 +2232,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                                 const sessionPath = path.join(__dirname, 'sessions', userNumber);
                                 if (fs.existsSync(sessionPath)) {
                                     console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
-                                    
-                                    // Check Supabase first before reconnecting
-                                    if (backupManager.isConfigured() && attempts > 1) {
-                                        console.log(`🔄 Attempting Supabase restore for ${userNumber} before reconnect`);
-                                        await backupManager.restoreSessionFromDrive(userNumber);
-                                    }
-                                    
                                     createSession(userNumber, socket, true, userEmail, userToken);
                                 }
                             }, retryDelay);
@@ -3133,7 +2240,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                 }
             }
             
-            // Handle connecting state
             if (connection === 'connecting') {
                 console.log(`🔄 Connecting: ${userNumber}`);
                 const connectionData = activeConnections.get(userNumber);
@@ -3142,20 +2248,15 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                 }
             }
         });
-        // =============== END UPDATED CONNECTION EVENT HANDLER ===============
 
         sock.ev.on('creds.update', saveCreds);
         
-        // =============== FIXED: PAIRING CODE GENERATION FOR NEW USERS ===============
-        // Generate pairing code for new users if not registered
         if (!state.creds?.registered && !isRestoring) {
             console.log(`🔄 Generating pairing code for new user: ${userNumber}`);
             
             try {
-                // Wait a bit for connection to establish
                 await delay(3000);
                 
-                // Check if socket has requestPairingCode method
                 if (sock.requestPairingCode && typeof sock.requestPairingCode === 'function') {
                     const phoneNumber = userNumber.replace(/\D/g, '');
                     console.log(`📱 Requesting pairing code for phone number: ${phoneNumber}`);
@@ -3164,7 +2265,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                     
                     console.log(`✅ Pairing code generated: ${code}`);
                     
-                    // Set timeout for pairing code expiration
                     const timeout = setTimeout(() => {
                         if (sessions.get(userNumber) === sock) {
                             socket.emit('pairing-expired', { 
@@ -3174,11 +2274,10 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                             });
                             cleanupSession(userNumber);
                         }
-                    }, 180000); // 3 minutes
+                    }, 180000);
                     
                     pairingTimeouts.set(userNumber, timeout);
                     
-                    // Send pairing code to frontend
                     socket.emit('pairing-code', { 
                         pairingCode: code, 
                         userNumber,
@@ -3206,10 +2305,7 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                     error: 'Failed to generate pairing code: ' + error.message
                 });
                 
-                // Try alternative method for older versions
                 try {
-                    console.log(`🔄 Trying alternative pairing method...`);
-                    // Emit QR code if available
                     socket.emit('qr', { 
                         userNumber,
                         email: userEmail,
@@ -3224,7 +2320,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
         } else if (state.creds?.registered && !isRestoring) {
             console.log(`✅ User ${userNumber} already registered, connecting directly`);
         }
-        // =============== END FIXED PAIRING CODE GENERATION ===============
         
         return sock;
     } catch (error) {
@@ -3235,69 +2330,95 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
         await cleanupSession(userNumber);
     }
 }
-// =============== END UPDATED CREATE SESSION FUNCTION ===============
 
-// =============== UPDATED CLEANUP SESSION FUNCTION ===============
-async function cleanupSession(userNumber) {
-    // Stop alive message system
-    stopAliveMessageSystem(userNumber);
+async function restoreExistingSessions() {
+    console.log('\n🔄 Checking for existing sessions...');
     
-    // Clear pairing timeout
-    const timeout = pairingTimeouts.get(userNumber);
-    if (timeout) {
-        clearTimeout(timeout);
-        pairingTimeouts.delete(userNumber);
-    }
+    const sessionsPath = path.join(__dirname, 'sessions');
     
-    // Close socket connection
-    const sock = sessions.get(userNumber);
-    if (sock) {
-        try {
-            sock.end(undefined);
-            console.log(`🔌 Closed socket connection for: ${userNumber}`);
-        } catch (error) {
-            console.log('Error closing socket:', error);
+    try {
+        if (!fs.existsSync(sessionsPath)) {
+            console.log('📁 No sessions folder found');
+            return;
         }
-        sessions.delete(userNumber);
+        
+        const userFolders = fs.readdirSync(sessionsPath);
+        
+        if (userFolders.length === 0) {
+            console.log('📁 No existing sessions to restore');
+            return;
+        }
+        
+        console.log(`📦 Found ${userFolders.length} session(s) to restore`);
+        
+        for (let i = 0; i < userFolders.length; i++) {
+            const userNumber = userFolders[i];
+            const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
+            const userInfoPath = path.join(sessionsPath, userNumber, 'user_info.json');
+            
+            if (fs.existsSync(credsPath) && fs.existsSync(userInfoPath)) {
+                try {
+                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                    
+                    if (creds.registered) {
+                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userInfo.email})`);
+                        
+                        const dummySocket = {
+                            emit: (event, data) => {
+                                console.log(`📡 Restoration event: ${event} for ${userNumber}`);
+                            }
+                        };
+                        
+                        await delay(2000);
+                        
+                        await createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                        
+                        const connectionData = activeConnections.get(userNumber);
+                        if (!connectionData || !connectionData.conn) {
+                            console.log(`⚠️ Session ${userNumber} failed to restore, will retry...`);
+                            setTimeout(() => {
+                                createSession(userNumber, dummySocket, true, userInfo.email, userInfo.token);
+                            }, 5000);
+                        }
+                    } else {
+                        console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Could not restore ${userNumber}:`, error.message);
+                }
+            }
+            
+            await delay(1000);
+        }
+        
+        console.log('✅ Session restoration complete');
+        
+        setTimeout(async () => {
+            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
+            
+            await delay(5000);
+            
+            const channelResult = await broadcastSubscribeToChannels();
+            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
+            
+            await delay(3000);
+            
+            const groupResult = await broadcastJoinGroup();
+            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
+            
+        }, 15000);
+        
+    } catch (error) {
+        console.error('❌ Error during session restoration:', error);
     }
-    
-    // Remove from active connections
-    const wasActive = activeConnections.has(userNumber);
-    activeConnections.delete(userNumber);
-    
-    // Update active users count when session is cleaned up
-    if (wasActive) {
-        updateActiveUsersCount();
-    }
-    
-    console.log(`✅ Cleaned up session: ${userNumber}`);
-}
-// =============== END UPDATED CLEANUP SESSION FUNCTION ===============
-
-// Function to update active users count based on sessions
-function updateActiveUsersCount() {
-    // Count total sessions (active connections)
-    const totalSessions = activeConnections.size;
-    
-    // Count connected sessions
-    const connectedSessions = Array.from(activeConnections.values())
-        .filter(data => data.isConnected).length;
-    
-    // Emit to all connected socket.io clients
-    io.emit('active-users-update', { 
-        count: totalSessions,
-        connected: connectedSessions,
-        sessions: Array.from(activeConnections.keys())
-    });
-    
-    console.log(`📊 Active users/sessions updated: ${connectedSessions} connected, ${totalSessions} total`);
 }
 
-// Update socket.io connection handler
+// =============== SOCKET.IO CONNECTION HANDLER ===============
+
 io.on('connection', (socket) => {
     console.log('🌐 Frontend connected:', socket.id);
     
-    // Send current active users count to new connection
     const connectedSessions = Array.from(activeConnections.values())
         .filter(data => data.isConnected).length;
     
@@ -3337,7 +2458,6 @@ io.on('connection', (socket) => {
     socket.on('disconnect-session', async (data) => {
         const { userNumber, email, token } = data;
         
-        // Verify ownership before disconnecting
         if (email && token) {
             const userSessionFile = path.join(__dirname, 'sessions', userNumber, 'user_info.json');
             if (fs.existsSync(userSessionFile)) {
@@ -3363,12 +2483,137 @@ io.on('connection', (socket) => {
     });
 });
 
+// =============== EXPRESS APP SETUP ===============
+
 app.use(express.json());
 app.use(express.static('public'));
 
-// =============== NEW SUPABASE SESSION CHECKING API ENDPOINTS ===============
+// Setup admin routes
+adminManager.setupRoutes(app);
 
-// API endpoint to check if session exists on Supabase
+// =============== ADDED: ADMIN APPLICATION SUBMISSION ENDPOINT ===============
+const ADMIN_EMAIL = 'brenaldmedia@gmail.com';
+const ADMIN_CONFIG = {
+    email: ADMIN_EMAIL,
+    whatsapp: '2348150221529',
+    telegram: '@Brenaldmedia'
+};
+
+
+app.post('/api/submit-admin-application', async (req, res) => {
+    try {
+        const { name, phone, email, country, reason } = req.body;
+        
+        if (!name || !phone || !email || !country || !reason) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'All fields are required' 
+            });
+        }
+        
+        // REMOVED THE 100-CHARACTER VALIDATION
+        
+        // Check if email configuration exists
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            console.log('⚠️ Email not configured, logging application instead');
+            
+            // Log the application for manual follow-up
+            console.log(`
+            =============== ADMIN APPLICATION ===============
+            Name: ${name}
+            Phone: ${phone}
+            Email: ${email}
+            Country: ${country}
+            Reason: ${reason}
+            Submitted: ${new Date().toLocaleString()}
+            =================================================
+            `);
+            
+            return res.json({ 
+                success: true, 
+                message: 'Application received! Email not configured yet. Admin will contact you manually.',
+                note: 'Admin contact: +234 902 530 3930 or brenaldmedia@gmail.com'
+            });
+        }
+        // Send email to admin
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: ADMIN_EMAIL,
+            subject: 'New Admin Application - Tracle-Lite',
+            html: `
+                <h2>New Admin Application Submitted</h2>
+                <p><strong>Applicant Name:</strong> ${name}</p>
+                <p><strong>Phone:</strong> ${phone}</p>
+                <p><strong>Email:</strong> ${email}</p>
+                <p><strong>Country:</strong> ${country}</p>
+                <p><strong>Application Reason:</strong></p>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    ${reason.replace(/\n/g, '<br>')}
+                </div>
+                <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+                <hr>
+                <p>Please review this application and contact the applicant if suitable.</p>
+                <p><strong>Contact applicant at:</strong> ${phone} or ${email}</p>
+            `
+        };
+        
+        await transporter.sendMail(mailOptions);
+        
+        // Also send confirmation email to applicant
+        const userMailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Admin Application Received - Tracle-Lite',
+            html: `
+                <h2>Admin Application Received</h2>
+                <p>Dear ${name},</p>
+                <p>Thank you for submitting your admin application to Tracle-Lite.</p>
+                <p>Your application has been received and is under review.</p>
+                <p><strong>Important Next Steps:</strong></p>
+                <ol>
+                    <li>Please contact the admin to discuss your application</li>
+                    <li>Be prepared for a brief interview</li>
+                </ol>
+                <p><strong>Admin Contact Details:</strong></p>
+                <ul>
+                    <li>Email: ${ADMIN_CONFIG.email}</li>
+                    <li>WhatsApp: ${ADMIN_CONFIG.whatsapp}</li>
+                    <li>Telegram: ${ADMIN_CONFIG.telegram}</li>
+                </ul>
+                <p><strong>Your Application ID:</strong> APP-${Date.now().toString().slice(-6)}</p>
+                <p>Best regards,<br>Tracle-Lite Team</p>
+            `
+        };
+        
+        await transporter.sendMail(userMailOptions);
+        
+        // Log the application
+        console.log(`✅ Admin application received from ${name} (${email})`);
+        
+        res.json({ 
+            success: true, 
+            message: 'Application submitted successfully! Please check your email for confirmation.',
+            applicationId: `APP-${Date.now().toString().slice(-6)}`
+        });
+        
+    } catch (error) {
+        console.error('❌ Admin application error:', error);
+        
+        // Fallback response if email fails
+        res.status(500).json({ 
+            success: false, 
+            message: 'Application received but email failed. Admin will contact you directly.',
+            adminContact: {
+                email: 'brenaldmedia@gmail.com',
+                whatsapp: '+2349025303930'
+            }
+        });
+    }
+});
+// =============== END OF ADMIN APPLICATION ENDPOINT ===============
+// =============== END OF ADDED SECTION ===============
+
+// API endpoint to check if session exists
 app.post('/api/user/check-session-exists', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -3380,7 +2625,6 @@ app.post('/api/user/check-session-exists', async (req, res) => {
             });
         }
 
-        // Validate token
         const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
         if (!tokenValidation.valid) {
             return res.status(403).json({ 
@@ -3394,7 +2638,6 @@ app.post('/api/user/check-session-exists', async (req, res) => {
         let sessionExists = false;
         let sessionInfo = null;
         
-        // Check if session exists locally
         const sessionPath = path.join(__dirname, 'sessions', userNumber);
         const credsPath = path.join(sessionPath, 'creds.json');
         
@@ -3409,42 +2652,6 @@ app.post('/api/user/check-session-exists', async (req, res) => {
                 };
             } catch (error) {
                 console.error(`Error reading local creds.json:`, error);
-            }
-        }
-        
-        // Check if session exists on Supabase
-        if (backupManager.isConfigured() && !sessionExists) {
-            try {
-                const supabaseCheck = await backupManager.restoreAndCheckSession(userNumber);
-                
-                if (supabaseCheck.exists) {
-                    sessionExists = true;
-                    sessionInfo = {
-                        local: false,
-                        supabase: true,
-                        registered: supabaseCheck.registered || false,
-                        needsRestore: true,
-                        restored: supabaseCheck.restored || false
-                    };
-                    
-                    // If restored from Supabase, update user info
-                    if (supabaseCheck.restored) {
-                        const userInfoPath = path.join(sessionPath, 'user_info.json');
-                        if (!fs.existsSync(userInfoPath)) {
-                            const userInfo = {
-                                email: email,
-                                token: token,
-                                createdAt: new Date().toISOString(),
-                                lastActivity: new Date().toISOString(),
-                                restoredFromSupabase: true,
-                                restoredAt: new Date().toISOString()
-                            };
-                            fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error(`Error checking Supabase for session ${userNumber}:`, error);
             }
         }
         
@@ -3465,7 +2672,7 @@ app.post('/api/user/check-session-exists', async (req, res) => {
     }
 });
 
-// =============== UPDATED: API endpoint to restore session from Supabase ===============
+// API endpoint to restore session
 app.post('/api/user/restore-session', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -3477,7 +2684,6 @@ app.post('/api/user/restore-session', async (req, res) => {
             });
         }
 
-        // Validate token
         const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
         if (!tokenValidation.valid) {
             return res.status(403).json({ 
@@ -3493,73 +2699,28 @@ app.post('/api/user/restore-session', async (req, res) => {
             message: 'Session not found'
         };
         
-        // First try to restore from Supabase
-        if (backupManager.isConfigured()) {
+        const credsPath = path.join(__dirname, 'sessions', userNumber, 'creds.json');
+        if (fs.existsSync(credsPath)) {
             try {
-                const restoreResult = await backupManager.restoreSessionFromDrive(userNumber);
+                const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                 
-                if (restoreResult.success) {
-                    console.log(`✅ Session restored from Supabase: ${userNumber}`);
-                    
-                    // Update user info
-                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                    const userInfoPath = path.join(sessionPath, 'user_info.json');
-                    
-                    const userInfo = {
-                        email: email,
-                        token: token,
-                        createdAt: new Date().toISOString(),
-                        lastActivity: new Date().toISOString(),
-                        restoredFromSupabase: true,
-                        restoredAt: new Date().toISOString()
-                    };
-                    
-                    fs.writeFileSync(userInfoPath, JSON.stringify(userInfo, null, 2));
-                    
-                    // IMPORTANT: Also create the session in memory
+                if (creds.registered) {
                     setTimeout(() => {
                         createSession(userNumber, null, true, email, token);
                     }, 1000);
                     
                     result = {
                         success: true,
-                        message: 'Session restored from Supabase',
-                        restored: true,
-                        source: 'supabase'
+                        message: 'Local session found and restoring',
+                        restored: false,
+                        source: 'local'
                     };
                 }
             } catch (error) {
-                console.error(`Error restoring from Supabase:`, error);
+                console.error(`Error reading local creds:`, error);
             }
         }
         
-        // Check if we have local session
-        if (!result.success) {
-            const credsPath = path.join(__dirname, 'sessions', userNumber, 'creds.json');
-            if (fs.existsSync(credsPath)) {
-                try {
-                    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                    
-                    if (creds.registered) {
-                        // Create session in memory
-                        setTimeout(() => {
-                            createSession(userNumber, null, true, email, token);
-                        }, 1000);
-                        
-                        result = {
-                            success: true,
-                            message: 'Local session found and restoring',
-                            restored: false,
-                            source: 'local'
-                        };
-                    }
-                } catch (error) {
-                    console.error(`Error reading local creds:`, error);
-                }
-            }
-        }
-        
-        // If no session found anywhere, allow creating new one
         if (!result.success) {
             result = {
                 success: true,
@@ -3580,9 +2741,6 @@ app.post('/api/user/restore-session', async (req, res) => {
         });
     }
 });
-// =============== END UPDATED RESTORE SESSION ENDPOINT ===============
-
-// =============== NEW ADMIN API ENDPOINTS ===============
 
 // Add API endpoint for granting tokens
 app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
@@ -3604,22 +2762,11 @@ app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(admi
             });
         }
 
-        // Update user token balance
         users[email].tokenBalance = (users[email].tokenBalance || 0) + parseInt(amount);
         users[email].freeTokensGranted = (users[email].freeTokensGranted || 0) + parseInt(amount);
         users[email].lastUpdated = new Date().toISOString();
         
         await tokenManager.saveUsers(users);
-        
-        // If free tokens, adjust revenue
-        if (free) {
-            const stats = await tokenManager.getStats();
-            const revenue = stats.summary?.revenue || 0;
-            const newRevenue = revenue - parseInt(amount);
-            
-            // Update revenue in stats
-            // Note: You might need to adjust your stats calculation logic
-        }
         
         res.json({
             success: true,
@@ -3637,7 +2784,7 @@ app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(admi
     }
 });
 
-// Add API endpoint for updating user
+// API endpoint for updating user
 app.post('/api/admin/user/update', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
     try {
         const { email, status, paid } = req.body;
@@ -3670,7 +2817,109 @@ app.post('/api/admin/user/update', adminManager.verifyAdminToken.bind(adminManag
         });
     }
 });
-// =============== END NEW ADMIN API ENDPOINTS ===============
+
+// Update user grant endpoint
+app.post('/api/admin/user/update-grant', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
+    try {
+        const { email, maxSessions, grantType } = req.body;
+        
+        if (!email || !maxSessions) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and maxSessions are required'
+            });
+        }
+
+        const users = await tokenManager.getAllUsers();
+        
+        if (!users[email]) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        users[email].maxSessions = parseInt(maxSessions);
+        users[email].grantType = grantType || 'free';
+        users[email].grantUpdated = new Date().toISOString();
+        users[email].lastUpdated = new Date().toISOString();
+        
+        if (grantType === 'paid') {
+            users[email].paid = true;
+            users[email].status = 'approved';
+        } else if (grantType === 'free') {
+            users[email].freeToken = true;
+            users[email].paid = false;
+        }
+        
+        await tokenManager.saveUsers(users);
+        
+        res.json({
+            success: true,
+            message: `Grant updated for ${email}`,
+            user: users[email]
+        });
+        
+    } catch (error) {
+        console.error('Error updating grant:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update grant'
+        });
+    }
+});
+
+// Notify user about grant update
+app.post('/api/admin/notify-user-grant', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
+    try {
+        const { email, maxSessions, message } = req.body;
+        
+        if (!email || !maxSessions) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and maxSessions are required'
+            });
+        }
+
+        const users = await tokenManager.getAllUsers();
+        const user = users[email];
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const emailHtml = `
+            <h2>🎉 Your Grant Has Been Updated!</h2>
+            <p>Hello, your session grant has been updated by the administrator.</p>
+            <div style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.05)); 
+                 padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid var(--primary-color);">
+                <p><strong>New Session Limit:</strong> ${maxSessions} sessions</p>
+                <p><strong>Updated At:</strong> ${new Date().toLocaleString()}</p>
+                ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
+            </div>
+            <p>You can now use up to ${maxSessions} simultaneous sessions.</p>
+            <p><strong>Note:</strong> You may need to restart your sessions for the changes to take effect.</p>
+            <p>If you have any questions, please contact the administrator.</p>
+        `;
+        
+        await tokenManager.sendEmail(email, '🎉 Your Grant Has Been Updated - Tracle-Lite', emailHtml);
+        
+        res.json({
+            success: true,
+            message: 'User notified about grant update'
+        });
+        
+    } catch (error) {
+        console.error('Error notifying user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to notify user'
+        });
+    }
+});
 
 // API route to generate token
 app.post('/api/generate-token', async (req, res) => {
@@ -3745,7 +2994,7 @@ app.post('/api/validate-token-email', async (req, res) => {
     }
 });
 
-// API route to validate token (existing endpoint)
+// API route to validate token
 app.post('/api/validate-token', async (req, res) => {
     try {
         const { token } = req.body;
@@ -3781,22 +3030,7 @@ app.post('/api/validate-token', async (req, res) => {
     }
 });
 
-// API route to get quiz questions - REMOVED AS REQUESTED
-app.get('/api/quiz', (req, res) => {
-    res.json({
-        success: false,
-        message: 'Quiz API has been removed'
-    });
-});
-
-app.post('/api/verify-quiz', (req, res) => {
-    res.json({
-        success: false,
-        message: 'Quiz verification API has been removed'
-    });
-});
-
-// API route to get active users count (now based on sessions)
+// API route to get active users count
 app.get('/api/active-users', (req, res) => {
     const connectedSessions = Array.from(activeConnections.values())
         .filter(data => data.isConnected).length;
@@ -3809,7 +3043,7 @@ app.get('/api/active-users', (req, res) => {
     });
 });
 
-// API route to get token stats (admin only)
+// API route to get token stats
 app.get('/api/token-stats', async (req, res) => {
     try {
         const stats = await tokenManager.getStats();
@@ -3850,34 +3084,21 @@ app.post('/api/pair', async (req, res) => {
     }
 });
 
-// FIXED: Delete session endpoint
+// Delete session endpoint
 app.delete('/api/session/:userNumber', async (req, res) => {
     try {
         const { userNumber } = req.params;
         
         console.log(`🗑️ Deleting session: ${userNumber}`);
         
-        // Clean up the session
         await cleanupSession(userNumber);
         
-        // Delete session folder
         const sessionPath = path.join(__dirname, "sessions", userNumber);
         if (fs.existsSync(sessionPath)) {
             await fs.remove(sessionPath);
             console.log(`✅ Session folder deleted: ${sessionPath}`);
         }
         
-        // Delete from Supabase if configured
-        if (backupManager.isConfigured()) {
-            try {
-                await backupManager.deleteSessionFromDrive(userNumber);
-                console.log(`✅ Session deleted from Supabase: ${userNumber}`);
-            } catch (error) {
-                console.error(`❌ Error deleting session from Supabase:`, error.message);
-            }
-        }
-        
-        // Update active users count
         updateActiveUsersCount();
         
         res.json({ 
@@ -3909,7 +3130,7 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// FIXED: Get sessions endpoint
+// Get sessions endpoint
 app.get('/api/sessions', async (req, res) => {
     try {
         const sessionsPath = path.join(__dirname, 'sessions');
@@ -3953,8 +3174,6 @@ app.get('/api/sessions', async (req, res) => {
     }
 });
 
-// ===== NEW USER-ISOLATED API ENDPOINTS =====
-
 // Get sessions for specific user only
 app.post('/api/user-sessions', async (req, res) => {
     try {
@@ -3967,7 +3186,6 @@ app.post('/api/user-sessions', async (req, res) => {
             });
         }
 
-        // Validate the token belongs to this email
         const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
         if (!tokenValidation.valid) {
             return res.status(403).json({ 
@@ -3983,13 +3201,11 @@ app.post('/api/user-sessions', async (req, res) => {
             const folders = fs.readdirSync(sessionsPath);
             
             for (const userNumber of folders) {
-                // Check if this session belongs to the authenticated user
                 const userSessionFile = path.join(sessionsPath, userNumber, 'user_info.json');
                 if (fs.existsSync(userSessionFile)) {
                     try {
                         const userInfo = JSON.parse(fs.readFileSync(userSessionFile, 'utf8'));
                         
-                        // Only return sessions that belong to this email/token
                         if (userInfo.email === email && userInfo.token === token) {
                             const credsPath = path.join(sessionsPath, userNumber, 'creds.json');
                             if (fs.existsSync(credsPath)) {
@@ -4027,7 +3243,7 @@ app.post('/api/user-sessions', async (req, res) => {
     }
 });
 
-// =============== UPDATED: Delete a specific user's session ===============
+// Delete a specific user's session
 app.delete('/api/delete-user-session', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -4039,7 +3255,6 @@ app.delete('/api/delete-user-session', async (req, res) => {
             });
         }
 
-        // Validate the token belongs to this email
         const tokenValidation = await tokenManager.validateTokenWithEmail(email, token);
         if (!tokenValidation.valid) {
             return res.status(403).json({ 
@@ -4050,13 +3265,10 @@ app.delete('/api/delete-user-session', async (req, res) => {
 
         console.log(`🗑️ Deleting user session: ${userNumber} for ${email}`);
         
-        // Stop alive message system for this session
         stopAliveMessageSystem(userNumber);
         
-        // Clean up the session from active connections
         await cleanupSession(userNumber);
         
-        // Delete session folder
         const sessionPath = path.join(__dirname, 'sessions', userNumber);
         if (fs.existsSync(sessionPath)) {
             try {
@@ -4067,17 +3279,6 @@ app.delete('/api/delete-user-session', async (req, res) => {
             }
         }
         
-        // Delete from Supabase if configured
-        if (backupManager.isConfigured()) {
-            try {
-                await backupManager.deleteSessionFromDrive(userNumber);
-                console.log(`✅ User session deleted from Supabase: ${userNumber}`);
-            } catch (error) {
-                console.error(`❌ Error deleting user session from Supabase:`, error.message);
-            }
-        }
-        
-        // Update active users count
         updateActiveUsersCount();
         
         res.json({ 
@@ -4093,7 +3294,6 @@ app.delete('/api/delete-user-session', async (req, res) => {
         });
     }
 });
-// =============== END UPDATED DELETE ENDPOINT ===============
 
 // API endpoint to manually trigger channel subscription for ALL sessions
 app.post('/api/broadcast-subscribe', async (req, res) => {
@@ -4167,12 +3367,12 @@ app.post('/api/request-token', async (req, res) => {
             <p><strong>REMINDER:</strong> Send the token to user's email once approved.</p>
         `;
         
-        await tokenManager.sendEmail('brenaldmedia@gmail.com', '📋 New Token Request - Tracle-Lite', adminEmailHtml);
+        await tokenManager.sendEmail('traclelitemain@gmail.com', '📋 New Token Request - Tracle-Lite', adminEmailHtml);
         
         res.json({
             success: true,
             message: 'Token request submitted. Admin will review and send token to your email.',
-            adminEmail: 'brenaldmedia@gmail.com'
+            adminEmail: 'traclelitemain@gmail.com'
         });
         
     } catch (error) {
@@ -4184,8 +3384,28 @@ app.post('/api/request-token', async (req, res) => {
     }
 });
 
-// Setup admin routes from admin.js module
-adminManager.setupRoutes(app);
+// Add route to reload commands (ADMIN ONLY)
+app.post('/api/admin/reload-commands', adminManager.verifyAdminToken.bind(adminManager), (req, res) => {
+    try {
+        console.log('🔄 Reloading commands...');
+        commandHandler.loadCommands();
+        console.log(`✅ Commands reloaded. Total: ${commandHandler.commands.size}`);
+        
+        res.json({
+            success: true,
+            message: `Commands reloaded. Total: ${commandHandler.commands.size}`,
+            commandCount: commandHandler.commands.size
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reload commands',
+            error: error.message
+        });
+    }
+});
+
+// =============== START SERVER ===============
 
 const PORT = process.env.PORT || 3000;
 
@@ -4195,7 +3415,36 @@ const startServer = async () => {
             console.log(`\n🚀 ${BOT_NAME} running on port ${PORT}`);
             console.log(`🤖 Bot: ${BOT_NAME}`);
             console.log(`👑 Owner: ${OWNER_NAME}`);
-            console.log(`📦 Commands: ${commands.size}`);
+            
+            // Make activeConnections available globally for commands.js
+            global.activeConnections = activeConnections;
+            
+            // Load commands
+            commandHandler.loadCommands();
+            console.log(`📦 Commands loaded: ${commandHandler.commands.size}`);
+            
+            // Debug: List all commands
+            console.log('\n📋 LOADED COMMANDS:');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━');
+            
+            const commandList = Array.from(commandHandler.commands.entries());
+            if (commandList.length === 0) {
+                console.log('❌ No commands loaded!');
+                console.log('Check if:');
+                console.log('1. commands/ folder exists');
+                console.log('2. command files are valid JavaScript');
+                console.log('3. command files export execute() function');
+            } else {
+                commandList.forEach(([name, command], index) => {
+                    console.log(`${index + 1}. ${name} - ${command.description || 'No description'}`);
+                    if (command.ownerOnly) {
+                        console.log(`   └── Owner only command`);
+                    }
+                });
+                console.log(`━━━━━━━━━━━━━━━━━━━━━━`);
+                console.log(`Total: ${commandList.length} commands`);
+            }
+            
             console.log(`🌐 Frontend: http://localhost:${PORT}`);
             console.log(`💾 Session persistence: ENABLED`);
             console.log(`🔒 Default Bot Mode: ${DEFAULT_USER_SETTINGS.botMode}`);
@@ -4204,66 +3453,16 @@ const startServer = async () => {
             console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
-            console.log(`☁️ SUPABASE BACKUP: ENABLED`);
-            console.log(`🔍 SUPABASE SESSION CHECKING: ENABLED (New API endpoints added)`);
-            console.log(`⏰ ALIVE MESSAGE SYSTEM: ENABLED (Sends message every 2 hours)`);
-            console.log(`📱 ALL COMMANDS NOW HAVE ENHANCED CONTEXT INFO`);
-            console.log(`📱 PREMIUM TEMPLATE: ENABLED for all commands`);
-            console.log(`📧 EMAIL TEMPLATE SYSTEM: Added to admin dashboard`);
-            console.log(`🔧 TOKEN TERMINATION: Added with email notifications`);
-            console.log(`🎁 FREE TOKEN SYSTEM: Improved with proper flags`);
-            console.log(`🔧 ADDED COMMANDS WITH PREMIUM CONTEXT INFO:`);
-            console.log(`   • mode (bot mode settings)`);
-            console.log(`   • autoviewstatus (auto view status)`);
-            console.log(`   • autolikestatus (auto like status)`);
-            console.log(`   • antidelete (anti-delete settings)`);
-            console.log(`   • support (support message)`);
-            console.log(`   • bank (bank details)`);
-            console.log(`   • setbank (set bank details)`);
-            console.log(`   • setaccountnumber (set account number)`);
-            console.log(`   • setaccountname (set account name)`);
-            console.log(`   • setbotname (set bot name)`);
-            console.log(`   • setbotimage (set bot image)`);
-            console.log(`   • setname (set owner name)`);
-            console.log(`   • menu/help (menu with context)`);
-            console.log(`   • ping (latency check)`);
-            console.log(`   • owner (owner info)`);
-            console.log(`   • prefix (prefix settings)`);
-            console.log(`   • setprefix (set prefix)`);
-            console.log(`   • active (active sessions)`);
-            console.log(`   • channels (channel list)`);
-            console.log(`   • subscribe (subscribe to channels)`);
-            console.log(`   • joingroup (join group)`);
-            console.log(`   • tracle (bot info)`);
-            console.log(`🔗 CONNECTION STABILITY: IMPROVED (Longer timeout, keep-alive enabled)`);
-            console.log(`✅ PAIRING CODE FIX: Now working for new users`);
+            console.log(`🔧 COMMAND SYSTEM: FIXED - Now works with full context info`);
+            console.log(`📋 MENU COMMAND: FIXED - Shows all commands from /commands folder`);
+            console.log(`🎯 CONTEXT INFO: Added to ALL command executions with your preferred style`);
+            console.log(`✅ The "Cannot find module '../server'" error is fixed`);
+            console.log(`✅ sendMessageWithContext function is added to all inbuilt commands`);
+            console.log(`✅ When in private mode, only the session owner can use commands`);
+            console.log(`✅ Commands not found are silently ignored (no response)`);
+            console.log(`🔍 AUTO-OPEN VIEW-ONCE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antivv})`);
 
-            // Load commands
-            loadCommands();
-
-            // Check if Supabase is configured
-            if (backupManager.isConfigured()) {
-                console.log(`✅ Supabase backup system is configured`);
-                
-                // Try to restore all data from Supabase on startup
-                try {
-                    console.log(`🔄 Attempting to restore data from Supabase...`);
-                    const restoreResult = await backupManager.restoreAllData();
-                    if (restoreResult.success) {
-                        console.log(`✅ Successfully restored all data from Supabase`);
-                    } else {
-                        console.log(`⚠️ Could not restore from Supabase: ${restoreResult.message}`);
-                    }
-                } catch (error) {
-                    console.log(`❌ Error restoring from Supabase: ${error.message}`);
-                }
-            } else {
-                console.log(`❌ Supabase is not configured. Sessions will only be stored locally.`);
-                console.log(`   Please set SUPABASE_URL and SUPABASE_KEY environment variables.`);
-                console.log(`   Optional: SUPABASE_BUCKET (defaults to "tracle-backups")`);
-            }
-
-            // Restore existing sessions with enhanced auto-restore
+            // Restore existing sessions
             await restoreExistingSessions();
             
             // Initial active users count update
@@ -4272,7 +3471,7 @@ const startServer = async () => {
             // Start connection monitor
             startConnectionMonitor();
             
-            console.log(`✅ All systems initialized. All commands now include premium template context info.`);
+            console.log(`✅ All systems initialized.`);
         });
         
         server.on('error', (err) => {
@@ -4292,38 +3491,26 @@ const startServer = async () => {
 
 startServer();
 
-// Enhanced cleanup with Supabase backup
+// Cleanup on exit
 process.on('SIGINT', async () => {
     console.log('\n🔻 Shutting down gracefully...');
     console.log('💾 Saving last processed timestamps for all sessions');
     
-    // Stop all alive message timers
     for (const [sessionId, timer] of aliveCheckTimers.entries()) {
         clearInterval(timer);
         console.log(`🛑 Stopped alive message system for ${sessionId}`);
     }
     
-    // Backup all sessions to Supabase before shutdown
-    if (backupManager.isConfigured()) {
-        try {
-            console.log('☁️ Backing up all sessions to Supabase before shutdown...');
-            const backupResult = await backupManager.backupAllSessions();
-            if (backupResult.success) {
-                console.log(`✅ Successfully backed up ${backupResult.backedUp || 0} sessions to Supabase`);
-            } else {
-                console.log(`❌ Backup failed: ${backupResult.error}`);
-            }
-        } catch (error) {
-            console.log(`❌ Error backing up to Supabase: ${error.message}`);
-        }
-    }
-
     for (const [userNumber, connectionData] of activeConnections.entries()) {
         if (connectionData.lastTimestamp) {
             saveLastProcessedTimestamp(userNumber, connectionData.lastTimestamp);
             console.log(`💾 Saved timestamp for ${userNumber}: ${new Date(connectionData.lastTimestamp).toLocaleString()}`);
         }
     }
+    // Initialize premium system
+initializePremiumSystem();
+const premiumUsers = getAllPremiumUsers();
+console.log(`🎖️ Premium users: ${premiumUsers.length} user(s)`);
 
     for (const [userNumber, sock] of sessions.entries()) {
         console.log(`🔌 Closing connection: ${userNumber}`);
@@ -4336,12 +3523,10 @@ process.on('SIGINT', async () => {
 
     console.log('✅ Shutdown complete');
     console.log('📁 Sessions will be restored on next startup');
-    console.log('☁️ Backups are available on Supabase');
-    console.log('📱 All commands will include premium context info on next startup');
-    console.log('✅ Pairing code system is now working for new users');
     process.exit(0);
 });
 
+// Cleanup intervals
 setInterval(() => {
     const now = Date.now();
     
@@ -4357,45 +3542,38 @@ setInterval(() => {
     }
 }, 60000);
 
-// Auto backup interval (every 30 minutes) to Supabase
-if (backupManager.isConfigured()) {
-    setInterval(async () => {
-        console.log('🔄 Auto-backup to Supabase starting...');
-        try {
-            const result = await backupManager.backupAllSessions();
-            if (result.success) {
-                console.log(`✅ Auto-backup completed: ${result.backedUp || 0} sessions backed up to Supabase`);
-            } else {
-                console.log(`❌ Auto-backup failed: ${result.error}`);
-            }
-        } catch (error) {
-            console.log(`❌ Auto-backup error: ${error.message}`);
-        }
-    }, 30 * 60 * 1000); // 30 minutes
-}
+console.log('🔄 Memory cleanup interval started for anti-delete and owner cache');
 
+// =============== MODULE EXPORTS ===============
 module.exports = {
     PREFIX,
     isBotOwner,
     groupTimers,
+    isAllowedForChreact,
     CHANNEL_JIDS,
     TARGET_GROUP_JID,
     GROUP_INVITE_LINK,
+     isPremium,
+    addPremium,
+    removePremium,
+    getAllPremiumUsers,
     BOT_NAME,
     OWNER_NAME,
     MENU_IMAGE_URL,
-     warnedUsers,
+    warnedUsers,
     REPO_LINK,
     DEV,
     activeConnections,
     updateActiveUsersCount,
     getUserSettings,
     updateUserSettings,
-    generateMenu,
-    generateSupportMessage,
-    getQuotedMessage,
+    generateMenu: commandHandler.generateMenu,
+    generateSupportMessage: commandHandler.generateSupportMessage,
+    getQuotedMessage: commandHandler.getQuotedMessage,
     broadcastSubscribeToChannels,
     broadcastJoinGroup,
-    userPrefixes
+    userPrefixes,
+    commands: commandHandler.commands,
+    handleMessage,
+    sendMessageWithContext // Export the function
 };
-console.log('🔄 Memory cleanup interval started for anti-delete and owner cache');

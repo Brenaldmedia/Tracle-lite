@@ -158,7 +158,7 @@ module.exports = {
                     externalAdReply: {
                         title: "🔥 Roast Master",
                         body: "Spicy insults for everyone!",
-                        thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg", // Using your working image
+                        thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg", // Using your working image
                         sourceUrl: "https://github.com/Brenaldmedia/Tracle",
                         mediaType: 1
                     }

@@ -1,88 +1,84 @@
+// File: commands/mode.js
 module.exports = {
-    pattern: "mode",
-    name: "mode",
-    description: "Set bot mode",
-    tags: ["settings"],
+    name: 'mode',
+    description: 'Change bot mode (public/private)',
+    category: 'Settings',
     ownerOnly: true,
     
-    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
-        try {
-            const server = require('../server');
-            const { PREFIX, userPrefixes, updateUserSettings, MENU_IMAGE_URL, REPO_LINK } = server;
-            const userSettings = server.getUserSettings(sessionId);
-
-            const userPrefix = userPrefixes.get(sessionId) || PREFIX;
-
-            // No args → show help menu
-            if (args.length === 0) {
-                const text = `🔧 *BOT MODE SETTINGS*\n\nCurrent Mode: *${userSettings.botMode}*\n\nUsage:\n• ${userPrefix}mode public - Set to public mode\n• ${userPrefix}mode private - Set to private mode\n\nPublic Mode: Bot responds to everyone\nPrivate Mode: Bot only responds to owner`;
-
-                await reply(text, {
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🔧 Bot Mode",
-                            body: `Current: ${userSettings.botMode}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                });
-
-                return;
-            }
-
-            // Valid modes
-            const newMode = args[0].toLowerCase();
-
-            if (newMode === 'public' || newMode === 'private') {
-                updateUserSettings(sessionId, { botMode: newMode });
-
-                const text = `✅ Bot mode updated to: *${newMode}*\n\n${newMode === 'public' ? '🤖 Bot will now respond to everyone' : '🔒 Bot will only respond to the owner.'}`;
-
-                await reply(text, {
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "🔧 Mode Updated",
-                            body: `Set to ${newMode}`,
-                            thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                            sourceUrl: REPO_LINK,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                });
-
-                return;
-            }
-
-            // Invalid input
-            await reply(`❌ Invalid mode. Use 'public' or 'private'`, {
-                contextInfo: {
+    async execute(sock, message, m, context) {
+        const args = context.args || [];
+        const userPrefix = context.userPrefix || context.PREFIX;
+        const userSettings = context.userSettings || {};
+        
+        const newMode = args[0]?.toLowerCase();
+        const validModes = ['public', 'private'];
+        
+        if (!newMode || !validModes.includes(newMode)) {
+            const text = `📊 *Current Bot Mode:* ${userSettings.botMode || 'public'}\n\n` +
+                        `Usage: ${userPrefix}mode [public/private]\n\n` +
+                        `• public: Bot responds to everyone\n` +
+                        `• private: Bot only responds to owner`;
+            
+            if (context.sendMessageWithContext) {
+                await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
+                    quoted: message,
                     externalAdReply: {
-                        title: "⚠️ Invalid Mode",
-                        body: "Must be public or private",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
+                        title: "Bot Mode Settings",
+                        body: `Current mode: ${userSettings.botMode || 'public'}`,
+                        thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                        sourceUrl: context.REPO_LINK,
                         mediaType: 1
                     }
-                }
-            });
-
-        } catch (error) {
-            console.error("Error in mode command:", error);
-
-            await reply(`❌ Error: ${error.message}`, {
-                contextInfo: {
+                });
+            } else {
+                await sock.sendMessage(message.key.remoteJid, { text }, { quoted: message });
+            }
+            return;
+        }
+        
+        if (newMode === userSettings.botMode) {
+            const text = `❌ Bot is already in ${userSettings.botMode} mode`;
+            
+            if (context.sendMessageWithContext) {
+                await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
+                    quoted: message,
                     externalAdReply: {
-                        title: "❌ Error",
-                        body: error.message,
-                        thumbnailUrl: "https://i.imgur.com/MqQvQhL.png",
+                        title: "Mode Unchanged",
+                        body: `Bot is already in ${userSettings.botMode} mode`,
+                        thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                        sourceUrl: context.REPO_LINK,
                         mediaType: 1
                     }
+                });
+            } else {
+                await sock.sendMessage(message.key.remoteJid, { text }, { quoted: message });
+            }
+            return;
+        }
+        
+        // Update settings
+        if (context.updateUserSettings) {
+            context.updateUserSettings({ botMode: newMode });
+        }
+        
+        const modeMessage = `✅ *Bot Mode Updated*\n\n` +
+                          `• Previous: ${userSettings.botMode}\n` +
+                          `• New: ${newMode}\n\n` +
+                          `${newMode === 'private' ? '🔒 Bot will now only respond to owner commands' : '🌍 Bot will now respond to everyone'}`;
+        
+        if (context.sendMessageWithContext) {
+            await context.sendMessageWithContext(sock, message.key.remoteJid, modeMessage, {
+                quoted: message,
+                externalAdReply: {
+                    title: "Mode Changed Successfully",
+                    body: `Bot mode changed to ${newMode}`,
+                    thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                    sourceUrl: context.REPO_LINK,
+                    mediaType: 1
                 }
             });
+        } else {
+            await sock.sendMessage(message.key.remoteJid, { text: modeMessage }, { quoted: message });
         }
     }
 };

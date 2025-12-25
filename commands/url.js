@@ -21,12 +21,12 @@ module.exports = {
         {
           text,
           contextInfo: {
-            forwardingScore: 999,
+            forwardingScore: 1,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
               newsletterJid: "120363401559573199@newsletter",
               newsletterName: "BrenaldMedia",
-              serverMessageId: 200,
+              serverMessageId: -1,
             },
           },
         },

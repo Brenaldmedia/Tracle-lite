@@ -1,53 +1,64 @@
+// commands/ping.js - Ping command with your style context
 module.exports = {
-    pattern: "ping",
-    name: "ping",
-    description: "Check bot response speed",
-    tags: ["utility"],
+    name: 'ping',
+    description: 'Check bot latency and status',
+    category: 'Utility',
     
-    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
+    async execute(conn, message, m, context) {
         try {
+            const { userSettings, activeConnections } = context;
+            
             const start = Date.now();
-            const pingMsg = await reply(`🏓 Pong! Checking speed...`);
-            const end = Date.now();
+            await conn.sendPresenceUpdate('available', message.key.remoteJid);
+            const latency = Date.now() - start;
             
-            const reactionEmojis = ['🔥', '⚡', '🚀', '💨', '🎯', '🎉', '🌟', '💥', '🕐', '🔹'];
-            const textEmojis = ['💎', '🏆', '⚡', '🚀', '🎶', '🌠', '🌀', '🔱', '🛡', '✨'];
-
-            const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
-            let textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
-
-            while (textEmoji === reactionEmoji) {
-                textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
-            }
-
-            await conn.sendMessage(from, { 
-                react: { text: textEmoji, key: message.key } 
-            });
-
-            const responseTime = (end - start) / 1000;
-            const userSettings = require('../server').getUserSettings(sessionId);
-            const { BOT_NAME, OWNER_NAME, MENU_IMAGE_URL, REPO_LINK, PREFIX } = require('../server');
-
-            const details = `⚡ ${userSettings.botName || BOT_NAME} SPEED CHECK ⚡
+            const activeSessions = Array.from(activeConnections.values()).filter(c => c.isConnected).length;
+            const commandCount = context.commands?.size || 0;
             
-⏱ Response Time: ${responseTime.toFixed(2)}s ${reactionEmoji}
-👤 Owner: *${userSettings.ownerName || OWNER_NAME}*`;
-
-            await reply(details, {
+            const pingMessage = `🏓 *PONG!*\n\n` +
+                              `⚡ Speed: ${latency}ms\n` +
+                              `🤖 Bot: ${userSettings.botName || context.BOT_NAME}\n` +
+                              `🔧 Commands: ${commandCount}\n` +
+                              `📱 Active Sessions: ${activeSessions}\n` +
+                              `🕒 Uptime: ${Math.floor(process.uptime() / 60)} minutes\n\n` +
+                              `✅ Bot is running smoothly!`;
+            
+            // Send with YOUR STYLE context info
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: pingMessage,
                 contextInfo: {
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363401559573199@newsletter",
+                        newsletterName: "BrenaldMedia",
+                        serverMessageId: 200,
+                    },
                     externalAdReply: {
-                        title: "⚡ Tracle Speed Test",
-                        body: `${userSettings.botName || BOT_NAME} Performance Check`,
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1,
-                        renderLargerThumbnail: true
+                        title: "Bot Status",
+                        body: `Speed: ${latency}ms | Active: ${activeSessions}`,
+                        thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                        sourceUrl: context.REPO_LINK,
+                        mediaType: 1
                     }
                 }
-            });
+            }, { quoted: message });
+            
         } catch (error) {
-            console.error("Error in ping command:", error);
-            await reply(`❌ Error: ${error.message}`);
+            console.error('Error in ping command:', error);
+            // Send error with YOUR STYLE context info
+            await conn.sendMessage(message.key.remoteJid, { 
+                text: `❌ Error checking status: ${error.message}`,
+                contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363401559573199@newsletter",
+                        newsletterName: "BrenaldMedia",
+                        serverMessageId: -1,
+                    }
+                }
+            }, { quoted: message });
         }
     }
 };

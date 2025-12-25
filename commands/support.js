@@ -1,31 +1,35 @@
 module.exports = {
-    pattern: "support",
-    name: "support",
-    description: "Show support information",
-    tags: ["support"],
+    name: 'support',
+    description: 'Get support and donation information',
+    category: 'General',
     
-    async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {
-        try {
-            const { generateSupportMessage } = require('../server');
-            const userSettings = require('../server').getUserSettings(sessionId);
-            
-            const supportMessage = generateSupportMessage(userSettings);
-            
-            await reply(supportMessage, {
-                contextInfo: {
-                    externalAdReply: {
-                        title: "💝 Support TRACLE - LITE",
-                        body: "Help keep features free for everyone",
-                        thumbnailUrl: userSettings.botImage || require('../server').MENU_IMAGE_URL,
-                        sourceUrl: require('../server').REPO_LINK,
-                        mediaType: 1,
-                        renderLargerThumbnail: true
-                    }
-                }
-            });
-        } catch (error) {
-            console.error("Error in support command:", error);
-            await reply(`❌ Error: ${error.message}`);
-        }
+    async execute(sock, message, m, context) {
+        const userSettings = context.userSettings || {};
+        
+        const text = `🏦 *BANK DETAILS:*\n\n` +
+                    `🏛️ Bank Name: *${userSettings.bankName || 'ZENITH Bank'}*\n` +
+                    `📊 Account Number: *${userSettings.accountNumber || '2126335411'}*\n` +
+                    `👤 Account Name: ${userSettings.accountName || 'EMMANUEL ISIBOR'}\n\n` +
+                    `━━━━━━━━━━━━━━━━━━━━\n` +
+                    `💡 *WE NEED YOUR SUPPORT*\n\n` +
+                    `Your generous support helps us keep *TRACLE - LITE* features free for everyone!\n\n` +
+                    `With your contributions, we can:\n` +
+                    `• Maintain and improve the bot\n` +
+                    `• Add new exciting features\n` +
+                    `• Keep servers running smoothly\n` +
+                    `• Provide free access to all users\n\n` +
+                    `Every donation, no matter how small, makes a big difference! 🙏\n\n` +
+                    `Thank you for supporting the development of TRACLE - LITE! 🚀`;
+        
+        await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
+            quoted: message,
+            externalAdReply: {
+                title: `${userSettings.botName || context.BOT_NAME} Support`,
+                body: "Your support helps keep the bot running",
+                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
+                sourceUrl: context.REPO_LINK,
+                mediaType: 1
+            }
+        });
     }
 };

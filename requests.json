@@ -401,5 +401,33 @@
       "timestamp": "2025-12-12T09:30:40.115Z",
       "status": "pending"
     }
+  ],
+  "brenaldmedia3@gmail.com": [
+    {
+      "email": "brenaldmedia3@gmail.com",
+      "ip": "::1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+      "country": "Unknown",
+      "countryName": "Unknown",
+      "city": "Unknown",
+      "region": "Unknown",
+      "timezone": "Unknown",
+      "location": "Unknown",
+      "timestamp": "2025-12-23T23:49:06.517Z",
+      "status": "pending"
+    },
+    {
+      "email": "brenaldmedia3@gmail.com",
+      "ip": "::1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+      "country": "Unknown",
+      "countryName": "Unknown",
+      "city": "Unknown",
+      "region": "Unknown",
+      "timezone": "Unknown",
+      "location": "Unknown",
+      "timestamp": "2025-12-23T23:53:05.543Z",
+      "status": "pending"
+    }
   ]
 }
