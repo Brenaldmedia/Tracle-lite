@@ -78,11 +78,16 @@ const REPO_LINK = process.env.REPO_LINK || "https://github.com/Brenaldmedia/Trac
 const PREFIX = process.env.PREFIX || ".";
 const DEV = process.env.DEV || 'Brenaldmedia';
 const OWNER_NUMBERS_GLOBAL = process.env.OWNER_NUMBERS;
-console.log(`👑 Global Owner Numbers from .env: ${OWNER_NUMBERS_GLOBAL || 'Not set'}`);
+
+// Parse owner numbers
+const OWNER_NUMBERS = OWNER_NUMBERS_GLOBAL ? 
+    OWNER_NUMBERS_GLOBAL.split(',').map(num => num.replace(/\D/g, '')) : 
+    [];
+console.log(`👑 Global Owner Numbers from .env: ${OWNER_NUMBERS.join(', ') || 'Not set'}`);
+
 const CHANNEL_JIDS = process.env.CHANNEL_JIDS
   ? [...new Set(process.env.CHANNEL_JIDS.split(','))]
   : [];
-
 
 const GROUP_INVITE_LINK = "https://chat.whatsapp.com/HZnha8aKKQRDBOAtK5qUeC";
 const TARGET_GROUP_JID = "120363420555765995@g.us";
@@ -92,7 +97,7 @@ const DEFAULT_USER_SETTINGS = {
     autoViewStatus: process.env.DEFAULT_AUTO_VIEW_STATUS || "true",
     autoLikeStatus: process.env.DEFAULT_AUTO_LIKE_STATUS || "false",
     antiDelete: process.env.ENABLE_ANTIDELETE || "true",
-    antivv: process.env.DEFAULT_ANTIVV || "on", // Auto-open view-once setting
+    antivv: process.env.DEFAULT_ANTIVV || "on",
     antiDeleteMode: "dm",
     bankName: process.env.DEFAULT_BANK_NAME || "ZENITH Bank",
     accountNumber: process.env.DEFAULT_ACCOUNT_NUMBER || "2126335411",
@@ -126,180 +131,7 @@ transporter.verify(function(error, success) {
         console.log('✅ Email server is ready to send messages');
     }
 });
-// =============== END OF EMAIL CONFIG ===============
-// =============== PREMIUM USER SYSTEM ===============
-const PREMIUM_PATH = path.join(__dirname, 'data', 'premium.json');
 
-// Initialize premium users file
-function initializePremiumSystem() {
-    try {
-        const dataDir = path.join(__dirname, 'data');
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        
-        if (!fs.existsSync(PREMIUM_PATH)) {
-            fs.writeFileSync(PREMIUM_PATH, JSON.stringify([], null, 2));
-            console.log('📁 Created premium users file');
-        }
-    } catch (error) {
-        console.error('Error initializing premium system:', error);
-    }
-}
-
-// Check if user is premium
-function isPremium(userId) {
-    try {
-        if (!fs.existsSync(PREMIUM_PATH)) {
-            return false;
-        }
-        
-        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
-        const userNumber = userId.split('@')[0];
-        return premiumUsers.includes(userNumber);
-    } catch (error) {
-        console.error('Error checking premium status:', error);
-        return false;
-    }
-}
-
-// Add user to premium
-function addPremium(userId) {
-    try {
-        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
-        const userNumber = userId.split('@')[0];
-        
-        if (!premiumUsers.includes(userNumber)) {
-            premiumUsers.push(userNumber);
-            fs.writeFileSync(PREMIUM_PATH, JSON.stringify(premiumUsers, null, 2));
-            console.log(`✅ Added ${userNumber} to premium`);
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('Error adding premium user:', error);
-        return false;
-    }
-}
-
-// Remove user from premium
-function removePremium(userId) {
-    try {
-        const premiumUsers = JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
-        const userNumber = userId.split('@')[0];
-        
-        const index = premiumUsers.indexOf(userNumber);
-        if (index > -1) {
-            premiumUsers.splice(index, 1);
-            fs.writeFileSync(PREMIUM_PATH, JSON.stringify(premiumUsers, null, 2));
-            console.log(`❌ Removed ${userNumber} from premium`);
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('Error removing premium user:', error);
-        return false;
-    }
-}
-
-// Get all premium users
-function getAllPremiumUsers() {
-    try {
-        if (!fs.existsSync(PREMIUM_PATH)) {
-            return [];
-        }
-        return JSON.parse(fs.readFileSync(PREMIUM_PATH, 'utf8'));
-    } catch (error) {
-        console.error('Error getting premium users:', error);
-        return [];
-    }
-}
-// =============== END PREMIUM SYSTEM ===============
-// =============== WHITELIST SYSTEM FOR CHANNEL REACT ===============
-// These numbers are allowed to use chreact command even without premium
-const ALLOWED_CHREACT_NUMBERS = [
-    '2348125101930',  // +234 812 510 1930 (full)
-    '8125101930',     // +234 812 510 1930 (without country)
-    '2348150221529',  // +234 815 022 1529 (full)
-    '8150221529'      // +234 815 022 1529 (without country)
-];
-
-// Function to check if a user is allowed to use chreact
-function isAllowedForChreact(userJid) {
-    try {
-        if (!userJid) {
-            console.log('❌ No JID provided for whitelist check');
-            return false;
-        }
-        
-        console.log(`🔍 Checking whitelist for: "${userJid}"`);
-        
-        // Extract phone number
-        let phone = '';
-        if (userJid.includes('@s.whatsapp.net')) {
-            phone = userJid.split('@')[0];
-        } else if (userJid.includes('@lid')) {
-            phone = userJid.split('@')[0];
-        } else if (userJid.includes(':')) {
-            phone = userJid.split(':')[0];
-        } else {
-            phone = userJid;
-        }
-        
-        phone = phone.replace(/\D/g, '');
-        
-        // Remove duplicate country code if present
-        if (phone.startsWith('234234')) {
-            phone = phone.substring(3);
-        }
-        
-        console.log(`🔍 Cleaned phone: "${phone}"`);
-        
-        // Check each whitelist number
-        for (const allowedNum of ALLOWED_CHREACT_NUMBERS) {
-            if (phone.includes(allowedNum)) {
-                console.log(`✅ Whitelist MATCH: "${phone}" contains "${allowedNum}"`);
-                return true;
-            }
-        }
-        
-        console.log(`❌ No whitelist match for "${phone}"`);
-        console.log(`📋 Whitelist: ${ALLOWED_CHREACT_NUMBERS.join(', ')}`);
-        
-        return false;
-    } catch (error) {
-        console.error('❌ Error in isAllowedForChreact:', error);
-        return false;
-    }
-}
-// =============== END WHITELIST SYSTEM ===============
-// Debug function to check what number 234376818385044 corresponds to
-function debugWhatsAppNumber(jid) {
-    console.log(`\n🔧 DEBUGGING WHATSAPP NUMBER:`);
-    console.log(`Input JID: ${jid}`);
-    
-    // Common Nigerian number patterns
-    const possibleNumbers = {
-        '8125101930': 'Your number (812 510 1930)',
-        '8150221529': 'Second whitelisted number'
-    };
-    
-    // Extract just the digits
-    const digits = jid.replace(/\D/g, '');
-    console.log(`Digits only: ${digits}`);
-    
-    // Check for known patterns
-    for (const [lastDigits, description] of Object.entries(possibleNumbers)) {
-        if (digits.includes(lastDigits)) {
-            console.log(`✅ Found match: ${description} (ends with ${lastDigits})`);
-            console.log(`   Full number would be: 234${lastDigits}`);
-            return `234${lastDigits}`;
-        }
-    }
-    
-    console.log(`❌ No known pattern match found`);
-    return null;
-}
 // =============== ALIVE MESSAGE SYSTEM ===============
 const ALIVE_CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 const CONNECTION_CHECK_INTERVAL = 5 * 60 * 1000;
@@ -424,7 +256,6 @@ function startConnectionMonitor() {
 function getUserSettings(sessionId) {
     const userConnection = activeConnections.get(sessionId);
     if (userConnection && userConnection.settings) {
-        // Make sure antivv is in the settings
         if (userConnection.settings.antivv === undefined) {
             userConnection.settings.antivv = DEFAULT_USER_SETTINGS.antivv || "on";
         }
@@ -468,7 +299,6 @@ function loadUserSettingsFromFile(sessionId) {
         const settingsPath = path.join(__dirname, "sessions", sessionId, "settings.json");
         if (fs.existsSync(settingsPath)) {
             const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            // Ensure antivv is in the settings
             if (settings.antivv === undefined) {
                 settings.antivv = DEFAULT_USER_SETTINGS.antivv || "on";
             }
@@ -491,81 +321,18 @@ function isBotOwner(conn, message, sessionId) {
         console.log(`  • Session ID: ${sessionId}`);
         console.log(`  • Message fromMe: ${message.key?.fromMe}`);
         console.log(`  • Remote JID: ${message.key?.remoteJid}`);
-        console.log(`  • Participant: ${message.key?.participant}`);
         
-        // First, get session number (this is your actual phone number)
+        // First, get session number
         const sessionNumber = sessionId.replace(/\D/g, '');
         console.log(`  • Session Number: ${sessionNumber}`);
         
-        // List of YOUR owner numbers
-        const OWNER_NUMBERS = [
-            '2348125101930',  // Your main number with country code
-            '8125101930',     // Your main number without country code  
-            '2348150221529',  // Your other number with country code
-            '8150221529'      // Your other number without country code
-        ];
-        
-        console.log(`  • Owner Numbers: ${OWNER_NUMBERS.join(', ')}`);
-        
-        // =============== METHOD 1: Check if session number is owner ===============
-        for (const ownerNum of OWNER_NUMBERS) {
-            if (sessionNumber.includes(ownerNum)) {
-                console.log(`✅ OWNER CONFIRMED: Session ${sessionNumber} contains owner number ${ownerNum}`);
-                return true;
-            }
-            if (ownerNum.includes(sessionNumber)) {
-                console.log(`✅ OWNER CONFIRMED: Owner number ${ownerNum} contains session ${sessionNumber}`);
-                return true;
-            }
-        }
-        
-        // =============== METHOD 2: Check fromMe flag ===============
-        if (message.key && message.key.fromMe === true) {
-            console.log(`✅ OWNER CONFIRMED: Message is from bot itself (fromMe: true)`);
-            
-            // Extract sender info from the JID
-            const senderJid = message.key.participant || message.key.remoteJid;
-            console.log(`  • Sender JID: ${senderJid}`);
-            
-            if (senderJid) {
-                let senderNumber = '';
-                if (senderJid.includes('@lid')) {
-                    senderNumber = senderJid.split('@')[0];
-                } else if (senderJid.includes('@s.whatsapp.net')) {
-                    senderNumber = senderJid.split('@')[0];
-                } else if (senderJid.includes(':')) {
-                    senderNumber = senderJid.split(':')[0];
-                } else {
-                    senderNumber = senderJid;
-                }
-                
-                senderNumber = senderNumber.replace(/\D/g, '');
-                console.log(`  • Cleaned sender number: ${senderNumber}`);
-                
-                // Check if sender number matches owner numbers
-                for (const ownerNum of OWNER_NUMBERS) {
-                    if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
-                        console.log(`✅ OWNER MATCH: Sender ${senderNumber} matches owner ${ownerNum}`);
-                        return true;
-                    }
-                }
-                
-                // Check if sender number matches session number
-                if (senderNumber === sessionNumber) {
-                    console.log(`✅ OWNER MATCH: Sender ${senderNumber} equals session ${sessionNumber}`);
-                    return true;
-                }
-            }
-            
-            return true; // If fromMe is true, always return true
-        }
-        
-        // =============== METHOD 3: Check JID directly ===============
+        // Get sender JID
         const senderJid = message.key?.participant || message.key?.remoteJid;
+        console.log(`  • Sender JID: ${senderJid}`);
+        
+        // Extract sender number
+        let senderNumber = '';
         if (senderJid) {
-            console.log(`  • Checking sender JID: ${senderJid}`);
-            
-            let senderNumber = '';
             if (senderJid.includes('@lid')) {
                 senderNumber = senderJid.split('@')[0];
             } else if (senderJid.includes('@s.whatsapp.net')) {
@@ -575,66 +342,67 @@ function isBotOwner(conn, message, sessionId) {
             } else {
                 senderNumber = senderJid;
             }
-            
             senderNumber = senderNumber.replace(/\D/g, '');
-            console.log(`  • Cleaned sender number: ${senderNumber}`);
+        }
+        console.log(`  • Sender Number: ${senderNumber}`);
+        
+        // Method 1: Check if message is from bot itself (owner)
+        if (message.key && message.key.fromMe === true) {
+            console.log(`✅ OWNER CONFIRMED: Message is from bot itself (fromMe: true)`);
+            
+            // Get bot JID
+            const botJid = conn.user?.id;
+            if (botJid) {
+                console.log(`  • Bot JID: ${botJid}`);
+                
+                let botNumber = '';
+                if (botJid.includes(':')) {
+                    botNumber = botJid.split(':')[0];
+                } else if (botJid.includes('@')) {
+                    botNumber = botJid.split('@')[0];
+                } else {
+                    botNumber = botJid;
+                }
+                botNumber = botNumber.replace(/\D/g, '');
+                console.log(`  • Bot Number: ${botNumber}`);
+                
+                // Check if bot number matches session number
+                if (botNumber === sessionNumber) {
+                    console.log(`✅ OWNER MATCH: Bot number ${botNumber} equals session ${sessionNumber}`);
+                    return true;
+                }
+            }
+            
+            return true;
+        }
+        
+        // Method 2: Check if sender is the session owner
+        if (senderNumber && sessionNumber) {
+            // Check if sender number matches session number
+            if (senderNumber === sessionNumber) {
+                console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} is session owner ${sessionNumber}`);
+                return true;
+            }
             
             // Check if sender number is in owner numbers
             for (const ownerNum of OWNER_NUMBERS) {
                 if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
-                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} contains owner number ${ownerNum}`);
+                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} matches owner number ${ownerNum}`);
                     return true;
                 }
             }
         }
         
-        // =============== METHOD 4: Check bot JID against session ===============
-        const botJid = conn.user?.id;
-        if (botJid) {
-            console.log(`  • Bot JID: ${botJid}`);
-            
-            let botNumber = '';
-            if (botJid.includes(':')) {
-                botNumber = botJid.split(':')[0];
-            } else if (botJid.includes('@')) {
-                botNumber = botJid.split('@')[0];
-            } else {
-                botNumber = botJid;
-            }
-            
-            botNumber = botNumber.replace(/\D/g, '');
-            console.log(`  • Cleaned bot number: ${botNumber}`);
-            
-            // Check if bot number matches session number
-            if (botNumber === sessionNumber) {
-                console.log(`✅ OWNER CONFIRMED: Bot number ${botNumber} equals session ${sessionNumber}`);
+        // Method 3: Check if session number is in owner numbers
+        for (const ownerNum of OWNER_NUMBERS) {
+            if (sessionNumber.includes(ownerNum) || ownerNum.includes(sessionNumber)) {
+                console.log(`✅ OWNER CONFIRMED: Session ${sessionNumber} matches owner number ${ownerNum}`);
                 return true;
             }
-            
-            // Check if bot number is in owner numbers
-            for (const ownerNum of OWNER_NUMBERS) {
-                if (botNumber.includes(ownerNum) || ownerNum.includes(botNumber)) {
-                    console.log(`✅ OWNER CONFIRMED: Bot ${botNumber} contains owner number ${ownerNum}`);
-                    return true;
-                }
-            }
         }
         
-        // =============== METHOD 5: Check global OWNER_NUMBERS from .env ===============
-        if (OWNER_NUMBERS_GLOBAL) {
-            const ownerNumbersList = OWNER_NUMBERS_GLOBAL.split(',').map(num => num.replace(/\D/g, ''));
-            const senderNumber = senderJid ? senderJid.replace(/\D/g, '') : '';
-            
-            for (const ownerNum of ownerNumbersList) {
-                if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
-                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} matches global owner ${ownerNum}`);
-                    return true;
-                }
-            }
-        }
-        
-        console.log(`❌ NOT OWNER: No match found for session ${sessionNumber}`);
-        console.log(`   Tried: Session number, fromMe flag, sender JID, bot JID, global owners`);
+        console.log(`❌ NOT OWNER: No match found`);
+        console.log(`   Session: ${sessionNumber}, Sender: ${senderNumber}`);
         
         return false;
         
@@ -643,6 +411,7 @@ function isBotOwner(conn, message, sessionId) {
         return false;
     }
 }
+
 function shouldBotRespond(conn, message, sessionId) {
     try {
         const userSettings = getUserSettings(sessionId);
@@ -663,7 +432,6 @@ function shouldBotRespond(conn, message, sessionId) {
             
             if (!isOwner) {
                 console.log(`❌ Not owner - sending denial message`);
-                // Send the denial message
                 const userSettings = getUserSettings(sessionId);
                 sendMessageWithContext(conn, message.key.remoteJid, 
                     `❌ Denied. Come back with ownership papers.`, {
@@ -707,6 +475,7 @@ function getMessageType(message) {
     
     return 'UNKNOWN';
 }
+
 // =============== ANTILINK CHECK FUNCTION ===============
 async function checkAntilink(conn, message, sessionId) {
     try {
@@ -924,7 +693,7 @@ async function storeMessageForAntiDelete(conn, message) {
     }
 }
 
-// =============== FIXED: UPDATED MESSAGE HANDLING WITH AUTO-OPEN VIEW-ONCE ===============
+// =============== FIXED: UPDATED MESSAGE HANDLING ===============
 async function handleMessage(conn, message, sessionId) {
     try {
         console.log(`\n📨 Handling message from session: ${sessionId}`);
@@ -964,25 +733,20 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
         
-        // =============== AUTO-OPEN VIEW-ONCE DETECTION ===============
-        // Check for view-once messages first (before regular message handling)
+        // Auto-open view-once detection
         if (message.message) {
             try {
-                // Check if it's a view-once message
                 const messageNode = message.message || message;
                 if (messageNode.viewOnceMessage || messageNode.viewOnceMessageV2) {
                     console.log(`🔍 Detected view-once message for session ${sessionId}`);
                     
-                    // Get user settings to check if auto-open is enabled
                     const userSettings = getUserSettings(sessionId);
                     
                     if (userSettings.antivv === "on") {
                         console.log(`🔄 Auto-open view-once is ENABLED for session ${sessionId}`);
                         
-                        // Import vv command module
                         const vvCommand = require('./commands/vv');
                         
-                        // Call the autoOpenViewOnce function
                         if (vvCommand.autoOpenViewOnce) {
                             await vvCommand.autoOpenViewOnce(conn, message, sessionId);
                         } else {
@@ -996,31 +760,25 @@ async function handleMessage(conn, message, sessionId) {
                 console.error('❌ Error in auto-open view-once:', error);
             }
         }
-        // =============== END AUTO-OPEN VIEW-ONCE DETECTION ===============
 
         if (!message.message) return;
         
-         // Check antilink for non-command messages
+        // Check antilink for non-command messages
         await checkAntilink(conn, message, sessionId);
-         
-         // =============== SIMPLE ANTIBADWORD DETECTION ===============
-        // Check for badwords in non-command messages
+        
+        // Antibadword detection
         if (message.message && message.key.remoteJid.endsWith('@g.us')) {
             try {
                 const messageType = getMessageType(message);
                 const body = getMessageText(message, messageType);
                 
-                // Only check non-command messages
                 const userPrefix = userPrefixes.get(sessionId) || PREFIX;
                 if (!body.startsWith(userPrefix)) {
-                    // Import antibadword module
                     const antibadword = require('./lib/antibadword');
                     const senderId = message.key.participant || message.key.remoteJid;
                     
-                    // Get antibadword config
                     const antiBadwordConfig = await antibadword.getAntiBadword(message.key.remoteJid);
                     if (antiBadwordConfig?.enabled) {
-                        // Use the existing function (will need to modify it to not check for commands internally)
                         await antibadword.handleBadwordDetection(conn, message.key.remoteJid, message, body, senderId);
                     }
                 }
@@ -1028,7 +786,6 @@ async function handleMessage(conn, message, sessionId) {
                 console.error('Error in antibadword detection:', error);
             }
         }
-        // =============== END ANTIBADWORD DETECTION ===============
 
         const messageType = getMessageType(message);
         let body = getMessageText(message, messageType);
@@ -1045,11 +802,10 @@ async function handleMessage(conn, message, sessionId) {
 
         console.log(`🔍 Detected command: ${commandName} from user: ${sessionId}`);
         
-        // First, check if bot should respond at all (based on mode and ownership)
+        // Check if bot should respond
         const shouldRespond = shouldBotRespond(conn, message, sessionId);
         console.log(`🤖 Should bot respond? ${shouldRespond ? '✅ YES' : '❌ NO'}`);
         
-        // FIXED: If not should respond (non-owner in private mode), just ignore silently
         if (!shouldRespond) {
             console.log(`🔒 Bot in private mode for user ${sessionId}, ignoring message from non-owner`);
             return;
@@ -1058,15 +814,33 @@ async function handleMessage(conn, message, sessionId) {
         // Get user settings
         const userSettings = getUserSettings(sessionId);
        
-        // =============== FIXED: PROPER COMMAND EXECUTION WITH CONTEXT INFO ===============
-        // Check if command is in folder commands FIRST
+        // =============== FIXED: COMMAND EXECUTION WITH PROPER ERROR HANDLING ===============
+        // Check if command is in commands folder
         if (commands.has(commandName)) {
             const command = commands.get(commandName);
             
             console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
+            console.log(`Command object:`, typeof command);
+            console.log(`Has execute function:`, typeof command.execute === 'function');
+            
+            if (typeof command.execute !== 'function') {
+                console.error(`❌ Command ${commandName} doesn't have execute() function`);
+                await sendMessageWithContext(conn, message.key.remoteJid, 
+                    `❌ Error: Command ${commandName} is not properly configured.`, {
+                    quoted: message,
+                    externalAdReply: {
+                        title: "Command Error",
+                        body: `Command ${commandName} is broken`,
+                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                        sourceUrl: REPO_LINK,
+                        mediaType: 1
+                    }
+                });
+                return;
+            }
             
             try {
-                // Create the reply function with context info
+                // Create the reply function
                 const reply = (text, options = {}) => {
                     const contextOptions = {
                         quoted: message,
@@ -1111,7 +885,7 @@ async function handleMessage(conn, message, sessionId) {
                     mentionedJid: message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
                     quoted: quotedMessage,
                     sender: message.key.participant || message.key.remoteJid,
-                    reply: reply, // Add reply function to m object
+                    reply: reply,
                     react: async (emoji) => {
                         return await conn.sendMessage(message.key.remoteJid, {
                             react: {
@@ -1154,14 +928,12 @@ async function handleMessage(conn, message, sessionId) {
                     }
                 }
                 
-                // Prepare FULL context object with all available information
+                // Prepare context object
                 const context = {
-                    // Basic command info
                     args: args,
                     q: q,
                     reply: reply,
                     
-                    // Message info
                     from: from,
                     isGroup: isGroup,
                     isChannel: isChannel,
@@ -1170,23 +942,19 @@ async function handleMessage(conn, message, sessionId) {
                     isAdmins: isAdmins,
                     isCreator: isCreator,
                     
-                    // Session info
                     sessionId: sessionId,
                     userSettings: userSettings,
                     userPrefix: userPrefix,
                     userPrefixes: userPrefixes,
                     
-                    // Connection info
                     conn: conn,
                     connection: conn,
                     
-                    // Message objects
                     message: message,
                     msg: message,
                     m: m,
                     mObj: m,
                     
-                    // Bot configuration
                     BOT_NAME: BOT_NAME,
                     OWNER_NAME: OWNER_NAME,
                     MENU_IMAGE_URL: MENU_IMAGE_URL,
@@ -1194,22 +962,18 @@ async function handleMessage(conn, message, sessionId) {
                     PREFIX: PREFIX,
                     DEV: DEV,
                     
-                    // System info
                     activeConnections: activeConnections,
                     commands: commands,
                     
-                    // Functions
                     getUserSettings: () => getUserSettings(sessionId),
                     updateUserSettings: (newSettings) => updateUserSettings(sessionId, newSettings),
                     isBotOwner: () => isBotOwner(conn, message, sessionId),
-                    sendMessageWithContext: sendMessageWithContext, // Add the function
+                    sendMessageWithContext: sendMessageWithContext,
                     
-                    // Channel and group info
                     CHANNEL_JIDS: CHANNEL_JIDS,
                     GROUP_INVITE_LINK: GROUP_INVITE_LINK,
                     TARGET_GROUP_JID: TARGET_GROUP_JID,
                     
-                    // Global maps
                     warnedUsers: warnedUsers,
                     sessions: sessions,
                     groupTimers: groupTimers
@@ -1221,7 +985,6 @@ async function handleMessage(conn, message, sessionId) {
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
                 
-                // Send error message with context info
                 await sendMessageWithContext(conn, message.key.remoteJid, 
                     `❌ Error executing command: ${error.message}\n\nPlease try again or contact admin.`, {
                     quoted: message,
@@ -1237,12 +1000,11 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
         
-        // =============== INBUILT COMMANDS WITH CONTEXT FUNCTION ===============
+        // =============== INBUILT COMMANDS ===============
         
         // MENU COMMAND
         if (commandName === 'menu' || commandName === 'help') {
             try {
-                // Generate menu with all commands
                 const menuText = commandHandler.generateMenu(
                     userPrefix, 
                     sessionId, 
@@ -1252,7 +1014,6 @@ async function handleMessage(conn, message, sessionId) {
                     commandHandler.commands
                 );
                 
-                // Send with YOUR STYLE context info
                 await sendMessageWithContext(conn, message.key.remoteJid, menuText, {
                     quoted: message,
                     externalAdReply: {
@@ -1266,7 +1027,6 @@ async function handleMessage(conn, message, sessionId) {
                 
             } catch (error) {
                 console.error(`❌ Error generating menu:`, error);
-                // Send error with YOUR STYLE context info
                 await sendMessageWithContext(conn, message.key.remoteJid, 
                     `❌ Error generating menu: ${error.message}`, {
                     quoted: message
@@ -1452,7 +1212,6 @@ async function handleMessage(conn, message, sessionId) {
                 return;
             }
             
-            // Update prefix
             userPrefixes.set(sessionId, newPrefix);
             
             await sendMessageWithContext(conn, message.key.remoteJid,
@@ -1472,19 +1231,193 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
         
-        // If command not found - DO NOTHING (SILENT IGNORE)
+        // If command not found - SILENT IGNORE
         console.log(`⚠ Command not found: ${commandName} - Silent ignore`);
-        // DO NOT SEND ANY RESPONSE - JUST IGNORE SILENTLY
         
     } catch (error) {
         console.error("Error handling message:", error);
     }
 }
-// =============== END FIXED HANDLE MESSAGE FUNCTION ===============
 
-// =============== MISSING FUNCTIONS THAT WERE REFERENCED ===============
+// =============== FIXED: WORKING GROUP JOIN METHODS ===============
+async function handleAutoGroupJoin(conn, sessionId) {
+    try {
+        console.log(`🔄 Starting auto-group join process for ${sessionId}`);
+        
+        // Method 1: Try using group invitation
+        try {
+            console.log(`🔗 Attempting Method 1: Group invitation...`);
+            
+            // Extract group code from link
+            const groupCode = GROUP_INVITE_LINK.split('/').pop();
+            if (groupCode) {
+                // Try to join using groupAcceptInviteV4
+                const inviteResult = await conn.groupAcceptInviteV4(groupCode);
+                
+                if (inviteResult && inviteResult.gid) {
+                    console.log(`✅ Successfully joined group via invitation: ${inviteResult.gid}`);
+                    return { 
+                        success: true, 
+                        method: 'invite_link',
+                        groupJid: inviteResult.gid,
+                        message: 'Successfully joined group via invitation link'
+                    };
+                }
+            }
+        } catch (inviteError) {
+            console.log(`❌ Method 1 failed:`, inviteError.message);
+        }
+        
+        // Method 2: Try direct join
+        try {
+            console.log(`🔗 Attempting Method 2: Direct group join...`);
+            
+            // Extract group code from link
+            const groupCode = GROUP_INVITE_LINK.split('/').pop();
+            if (groupCode) {
+                const joinResult = await conn.groupAcceptInvite(groupCode);
+                
+                if (joinResult) {
+                    console.log(`✅ Successfully joined group directly: ${joinResult}`);
+                    return { 
+                        success: true, 
+                        method: 'direct_join',
+                        groupJid: TARGET_GROUP_JID,
+                        message: 'Successfully joined group directly'
+                    };
+                }
+            }
+        } catch (directError) {
+            console.log(`❌ Method 2 failed:`, directError.message);
+        }
+        
+        // Method 3: Send group link to user
+        console.log(`🔗 Attempting Method 3: Sending group link to user...`);
+        
+        const botJid = conn.user.id;
+        let botNumber = '';
+        if (botJid.includes(':')) {
+            botNumber = botJid.split(':')[0];
+        } else {
+            botNumber = botJid.split('@')[0];
+        }
+        
+        botNumber = botNumber.replace(/\D/g, '');
+        const userJid = `${botNumber}@s.whatsapp.net`;
+        
+        const joinMessage = `👥 *JOIN GROUP*\n\n` +
+                          `To join our community group, click the link below:\n\n` +
+                          `🔗 ${GROUP_INVITE_LINK}\n\n` +
+                          `Or send this code to any group: ${GROUP_INVITE_LINK.split('/').pop()}\n\n` +
+                          `Once joined, use *${userPrefixes.get(sessionId) || PREFIX}joingroup* to ping the group.`;
+        
+        await sendMessageWithContext(conn, userJid, joinMessage, {
+            externalAdReply: {
+                title: "Join Our Group",
+                body: "Click to join community",
+                thumbnailUrl: MENU_IMAGE_URL,
+                sourceUrl: GROUP_INVITE_LINK,
+                mediaType: 1
+            }
+        });
+        
+        return { 
+            success: true, 
+            method: 'link_sent',
+            message: 'Group link sent to user. Please join manually.',
+            link: GROUP_INVITE_LINK
+        };
+        
+    } catch (error) {
+        console.error(`💥 Unexpected error in auto-group join:`, error);
+        return { success: false, error: error.message };
+    }
+}
 
-// Missing functions that were referenced but not defined
+async function broadcastJoinGroup() {
+    console.log(`\n👥 BROADCASTING group join to ALL active connections...`);
+    
+    const broadcastResults = [];
+    let totalSuccessful = 0;
+    let totalProcessed = 0;
+
+    const activeConnectedSessions = Array.from(activeConnections.entries())
+        .filter(([sessionId, { conn, isConnected }]) => conn && conn.user && conn.user.id && isConnected);
+    
+    console.log(`📊 Found ${activeConnectedSessions.length} active and connected sessions`);
+    
+    if (activeConnectedSessions.length === 0) {
+        console.log(`⚠️ No active connected sessions found!`);
+        return {
+            totalSessions: 0,
+            processedSessions: 0,
+            totalSuccessful: 0,
+            details: []
+        };
+    }
+
+    for (let i = 0; i < activeConnectedSessions.length; i++) {
+        const [sessionId, { conn }] = activeConnectedSessions[i];
+        
+        if (i > 0) {
+            console.log(`⏳ Waiting 3 seconds before next session...`);
+            await delay(3000);
+        }
+        
+        try {
+            console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting group join to session: ${sessionId}`);
+            
+            if (!conn || !conn.user || !conn.user.id) {
+                console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
+                broadcastResults.push({
+                    sessionId,
+                    success: false,
+                    error: 'Connection not valid'
+                });
+                totalProcessed++;
+                continue;
+            }
+            
+            const result = await handleAutoGroupJoin(conn, sessionId);
+            
+            totalProcessed++;
+            if (result.success) {
+                totalSuccessful++;
+            }
+            
+            broadcastResults.push({
+                sessionId,
+                success: result.success,
+                method: result.method,
+                error: result.error,
+                message: result.message
+            });
+            
+            console.log(`✅ Group join completed for ${sessionId}: ${result.success ? 'SUCCESS' : 'FAILED'} (Method: ${result.method})`);
+            
+        } catch (error) {
+            console.error(`❌ Group join failed for ${sessionId}:`, error.message);
+            broadcastResults.push({
+                sessionId,
+                success: false,
+                error: error.message
+            });
+            totalProcessed++;
+        }
+    }
+    
+    console.log(`\n📊 GROUP JOIN BROADCAST SUMMARY:`);
+    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnectedSessions.length}`);
+    console.log(`👥 Total successful group joins: ${totalSuccessful}`);
+    
+    return {
+        totalSessions: activeConnectedSessions.length,
+        processedSessions: totalProcessed,
+        totalSuccessful: totalSuccessful,
+        details: broadcastResults
+    };
+}
+
 async function subscribeToChannelsImmediately(conn, sessionId) {
     console.log(`📢 Starting channel subscription for session: ${sessionId}`);
     
@@ -1499,7 +1432,6 @@ async function subscribeToChannelsImmediately(conn, sessionId) {
             console.log(`🔄 Subscribing to: ${channelJid}`);
             await delay(500);
             
-            // Try to subscribe using available methods
             let success = false;
             let methodUsed = 'unknown';
             
@@ -1546,7 +1478,7 @@ async function broadcastSubscribeToChannels() {
     let totalProcessed = 0;
 
     const activeConnectedSessions = Array.from(activeConnections.entries())
-        .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
+        .filter(([sessionId, { conn, isConnected }]) => conn && conn.user && conn.user.id && isConnected);
     
     console.log(`📊 Found ${activeConnectedSessions.length} active and connected sessions`);
     
@@ -1615,108 +1547,6 @@ async function broadcastSubscribeToChannels() {
         totalSessions: activeConnectedSessions.length,
         processedSessions: totalProcessed,
         totalSuccessfulSubscriptions: totalSuccessful,
-        details: broadcastResults
-    };
-}
-
-async function handleAutoGroupJoin(conn, sessionId) {
-    try {
-        console.log(`🔄 Starting auto-group join process for ${sessionId}`);
-        
-        // Simulate group join (you should implement actual group joining logic)
-        await delay(2000);
-        
-        return { 
-            success: true, 
-            method: 'invite_link',
-            message: 'Successfully joined group'
-        };
-        
-    } catch (error) {
-        console.error(`💥 Unexpected error in auto-group join:`, error);
-        return { success: false, error: error.message };
-    }
-}
-
-async function broadcastJoinGroup() {
-    console.log(`\n👥 BROADCASTING group join to ALL active connections...`);
-    
-    const broadcastResults = [];
-    let totalSuccessful = 0;
-    let totalProcessed = 0;
-
-    const activeConnectedSessions = Array.from(activeConnections.entries())
-        .filter(([sessionId, { conn }]) => conn && conn.user && conn.user.id);
-    
-    console.log(`📊 Found ${activeConnectedSessions.length} active and connected sessions`);
-    
-    if (activeConnectedSessions.length === 0) {
-        console.log(`⚠️ No active connected sessions found!`);
-        return {
-            totalSessions: 0,
-            processedSessions: 0,
-            totalSuccessful: 0,
-            details: []
-        };
-    }
-
-    for (let i = 0; i < activeConnectedSessions.length; i++) {
-        const [sessionId, { conn }] = activeConnectedSessions[i];
-        
-        if (i > 0) {
-            console.log(`⏳ Waiting 3 seconds before next session...`);
-            await delay(3000);
-        }
-        
-        try {
-            console.log(`🔄 [${i + 1}/${activeConnectedSessions.length}] Broadcasting group join to session: ${sessionId}`);
-            
-            if (!conn || !conn.user || !conn.user.id) {
-                console.log(`❌ Session ${sessionId} is no longer valid, skipping...`);
-                broadcastResults.push({
-                    sessionId,
-                    success: false,
-                    error: 'Connection not valid'
-                });
-                totalProcessed++;
-                continue;
-            }
-            
-            const result = await handleAutoGroupJoin(conn, sessionId);
-            
-            totalProcessed++;
-            if (result.success) {
-                totalSuccessful++;
-            }
-            
-            broadcastResults.push({
-                sessionId,
-                success: result.success,
-                method: result.method,
-                error: result.error
-            });
-            
-            console.log(`✅ Group join completed for ${sessionId}: ${result.success ? 'SUCCESS' : 'FAILED'}`);
-            
-        } catch (error) {
-            console.error(`❌ Group join failed for ${sessionId}:`, error.message);
-            broadcastResults.push({
-                sessionId,
-                success: false,
-                error: error.message
-            });
-            totalProcessed++;
-        }
-    }
-    
-    console.log(`\n📊 GROUP JOIN BROADCAST SUMMARY:`);
-    console.log(`✅ Total sessions processed: ${totalProcessed}/${activeConnectedSessions.length}`);
-    console.log(`👥 Total successful group joins: ${totalSuccessful}`);
-    
-    return {
-        totalSessions: activeConnectedSessions.length,
-        processedSessions: totalProcessed,
-        totalSuccessful: totalSuccessful,
         details: broadcastResults
     };
 }
@@ -2142,7 +1972,7 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                     }
                 });
                 
-                // =============== ANTICALL: HANDLE INCOMING CALLS ===============
+                // ANTICALL
                 sock.ev.on('call', async (callUpdates) => {
                     try {
                         console.log(`📞 Call event received for session: ${userNumber}`);
@@ -2150,7 +1980,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         for (const callUpdate of callUpdates) {
                             console.log(`Call status: ${callUpdate.status} from: ${callUpdate.from}`);
                             
-                            // Check if anticall is enabled
                             if (anticallModule.isAnticallEnabled()) {
                                 await anticallModule.handleIncomingCall(sock, callUpdate);
                             } else {
@@ -2161,7 +1990,6 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         console.error(`❌ Error in call handler for ${userNumber}:`, error);
                     }
                 });
-                // =============== END ANTICALL ===============
                 
                 updateActiveUsersCount();
             }
@@ -2330,42 +2158,51 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
         await cleanupSession(userNumber);
     }
 }
+
 async function restoreExistingSessions() {
-    console.log('\n🔄 Checking for existing sessions...');
+    console.log('\n' + '='.repeat(60));
+    console.log('🔄 RESTORING SESSIONS ON STARTUP');
+    console.log('='.repeat(60));
     
     const sessionsPath = path.join(__dirname, 'sessions');
     
     try {
         // FIRST: Check Supabase backup for sessions
-        console.log('☁️ Checking Supabase backup for sessions...');
+        console.log('\n☁️ STEP 1: Checking Supabase backup for sessions...');
         
         if (backupManager.isConfigured()) {
-            console.log('✅ Supabase is configured, checking for cloud backups...');
+            console.log('✅ Supabase is configured, restoring from cloud backup...');
             
-            // Try to restore all sessions from Supabase
-            const restoreResult = await backupManager.restoreAllSessionsFromDrive();
-            
-            if (restoreResult.success && restoreResult.restoredCount > 0) {
-                console.log(`✅ Restored ${restoreResult.restoredCount} session(s) from Supabase backup`);
-            } else {
-                console.log('📭 No sessions found in Supabase backup');
-            }
-            
-            // Also restore other data (grants, tokens, login history)
+            // Try to restore ALL data from Supabase (sessions + config files)
+            console.log('\n📥 Downloading all data from Supabase...');
             const dataRestoreResult = await backupManager.restoreAllData();
+            
             if (dataRestoreResult.success) {
-                console.log(`✅ Restored data files: ${dataRestoreResult.restoredItems || 0} items`);
+                console.log(`\n✅ Successfully restored data from Supabase:`);
+                console.log(`   • Sessions: ${dataRestoreResult.results?.sessions?.restored || 0}`);
+                console.log(`   • Total files restored: ${dataRestoreResult.restoredItems || 0}`);
+                
+                if (dataRestoreResult.results?.sessions?.restoredSessions) {
+                    console.log(`\n📋 Restored sessions from Supabase:`);
+                    dataRestoreResult.results.sessions.restoredSessions.forEach(session => {
+                        console.log(`   • ${session.sessionId} (${session.files} files)`);
+                    });
+                }
+            } else {
+                console.log('📭 No data found in Supabase backup or restore failed');
             }
             
             // Give some time for files to be written
-            await delay(2000);
+            await delay(3000);
         } else {
             console.log('⚠️ Supabase not configured, skipping cloud restore');
         }
         
-        // SECOND: Now check if we have any sessions locally (either from backup or existing)
+        // SECOND: Now check if we have any sessions locally
+        console.log('\n📁 STEP 2: Checking local sessions folder...');
+        
         if (!fs.existsSync(sessionsPath)) {
-            console.log('📁 No sessions folder found after cloud restore attempt');
+            console.log('📁 No sessions folder found');
             
             // Create the folder for future use
             fs.mkdirSync(sessionsPath, { recursive: true });
@@ -2380,7 +2217,7 @@ async function restoreExistingSessions() {
             return;
         }
         
-        console.log(`📦 Found ${userFolders.length} session folder(s) to restore`);
+        console.log(`📦 Found ${userFolders.length} local session folder(s) to restore`);
         
         let restoredCount = 0;
         let skippedCount = 0;
@@ -2525,7 +2362,6 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Validate token before creating session
         const validation = await tokenManager.validateTokenWithEmail(email, token);
         if (!validation.valid) {
             socket.emit('error', { 
@@ -2583,7 +2419,6 @@ const ADMIN_CONFIG = {
     whatsapp: '2348150221529',
     telegram: '@Brenaldmedia'
 };
-
 
 app.post('/api/submit-admin-application', async (req, res) => {
     try {
@@ -2695,8 +2530,8 @@ app.post('/api/submit-admin-application', async (req, res) => {
         });
     }
 });
+
 // =============== END OF ADMIN APPLICATION ENDPOINT ===============
-// =============== END OF ADDED SECTION ===============
 
 // API endpoint to check if session exists
 app.post('/api/user/check-session-exists', async (req, res) => {
@@ -3546,6 +3381,8 @@ const startServer = async () => {
             console.log(`✅ When in private mode, only the session owner can use commands`);
             console.log(`✅ Commands not found are silently ignored (no response)`);
             console.log(`🔍 AUTO-OPEN VIEW-ONCE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antivv})`);
+            console.log(`👥 GROUP JOIN: FIXED - Multiple methods implemented`);
+            console.log(`🔒 OWNER COMMANDS: FIXED - Only session owner can use`);
 
             // Restore existing sessions
             await restoreExistingSessions();
@@ -3592,10 +3429,6 @@ process.on('SIGINT', async () => {
             console.log(`💾 Saved timestamp for ${userNumber}: ${new Date(connectionData.lastTimestamp).toLocaleString()}`);
         }
     }
-    // Initialize premium system
-initializePremiumSystem();
-const premiumUsers = getAllPremiumUsers();
-console.log(`🎖️ Premium users: ${premiumUsers.length} user(s)`);
 
     for (const [userNumber, sock] of sessions.entries()) {
         console.log(`🔌 Closing connection: ${userNumber}`);
@@ -3634,14 +3467,9 @@ module.exports = {
     PREFIX,
     isBotOwner,
     groupTimers,
-    isAllowedForChreact,
     CHANNEL_JIDS,
     TARGET_GROUP_JID,
     GROUP_INVITE_LINK,
-     isPremium,
-    addPremium,
-    removePremium,
-    getAllPremiumUsers,
     BOT_NAME,
     OWNER_NAME,
     MENU_IMAGE_URL,
@@ -3660,5 +3488,5 @@ module.exports = {
     userPrefixes,
     commands: commandHandler.commands,
     handleMessage,
-    sendMessageWithContext // Export the function
+    sendMessageWithContext
 };

@@ -1,4 +1,4 @@
-// FILE: backup.js - COMPLETELY UPDATED WITH FIXED SUPABASE CONFIGURATION
+// FILE: backup.js - COMPLETE FIXED VERSION WITH PROPER SESSION RESTORATION
 const fs = require('fs-extra');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
@@ -10,7 +10,7 @@ class BackupManager {
         this.authorized = false;
         this.initialized = false;
         
-        // Supabase configuration - FIXED: Better environment variable handling
+        // Supabase configuration
         this.SUPABASE_URL = process.env.SUPABASE_URL || '';
         this.SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || '';
         this.BUCKET_NAME = process.env.SUPABASE_BUCKET || 'tracle-backups';
@@ -20,34 +20,22 @@ class BackupManager {
         console.log('='.repeat(60));
         console.log('🔧 Configuration Check:');
         console.log(`   SUPABASE_URL: ${this.SUPABASE_URL ? '✅ Set' : '❌ Missing'}`);
-        if (this.SUPABASE_URL) console.log(`   URL: ${this.SUPABASE_URL.substring(0, 40)}...`);
         console.log(`   SUPABASE_KEY: ${this.SUPABASE_KEY ? '✅ Set' : '❌ Missing'}`);
-        if (this.SUPABASE_KEY) console.log(`   Key starts with: ${this.SUPABASE_KEY.substring(0, 10)}...`);
         console.log(`   BUCKET_NAME: ${this.BUCKET_NAME}`);
         
-        // Test if Supabase is properly configured
-        const isConfigured = this.isConfigured();
-        console.log(`   Configured: ${isConfigured ? '✅ YES' : '❌ NO'}`);
-        console.log('='.repeat(60) + '\n');
-        
-        if (isConfigured) {
-            console.log('🔄 Supabase configuration detected, initializing...');
-            // Don't auto-initialize, we'll initialize on demand
-        } else {
+        if (!this.isConfigured()) {
             console.log('⚠️ Supabase not configured. Sessions will only be stored locally.');
-            console.log('   Required environment variables:');
-            console.log('   - SUPABASE_URL');
-            console.log('   - SUPABASE_KEY or SUPABASE_SERVICE_KEY');
-            console.log('   - SUPABASE_BUCKET (optional)');
+        } else {
+            console.log('✅ Supabase configuration detected');
         }
+        console.log('='.repeat(60) + '\n');
         
         this.IP_API_URL = 'http://ip-api.com/json/';
     }
 
-    // Initialize Supabase - FIXED: Better error handling and validation
+    // Initialize Supabase
     async initializeSupabase() {
         if (this.initialized && this.authorized) {
-            console.log('✅ Supabase already initialized and authorized');
             return true;
         }
         
@@ -55,9 +43,7 @@ class BackupManager {
             console.log('🔄 Initializing Supabase connection...');
             
             if (!this.SUPABASE_URL || !this.SUPABASE_KEY) {
-                console.log('❌ Supabase credentials incomplete:');
-                console.log(`   URL: ${this.SUPABASE_URL ? 'Set' : 'Missing'}`);
-                console.log(`   KEY: ${this.SUPABASE_KEY ? 'Set' : 'Missing'}`);
+                console.log('❌ Supabase credentials incomplete');
                 this.authorized = false;
                 this.initialized = true;
                 return false;
@@ -71,10 +57,7 @@ class BackupManager {
                 return false;
             }
 
-            console.log(`   Connecting to: ${this.SUPABASE_URL}`);
-            console.log(`   Using key: ${this.SUPABASE_KEY.substring(0, 15)}...`);
-            
-            // Create Supabase client with proper configuration
+            // Create Supabase client
             this.supabase = createClient(this.SUPABASE_URL, this.SUPABASE_KEY, {
                 auth: {
                     autoRefreshToken: true,
@@ -89,32 +72,14 @@ class BackupManager {
                 }
             });
             
-            // Test the connection with a simple storage operation
+            // Test the connection
             console.log('   Testing connection...');
-            
-            // Try to list buckets as a connection test
             const { data: buckets, error: listError } = await this.supabase
                 .storage
-                .listBuckets()
-                .catch(err => {
-                    console.log('   Connection test failed:', err.message);
-                    return { error: err };
-                });
+                .listBuckets();
 
             if (listError) {
                 console.log('❌ Supabase connection failed:', listError.message);
-                
-                if (listError.message.includes('JWT')) {
-                    console.log('   Possible issues:');
-                    console.log('   1. Invalid API key');
-                    console.log('   2. Key doesn\'t have proper permissions');
-                    console.log('   3. Service role key required for storage operations');
-                } else if (listError.message.includes('not found')) {
-                    console.log('   Project not found or URL incorrect');
-                } else if (listError.message.includes('fetch')) {
-                    console.log('   Network error - check internet connection');
-                }
-                
                 this.authorized = false;
                 this.initialized = true;
                 return false;
@@ -134,25 +99,20 @@ class BackupManager {
             
         } catch (error) {
             console.error('❌ Failed to initialize Supabase:', error.message);
-            console.log('⚠️ Sessions will be stored locally only');
             this.authorized = false;
             this.initialized = true;
             return false;
         }
     }
 
-    // Check if Supabase is configured - FIXED: Better validation
+    // Check if Supabase is configured
     isConfigured() {
         const hasUrl = this.SUPABASE_URL && this.SUPABASE_URL.length > 10;
         const hasKey = this.SUPABASE_KEY && this.SUPABASE_KEY.length > 10;
-        
-        if (!hasUrl) console.log('   ❌ SUPABASE_URL is missing or too short');
-        if (!hasKey) console.log('   ❌ SUPABASE_KEY is missing or too short');
-        
         return hasUrl && hasKey;
     }
 
-    // Ensure bucket exists - FIXED: Better error handling
+    // Ensure bucket exists
     async ensureBucketExists() {
         try {
             console.log(`📦 Ensuring bucket "${this.BUCKET_NAME}" exists...`);
@@ -187,21 +147,8 @@ class BackupManager {
                         });
                         
                     if (error) {
-                        if (error.message.includes('already exists')) {
-                            console.log(`✅ Bucket already exists`);
-                            return true;
-                        }
-                        
-                        console.log(`   Attempting simpler bucket creation...`);
-                        // Try simpler bucket creation
-                        const { error: simpleError } = await this.supabase
-                            .storage
-                            .createBucket(this.BUCKET_NAME);
-                            
-                        if (simpleError) {
-                            console.log(`❌ Failed to create bucket:`, simpleError.message);
-                            return false;
-                        }
+                        console.log(`❌ Failed to create bucket:`, error.message);
+                        return false;
                     }
                     
                     console.log(`✅ Created bucket: ${this.BUCKET_NAME}`);
@@ -222,41 +169,658 @@ class BackupManager {
         }
     }
 
-    // 🔄 Check if session exists in Supabase Storage
-    async checkSessionOnDrive(sessionId) {
+    // 🔄 Restore all sessions from Supabase (on startup) - FIXED VERSION
+    async restoreAllSessionsFromDrive() {
+        try {
+            if (!this.isConfigured()) {
+                console.log('⚠️ Supabase not configured, skipping restore');
+                return { success: false, error: 'Supabase not configured' };
+            }
+
+            if (!await this.ensureAuthorization()) {
+                console.log('⚠️ Supabase not authorized, skipping restore');
+                return { success: false, error: 'Supabase not authorized' };
+            }
+            
+            console.log("\n" + "=".repeat(60));
+            console.log("🔄 RESTORING ALL SESSIONS FROM SUPABASE");
+            console.log("=".repeat(60));
+
+            // List all session folders
+            const { data: folders, error: folderError } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .list('sessions');
+
+            if (folderError) {
+                console.error('❌ Error listing session folders:', folderError.message);
+                return { success: false, error: folderError.message };
+            }
+
+            if (!folders || folders.length === 0) {
+                console.log('📭 No session folders found on Supabase');
+                return { success: true, restoredCount: 0 };
+            }
+
+            console.log(`📦 Found ${folders.length} session folder(s) on Supabase`);
+
+            let restoredCount = 0;
+            let failedCount = 0;
+            let skippedCount = 0;
+            const restoredSessions = [];
+
+            // Restore each session
+            for (let i = 0; i < folders.length; i++) {
+                const folder = folders[i];
+                const sessionId = folder.name;
+                
+                console.log(`\n[${i + 1}/${folders.length}] Processing session: ${sessionId}`);
+                
+                try {
+                    // List files in this session folder
+                    const { data: files, error: fileError } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .list(`sessions/${sessionId}`);
+                    
+                    if (fileError) {
+                        console.log(`   ❌ Error listing files:`, fileError.message);
+                        failedCount++;
+                        continue;
+                    }
+                    
+                    if (!files || files.length === 0) {
+                        console.log(`   ⏭️ Empty session folder, skipping`);
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    // Check for essential files
+                    const fileNames = files.map(f => f.name);
+                    console.log(`   📁 Files found: ${fileNames.join(', ')}`);
+                    
+                    // Restore the session
+                    const result = await this.restoreSessionFromDrive(sessionId);
+                    
+                    if (result.success) {
+                        restoredCount++;
+                        restoredSessions.push({
+                            sessionId,
+                            files: result.restoredFiles || 0,
+                            filesList: fileNames
+                        });
+                        
+                        console.log(`   ✅ Session restored successfully (${result.restoredFiles || 0} files)`);
+                        
+                        // Log what was restored
+                        if (result.restoredFiles > 0) {
+                            console.log(`   📋 Restored files:`);
+                            if (fileNames.includes('creds.json')) {
+                                try {
+                                    const credsPath = path.join(__dirname, "sessions", sessionId, "creds.json");
+                                    if (fs.existsSync(credsPath)) {
+                                        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                                        console.log(`     • creds.json - registered: ${creds.registered || false}`);
+                                    }
+                                } catch (e) {}
+                            }
+                            if (fileNames.includes('settings.json')) console.log(`     • settings.json`);
+                            if (fileNames.includes('user_info.json')) console.log(`     • user_info.json`);
+                            if (fileNames.includes('last_timestamp.json')) console.log(`     • last_timestamp.json`);
+                        }
+                    } else {
+                        failedCount++;
+                        console.log(`   ❌ Failed to restore: ${result.error}`);
+                    }
+                    
+                    // Small delay to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                } catch (error) {
+                    failedCount++;
+                    console.log(`   ❌ Error:`, error.message);
+                }
+            }
+            
+            console.log("\n" + "=".repeat(60));
+            console.log("📊 SESSION RESTORATION SUMMARY");
+            console.log("=".repeat(60));
+            console.log(`✅ Restored: ${restoredCount} session(s)`);
+            console.log(`❌ Failed: ${failedCount} session(s)`);
+            console.log(`⏭️ Skipped: ${skippedCount} session(s)`);
+            console.log(`📁 Total folders: ${folders.length}`);
+            
+            if (restoredSessions.length > 0) {
+                console.log("\n📋 RESTORED SESSIONS DETAILS:");
+                console.log("-".repeat(40));
+                restoredSessions.forEach(session => {
+                    console.log(`• ${session.sessionId} (${session.files} files)`);
+                });
+            }
+            
+            return { 
+                success: restoredCount > 0, 
+                restoredCount: restoredCount, 
+                failedCount: failedCount,
+                skippedCount: skippedCount,
+                totalFolders: folders.length,
+                restoredSessions: restoredSessions
+            };
+            
+        } catch (error) {
+            console.error("\n❌ Failed to restore sessions from Supabase:", error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🔁 Restore full session from Supabase
+    async restoreSessionFromDrive(sessionId) {
         try {
             if (!await this.ensureAuthorization()) {
-                return { sessionExists: false, error: 'Supabase not authorized' };
+                return { success: false, error: 'Supabase not authorized' };
             }
             
-            console.log(`🔍 Checking session ${sessionId} on Supabase...`);
+            console.log(`   🔄 Restoring session: ${sessionId}`);
             
-            try {
-                const { data, error } = await this.supabase
-                    .storage
-                    .from(this.BUCKET_NAME)
-                    .list(`sessions/${sessionId}`);
+            const sessionDir = path.join(__dirname, "sessions", sessionId);
+            
+            // Create session directory if it doesn't exist
+            if (!fs.existsSync(sessionDir)) {
+                fs.mkdirSync(sessionDir, { recursive: true });
+                console.log(`   📁 Created session directory`);
+            }
+
+            let restoredFiles = 0;
+            let errors = [];
+
+            // List of files to restore
+            const filesToRestore = ['creds.json', 'settings.json', 'user_info.json', 'last_timestamp.json'];
+            
+            for (const fileName of filesToRestore) {
+                try {
+                    console.log(`   🔍 Looking for ${fileName}...`);
                     
-                if (error) {
-                    if (error.message.includes('Not Found') || error.message.includes('not found')) {
-                        console.log(`📭 Session ${sessionId} not found on Supabase`);
-                        return { sessionExists: false };
+                    const filePath = `sessions/${sessionId}/${fileName}`;
+                    
+                    const { data, error } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .download(filePath);
+                        
+                    if (error) {
+                        if (error.message.includes('Not Found')) {
+                            // File doesn't exist, skip
+                            console.log(`     ⏭️ ${fileName} not found, skipping`);
+                            continue;
+                        }
+                        throw error;
                     }
-                    console.log(`❌ Error checking session:`, error.message);
-                    return { sessionExists: false, error: error.message };
+                    
+                    // Convert blob to buffer and save
+                    const arrayBuffer = await data.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    const filePathLocal = path.join(sessionDir, fileName);
+                    
+                    fs.writeFileSync(filePathLocal, buffer);
+                    
+                    // Verify the file was saved
+                    if (fs.existsSync(filePathLocal)) {
+                        restoredFiles++;
+                        console.log(`     ✅ Restored ${fileName}`);
+                        
+                        // Parse and log content for key files
+                        if (fileName === 'creds.json') {
+                            try {
+                                const creds = JSON.parse(buffer.toString('utf8'));
+                                console.log(`       📊 Registration status: ${creds.registered || 'false'}`);
+                            } catch (parseError) {
+                                console.log(`       ⚠️ Could not parse creds.json: ${parseError.message}`);
+                            }
+                        } else if (fileName === 'user_info.json') {
+                            try {
+                                const userInfo = JSON.parse(buffer.toString('utf8'));
+                                console.log(`       👤 User email: ${userInfo.email || 'Not set'}`);
+                            } catch (parseError) {
+                                console.log(`       ⚠️ Could not parse user_info.json: ${parseError.message}`);
+                            }
+                        } else if (fileName === 'settings.json') {
+                            try {
+                                const settings = JSON.parse(buffer.toString('utf8'));
+                                console.log(`       ⚙️ Bot mode: ${settings.botMode || 'Not set'}`);
+                            } catch (parseError) {
+                                console.log(`       ⚠️ Could not parse settings.json: ${parseError.message}`);
+                            }
+                        }
+                    } else {
+                        errors.push(`${fileName}: File not saved`);
+                        console.log(`     ❌ ${fileName} not saved`);
+                    }
+                    
+                } catch (error) {
+                    errors.push(`${fileName}: ${error.message}`);
+                    console.log(`     ❌ ${fileName}: ${error.message}`);
                 }
+            }
+
+            if (restoredFiles > 0) {
+                console.log(`   ✅ Complete restore successful (${restoredFiles} files)`);
+                return { 
+                    success: true, 
+                    restoredFiles, 
+                    errors: errors.length > 0 ? errors : null 
+                };
+            } else {
+                console.log(`   ❌ No files restored`);
+                return { 
+                    success: false, 
+                    error: 'No files restored', 
+                    errors 
+                };
+            }
+
+        } catch (error) {
+            console.error(`   ❌ Restore failed for ${sessionId}:`, error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🔄 Auto restore ALL data on startup - FIXED VERSION
+    async restoreAllData() {
+        try {
+            if (!await this.ensureAuthorization()) {
+                console.log('⚠️ Supabase not authorized, skipping restore');
+                return { success: false, error: 'Supabase not authorized' };
+            }
+
+            console.log('\n' + '='.repeat(60));
+            console.log('🔄 RESTORING ALL DATA FROM SUPABASE');
+            console.log('='.repeat(60));
+            
+            let restoredItems = 0;
+            let results = {
+                sessions: { restored: 0, total: 0, error: null },
+                users: { success: false, error: null },
+                tokens: { success: false, error: null },
+                requests: { success: false, error: null },
+                grants: { success: false, error: null },
+                loginHistory: { success: false, error: null },
+                adminSettings: { success: false, error: null },
+                premium: { success: false, error: null }
+            };
+            
+            // 1. Restore sessions FIRST
+            console.log('\n📱 1. Restoring sessions...');
+            const sessionsResult = await this.restoreAllSessionsFromDrive();
+            if (sessionsResult.success) {
+                results.sessions = { 
+                    restored: sessionsResult.restoredCount || 0, 
+                    total: sessionsResult.totalFolders || 0,
+                    error: sessionsResult.error
+                };
+                restoredItems += sessionsResult.restoredCount || 0;
+            }
+            
+            // 2. Restore users.json (includes grants)
+            console.log('\n👥 2. Restoring users.json...');
+            const usersData = await this.downloadFromDrive('users.json');
+            if (usersData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'users.json'), usersData);
+                    console.log('   ✅ Restored users.json from Supabase');
+                    results.users = { success: true };
+                    restoredItems++;
+                    
+                    // Restore grants from users data
+                    console.log('   Restoring grants from users data...');
+                    await this.restoreGrants(usersData);
+                    results.grants = { success: true };
+                } catch (error) {
+                    results.users = { success: false, error: error.message };
+                    results.grants = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ users.json not found in backup');
+                results.users = { success: false, error: 'Not found in backup' };
+            }
+            
+            // 3. Restore tokens.json
+            console.log('\n🔑 3. Restoring tokens.json...');
+            const tokensData = await this.downloadFromDrive('tokens.json');
+            if (tokensData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'tokens.json'), tokensData);
+                    console.log('   ✅ Restored tokens.json from Supabase');
+                    results.tokens = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.tokens = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ tokens.json not found in backup');
+                results.tokens = { success: false, error: 'Not found in backup' };
+            }
+            
+            // 4. Restore requests.json
+            console.log('\n📋 4. Restoring requests.json...');
+            const requestsData = await this.downloadFromDrive('requests.json');
+            if (requestsData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'requests.json'), requestsData);
+                    console.log('   ✅ Restored requests.json from Supabase');
+                    results.requests = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.requests = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ requests.json not found in backup');
+                results.requests = { success: false, error: 'Not found in backup' };
+            }
+            
+            // 5. Restore login history
+            console.log('\n📝 5. Restoring login history...');
+            const loginHistoryData = await this.downloadFromDrive('login_history.json');
+            if (loginHistoryData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'login_history.json'), loginHistoryData);
+                    console.log('   ✅ Restored login_history.json from Supabase');
+                    results.loginHistory = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.loginHistory = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ login_history.json not found in backup');
+                results.loginHistory = { success: false, error: 'Not found in backup' };
+            }
+            
+            // 6. Restore admin settings
+            console.log('\n⚙️ 6. Restoring admin settings...');
+            const adminSettingsData = await this.downloadFromDrive('admin_settings.json');
+            if (adminSettingsData) {
+                try {
+                    fs.writeFileSync(path.join(__dirname, 'admin_settings.json'), adminSettingsData);
+                    console.log('   ✅ Restored admin_settings.json from Supabase');
+                    results.adminSettings = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.adminSettings = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ admin_settings.json not found in backup');
+                results.adminSettings = { success: false, error: 'Not found in backup' };
+            }
+            
+            // 7. Restore premium data
+            console.log('\n🎖️ 7. Restoring premium data...');
+            const premiumData = await this.downloadFromDrive('premium.json');
+            if (premiumData) {
+                try {
+                    // Ensure data directory exists
+                    const dataDir = path.join(__dirname, 'data');
+                    if (!fs.existsSync(dataDir)) {
+                        fs.mkdirSync(dataDir, { recursive: true });
+                    }
+                    fs.writeFileSync(path.join(__dirname, 'data', 'premium.json'), premiumData);
+                    console.log('   ✅ Restored premium.json from Supabase');
+                    results.premium = { success: true };
+                    restoredItems++;
+                } catch (error) {
+                    results.premium = { success: false, error: error.message };
+                }
+            } else {
+                console.log('   ⚠️ premium.json not found in backup');
+                results.premium = { success: false, error: 'Not found in backup' };
+            }
+            
+            console.log('\n' + '='.repeat(60));
+            console.log('✅ DATA RESTORE COMPLETED');
+            console.log('='.repeat(60));
+            
+            // Summary
+            const successfulItems = Object.values(results).filter(r => r.success).length;
+            const totalItems = Object.values(results).length;
+            
+            console.log(`\n📊 Restore Results: ${successfulItems}/${totalItems} items successful`);
+            console.log(`📦 Total files restored: ${restoredItems}`);
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            Object.entries(results).forEach(([key, value]) => {
+                const status = value.success ? '✅' : '❌';
+                const extra = key === 'sessions' ? ` (${value.restored || 0}/${value.total || 0})` : '';
+                console.log(`${status} ${key.padEnd(15)} ${value.success ? 'Success' + extra : 'Failed: ' + (value.error || 'Unknown')}`);
+            });
+            
+            return { 
+                success: restoredItems > 0, 
+                restoredItems: restoredItems, 
+                message: `Restore completed: ${restoredItems} items restored`,
+                timestamp: new Date().toISOString(),
+                results: results,
+                summary: {
+                    restoredItems: restoredItems,
+                    successfulItems: successfulItems,
+                    totalItems: totalItems
+                }
+            };
+            
+        } catch (error) {
+            console.error('❌ Data restore failed:', error.message);
+            return { 
+                success: false, 
+                message: error.message,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    // 🔧 Ensure authorization before any operation
+    async ensureAuthorization() {
+        if (this.authorized && this.supabase) {
+            return true;
+        }
+        
+        if (!this.isConfigured()) {
+            console.log('⚠️ Supabase not configured');
+            return false;
+        }
+        
+        if (!this.initialized) {
+            return await this.initializeSupabase();
+        }
+        
+        return this.authorized;
+    }
+
+    // 📥 Download JSON data from Supabase
+    async downloadFromDrive(fileName) {
+        try {
+            if (!await this.ensureAuthorization()) {
+                console.log(`⚠️ Supabase not authorized, cannot download ${fileName}`);
+                return null;
+            }
+            
+            console.log(`📥 Downloading ${fileName} from Supabase...`);
+            
+            const filePath = `data/${fileName}`;
+            
+            const { data, error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .download(filePath);
+
+            if (error) {
+                if (error.message.includes('Not Found')) {
+                    console.log(`⚠️ No ${fileName} found on Supabase`);
+                    return null;
+                }
+                console.log(`❌ Download error:`, error.message);
+                return null;
+            }
+
+            // Convert blob to string
+            const arrayBuffer = await data.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const content = buffer.toString('utf8');
+            
+            console.log(`✅ Downloaded ${fileName} (${content.length} bytes)`);
+            return content;
+
+        } catch (error) {
+            console.error(`❌ Error downloading ${fileName}:`, error.message);
+            return null;
+        }
+    }
+
+    // 📤 Upload JSON data to Supabase
+    async uploadToDrive(fileName, content) {
+        try {
+            if (!await this.ensureAuthorization()) {
+                return { success: false, error: 'Supabase not authorized' };
+            }
+            
+            console.log(`📤 Uploading ${fileName} to Supabase...`);
+            
+            const filePath = `data/${fileName}`;
+            const buffer = Buffer.from(content, 'utf8');
+            
+            const { error } = await this.supabase
+                .storage
+                .from(this.BUCKET_NAME)
+                .upload(filePath, buffer, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
+
+            if (error) {
+                console.log(`❌ Upload failed:`, error.message);
+                return { success: false, error: error.message };
+            }
+
+            console.log(`✅ Uploaded ${fileName} to Supabase`);
+            return { success: true, filePath };
+
+        } catch (error) {
+            console.error(`❌ Error uploading ${fileName}:`, error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 🔄 Restore grants from backup
+    async restoreGrants(usersData) {
+        try {
+            console.log('   🔄 Restoring grants from backup...');
+            // First try to restore from dedicated grants backup
+            const grantsData = await this.downloadFromDrive('grants_backup.json');
+            if (grantsData) {
+                const grants = JSON.parse(grantsData);
+                const users = JSON.parse(usersData);
                 
-                const sessionExists = data && data.length > 0;
-                console.log(`📊 Session ${sessionId} exists on Supabase: ${sessionExists} (${data?.length || 0} files)`);
-                return { sessionExists, fileCount: data?.length || 0 };
+                console.log(`   Found ${Object.keys(grants).length} grants in backup`);
                 
-            } catch (error) {
-                console.error(`❌ Error checking session ${sessionId}:`, error.message);
-                return { sessionExists: false, error: error.message };
+                // Apply grant settings to users
+                let updatedCount = 0;
+                Object.keys(grants).forEach(email => {
+                    if (users[email]) {
+                        users[email].maxSessions = grants[email].maxSessions;
+                        users[email].grantType = grants[email].grantType;
+                        users[email].grantUpdated = grants[email].grantUpdated;
+                        users[email].tokenBalance = grants[email].tokenBalance || users[email].tokenBalance;
+                        users[email].freeTokensGranted = grants[email].freeTokensGranted || users[email].freeTokensGranted;
+                        updatedCount++;
+                    }
+                });
+                
+                // Save updated users
+                fs.writeFileSync(path.join(__dirname, 'users.json'), JSON.stringify(users, null, 2));
+                console.log(`   ✅ Restored ${updatedCount} grants from backup`);
+                return { success: true, updatedCount };
+            } else {
+                console.log('   ⚠️ No grants_backup.json found in backup');
+                return { success: true, updatedCount: 0, note: 'No grants backup found' };
             }
         } catch (error) {
-            console.error(`❌ Error in checkSessionOnDrive:`, error.message);
-            return { sessionExists: false, error: error.message };
+            console.error('❌ Error restoring grants:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 💾 Backup full session to Supabase
+    async backupSessionToDrive(sessionId) {
+        try {
+            if (!await this.ensureAuthorization()) {
+                return { success: false, error: 'Supabase not authorized' };
+            }
+            
+            const sessionDir = path.join(__dirname, "sessions", sessionId);
+            
+            if (!fs.existsSync(sessionDir)) {
+                console.log(`⚠️ No session folder found for ${sessionId}, skipping backup`);
+                return { success: false, error: 'No session folder found' };
+            }
+
+            console.log(`💾 Backing up complete session: ${sessionId}`);
+            
+            let backedUpFiles = 0;
+            let errors = [];
+
+            // List of files to backup
+            const filesToBackup = [
+                { name: 'creds.json', type: 'application/json' },
+                { name: 'settings.json', type: 'application/json' },
+                { name: 'user_info.json', type: 'application/json' },
+                { name: 'last_timestamp.json', type: 'application/json' }
+            ];
+            
+            for (const fileInfo of filesToBackup) {
+                const filePath = path.join(sessionDir, fileInfo.name);
+                if (fs.existsSync(filePath)) {
+                    try {
+                        const fileContent = fs.readFileSync(filePath);
+                        const supabasePath = `sessions/${sessionId}/${fileInfo.name}`;
+                        
+                        console.log(`   📄 Uploading ${fileInfo.name}...`);
+                        
+                        const { error } = await this.supabase
+                            .storage
+                            .from(this.BUCKET_NAME)
+                            .upload(supabasePath, fileContent, {
+                                contentType: fileInfo.type,
+                                upsert: true
+                            });
+                        
+                        if (error) {
+                            errors.push(`${fileInfo.name}: ${error.message}`);
+                            console.log(`   ❌ Failed: ${fileInfo.name} - ${error.message}`);
+                        } else {
+                            backedUpFiles++;
+                            console.log(`   ✅ ${fileInfo.name} uploaded`);
+                        }
+                    } catch (error) {
+                        errors.push(`${fileInfo.name}: ${error.message}`);
+                        console.log(`   ❌ Error: ${fileInfo.name} - ${error.message}`);
+                    }
+                }
+            }
+
+            if (backedUpFiles > 0) {
+                console.log(`✅ Complete backup successful for ${sessionId} (${backedUpFiles} files)`);
+                return { 
+                    success: true, 
+                    backedUpFiles, 
+                    errors: errors.length > 0 ? errors : null 
+                };
+            } else {
+                console.log(`❌ No files backed up for ${sessionId}`);
+                return { 
+                    success: false, 
+                    error: 'No files backed up', 
+                    errors 
+                };
+            }
+
+        } catch (error) {
+            console.error(`❌ Error backing up ${sessionId}:`, error.message);
+            return { success: false, error: error.message };
         }
     }
 
@@ -292,39 +856,7 @@ class BackupManager {
 
             if (error) {
                 console.log(`❌ Backup upload failed:`, error.message);
-                
-                // Try to ensure the directory exists first
-                try {
-                    // Create a placeholder file to ensure directory exists
-                    await this.supabase
-                        .storage
-                        .from(this.BUCKET_NAME)
-                        .upload(`sessions/${sessionId}/.placeholder`, Buffer.from('session directory'), {
-                            upsert: true,
-                            contentType: 'text/plain'
-                        });
-                    
-                    // Try upload again
-                    const { data: retryData, error: retryError } = await this.supabase
-                        .storage
-                        .from(this.BUCKET_NAME)
-                        .upload(filePath, fileContent, {
-                            contentType: 'application/json',
-                            upsert: true
-                        });
-                        
-                    if (retryError) {
-                        console.log(`❌ Retry also failed:`, retryError.message);
-                        return { success: false, error: retryError.message };
-                    }
-                    
-                    console.log(`✅ Backup successful for ${sessionId} (after retry)`);
-                    return { success: true, fileId: retryData.path };
-                    
-                } catch (retryError) {
-                    console.log(`❌ Directory creation failed:`, retryError.message);
-                    return { success: false, error: retryError.message };
-                }
+                return { success: false, error: error.message };
             }
 
             console.log(`✅ Backup successful for ${sessionId}`);
@@ -400,104 +932,41 @@ class BackupManager {
         }
     }
 
-    // 🔄 Restore all sessions from Supabase (on startup)
-    async restoreAllSessionsFromDrive() {
+    // 🔍 Check if session exists in Supabase Storage
+    async checkSessionOnDrive(sessionId) {
         try {
-            if (!this.isConfigured()) {
-                console.log('⚠️ Supabase not configured, skipping restore');
-                return { success: false, error: 'Supabase not configured' };
-            }
-
             if (!await this.ensureAuthorization()) {
-                console.log('⚠️ Supabase not authorized, skipping restore');
-                return { success: false, error: 'Supabase not authorized' };
+                return { sessionExists: false, error: 'Supabase not authorized' };
             }
             
-            console.log("🔄 Fetching sessions list from Supabase...");
-
-            // List all files in the backup folder
-            const { data: folders, error } = await this.supabase
-                .storage
-                .from(this.BUCKET_NAME)
-                .list('sessions');
-
-            if (error) {
-                console.error('❌ Error listing sessions:', error.message);
-                return { success: false, error: error.message };
-            }
-
-            if (!folders || folders.length === 0) {
-                console.log('📭 No sessions found on Supabase');
-                return { success: true, restoredCount: 0 };
-            }
-
-            console.log(`📦 Found ${folders.length} session folders on Supabase`);
-
-            let restoredCount = 0;
-            let failedCount = 0;
-            let skippedCount = 0;
-
-            // Restore each session
-            for (const folder of folders) {
-                try {
-                    const sessionId = folder.name;
-                    console.log(`🔄 [${restoredCount + failedCount + skippedCount + 1}/${folders.length}] Processing ${sessionId}...`);
+            console.log(`🔍 Checking session ${sessionId} on Supabase...`);
+            
+            try {
+                const { data, error } = await this.supabase
+                    .storage
+                    .from(this.BUCKET_NAME)
+                    .list(`sessions/${sessionId}`);
                     
-                    // Check if creds.json exists in this session folder
-                    const { data: files } = await this.supabase
-                        .storage
-                        .from(this.BUCKET_NAME)
-                        .list(`sessions/${sessionId}`);
-                    
-                    if (!files || files.length === 0) {
-                        console.log(`   ⏭️ Empty session folder, skipping`);
-                        skippedCount++;
-                        continue;
+                if (error) {
+                    if (error.message.includes('Not Found') || error.message.includes('not found')) {
+                        console.log(`📭 Session ${sessionId} not found on Supabase`);
+                        return { sessionExists: false };
                     }
-                    
-                    const hasCreds = files.some(f => f.name === 'creds.json');
-                    if (!hasCreds) {
-                        console.log(`   ⏭️ No creds.json in folder, skipping`);
-                        skippedCount++;
-                        continue;
-                    }
-                    
-                    const result = await this.restoreSessionFromDrive(sessionId);
-                    
-                    if (result.success) {
-                        restoredCount++;
-                        console.log(`   ✅ Session restored successfully (${result.restoredFiles || 1} files)`);
-                    } else {
-                        failedCount++;
-                        console.log(`   ❌ Failed to restore: ${result.error}`);
-                    }
-                    
-                    // Small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    
-                } catch (error) {
-                    failedCount++;
-                    console.error(`   ❌ Error:`, error.message);
+                    console.log(`❌ Error checking session:`, error.message);
+                    return { sessionExists: false, error: error.message };
                 }
+                
+                const sessionExists = data && data.length > 0;
+                console.log(`📊 Session ${sessionId} exists on Supabase: ${sessionExists} (${data?.length || 0} files)`);
+                return { sessionExists, fileCount: data?.length || 0 };
+                
+            } catch (error) {
+                console.error(`❌ Error checking session ${sessionId}:`, error.message);
+                return { sessionExists: false, error: error.message };
             }
-            
-            console.log(`\n📊 Session Restoration Summary:`);
-            console.log(`✅ Restored: ${restoredCount} session(s)`);
-            console.log(`❌ Failed: ${failedCount} session(s)`);
-            console.log(`⏭️ Skipped: ${skippedCount} session(s)`);
-            console.log(`📁 Total folders: ${folders.length}`);
-            
-            return { 
-                success: restoredCount > 0 || folders.length === 0, 
-                restoredCount: restoredCount, 
-                failedCount: failedCount,
-                skippedCount: skippedCount,
-                totalFolders: folders.length
-            };
-            
         } catch (error) {
-            console.error("❌ Failed to restore sessions from Supabase:", error.message);
-            return { success: false, error: error.message };
+            console.error(`❌ Error in checkSessionOnDrive:`, error.message);
+            return { sessionExists: false, error: error.message };
         }
     }
 
@@ -622,256 +1091,6 @@ class BackupManager {
         } catch (err) {
             console.error("❌ Auto-backup error:", err.message);
             return { success: false, error: err.message };
-        }
-    }
-
-    // 💾 Backup full session to Supabase
-    async backupSessionToDrive(sessionId) {
-        try {
-            if (!await this.ensureAuthorization()) {
-                return { success: false, error: 'Supabase not authorized' };
-            }
-            
-            const sessionDir = path.join(__dirname, "sessions", sessionId);
-            
-            if (!fs.existsSync(sessionDir)) {
-                console.log(`⚠️ No session folder found for ${sessionId}, skipping backup`);
-                return { success: false, error: 'No session folder found' };
-            }
-
-            console.log(`💾 Backing up complete session: ${sessionId}`);
-            
-            let backedUpFiles = 0;
-            let errors = [];
-
-            // List of files to backup
-            const filesToBackup = [
-                { name: 'creds.json', type: 'application/json' },
-                { name: 'settings.json', type: 'application/json' },
-                { name: 'user_info.json', type: 'application/json' },
-                { name: 'last_timestamp.json', type: 'application/json' }
-            ];
-            
-            for (const fileInfo of filesToBackup) {
-                const filePath = path.join(sessionDir, fileInfo.name);
-                if (fs.existsSync(filePath)) {
-                    try {
-                        const fileContent = fs.readFileSync(filePath);
-                        const supabasePath = `sessions/${sessionId}/${fileInfo.name}`;
-                        
-                        console.log(`   📄 Uploading ${fileInfo.name}...`);
-                        
-                        const { error } = await this.supabase
-                            .storage
-                            .from(this.BUCKET_NAME)
-                            .upload(supabasePath, fileContent, {
-                                contentType: fileInfo.type,
-                                upsert: true
-                            });
-                        
-                        if (error) {
-                            errors.push(`${fileInfo.name}: ${error.message}`);
-                            console.log(`   ❌ Failed: ${fileInfo.name} - ${error.message}`);
-                        } else {
-                            backedUpFiles++;
-                            console.log(`   ✅ ${fileInfo.name} uploaded`);
-                        }
-                    } catch (error) {
-                        errors.push(`${fileInfo.name}: ${error.message}`);
-                        console.log(`   ❌ Error: ${fileInfo.name} - ${error.message}`);
-                    }
-                }
-            }
-
-            if (backedUpFiles > 0) {
-                console.log(`✅ Complete backup successful for ${sessionId} (${backedUpFiles} files)`);
-                return { 
-                    success: true, 
-                    backedUpFiles, 
-                    errors: errors.length > 0 ? errors : null 
-                };
-            } else {
-                console.log(`❌ No files backed up for ${sessionId}`);
-                return { 
-                    success: false, 
-                    error: 'No files backed up', 
-                    errors 
-                };
-            }
-
-        } catch (error) {
-            console.error(`❌ Error backing up ${sessionId}:`, error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 🔁 Restore full session from Supabase
-    async restoreSessionFromDrive(sessionId) {
-        try {
-            if (!await this.ensureAuthorization()) {
-                return { success: false, error: 'Supabase not authorized' };
-            }
-            
-            console.log(`🔄 Restoring complete session: ${sessionId}`);
-            
-            const sessionDir = path.join(__dirname, "sessions", sessionId);
-            
-            // Create session directory if it doesn't exist
-            if (!fs.existsSync(sessionDir)) {
-                fs.mkdirSync(sessionDir, { recursive: true });
-                console.log(`   📁 Created session directory`);
-            }
-
-            let restoredFiles = 0;
-            let errors = [];
-
-            // List of files to restore
-            const filesToRestore = ['creds.json', 'settings.json', 'user_info.json', 'last_timestamp.json'];
-            
-            for (const fileName of filesToRestore) {
-                try {
-                    console.log(`   🔍 Looking for ${fileName}...`);
-                    
-                    const filePath = `sessions/${sessionId}/${fileName}`;
-                    
-                    const { data, error } = await this.supabase
-                        .storage
-                        .from(this.BUCKET_NAME)
-                        .download(filePath);
-                        
-                    if (error) {
-                        if (error.message.includes('Not Found')) {
-                            // File doesn't exist, skip
-                            continue;
-                        }
-                        throw error;
-                    }
-                    
-                    // Convert blob to buffer and save
-                    const arrayBuffer = await data.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-                    const filePathLocal = path.join(sessionDir, fileName);
-                    
-                    fs.writeFileSync(filePathLocal, buffer);
-                    
-                    // Verify the file was saved
-                    if (fs.existsSync(filePathLocal)) {
-                        restoredFiles++;
-                        console.log(`   ✅ Restored ${fileName}`);
-                        
-                        // Special handling for creds.json
-                        if (fileName === 'creds.json') {
-                            try {
-                                const creds = JSON.parse(buffer.toString('utf8'));
-                                console.log(`     📊 Registration status: ${creds.registered || 'false'}`);
-                            } catch (parseError) {
-                                console.log(`     ⚠️ Could not parse creds.json: ${parseError.message}`);
-                            }
-                        }
-                    } else {
-                        errors.push(`${fileName}: File not saved`);
-                        console.log(`   ❌ ${fileName} not saved`);
-                    }
-                    
-                } catch (error) {
-                    errors.push(`${fileName}: ${error.message}`);
-                    console.log(`   ❌ ${fileName}: ${error.message}`);
-                }
-            }
-
-            if (restoredFiles > 0) {
-                console.log(`✅ Complete restore successful (${restoredFiles} files)`);
-                return { 
-                    success: true, 
-                    restoredFiles, 
-                    errors: errors.length > 0 ? errors : null 
-                };
-            } else {
-                console.log(`❌ No files restored`);
-                return { 
-                    success: false, 
-                    error: 'No files restored', 
-                    errors 
-                };
-            }
-
-        } catch (error) {
-            console.error(`❌ Restore failed for ${sessionId}:`, error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 📤 Upload JSON data to Supabase
-    async uploadToDrive(fileName, content) {
-        try {
-            if (!await this.ensureAuthorization()) {
-                return { success: false, error: 'Supabase not authorized' };
-            }
-            
-            console.log(`📤 Uploading ${fileName} to Supabase...`);
-            
-            const filePath = `data/${fileName}`;
-            const buffer = Buffer.from(content, 'utf8');
-            
-            const { error } = await this.supabase
-                .storage
-                .from(this.BUCKET_NAME)
-                .upload(filePath, buffer, {
-                    contentType: 'application/json',
-                    upsert: true
-                });
-
-            if (error) {
-                console.log(`❌ Upload failed:`, error.message);
-                return { success: false, error: error.message };
-            }
-
-            console.log(`✅ Uploaded ${fileName} to Supabase`);
-            return { success: true, filePath };
-
-        } catch (error) {
-            console.error(`❌ Error uploading ${fileName}:`, error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 📥 Download JSON data from Supabase
-    async downloadFromDrive(fileName) {
-        try {
-            if (!await this.ensureAuthorization()) {
-                console.log(`⚠️ Supabase not authorized, cannot download ${fileName}`);
-                return null;
-            }
-            
-            console.log(`📥 Downloading ${fileName} from Supabase...`);
-            
-            const filePath = `data/${fileName}`;
-            
-            const { data, error } = await this.supabase
-                .storage
-                .from(this.BUCKET_NAME)
-                .download(filePath);
-
-            if (error) {
-                if (error.message.includes('Not Found')) {
-                    console.log(`⚠️ No ${fileName} found on Supabase`);
-                    return null;
-                }
-                console.log(`❌ Download error:`, error.message);
-                return null;
-            }
-
-            // Convert blob to string
-            const arrayBuffer = await data.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const content = buffer.toString('utf8');
-            
-            console.log(`✅ Downloaded ${fileName} (${content.length} bytes)`);
-            return content;
-
-        } catch (error) {
-            console.error(`❌ Error downloading ${fileName}:`, error.message);
-            return null;
         }
     }
 
@@ -1057,195 +1276,6 @@ class BackupManager {
         }
     }
 
-    // 🔄 Auto restore ALL data on startup
-    async restoreAllData() {
-        try {
-            if (!await this.ensureAuthorization()) {
-                console.log('⚠️ Supabase not authorized, skipping restore');
-                return { success: false, error: 'Supabase not authorized' };
-            }
-
-            console.log('\n' + '='.repeat(60));
-            console.log('🔄 RESTORING ALL DATA FROM BACKUP');
-            console.log('='.repeat(60));
-            
-            let restoredItems = 0;
-            let results = {
-                sessions: { restored: 0, total: 0, error: null },
-                users: { success: false, error: null },
-                tokens: { success: false, error: null },
-                requests: { success: false, error: null },
-                grants: { success: false, error: null },
-                loginHistory: { success: false, error: null },
-                adminSettings: { success: false, error: null },
-                premium: { success: false, error: null }
-            };
-            
-            // 1. Restore sessions FIRST
-            console.log('\n📱 1. Restoring sessions...');
-            const sessionsResult = await this.restoreAllSessionsFromDrive();
-            if (sessionsResult.success) {
-                results.sessions = { 
-                    restored: sessionsResult.restoredCount || 0, 
-                    total: sessionsResult.totalFolders || 0,
-                    error: sessionsResult.error
-                };
-                restoredItems += sessionsResult.restoredCount || 0;
-            }
-            
-            // 2. Restore users.json (includes grants)
-            console.log('\n👥 2. Restoring users.json...');
-            const usersData = await this.downloadFromDrive('users.json');
-            if (usersData) {
-                try {
-                    fs.writeFileSync(path.join(__dirname, 'users.json'), usersData);
-                    console.log('   ✅ Restored users.json from Supabase');
-                    results.users = { success: true };
-                    restoredItems++;
-                    
-                    // Restore grants from users data
-                    console.log('   Restoring grants from users data...');
-                    await this.restoreGrants(usersData);
-                    results.grants = { success: true };
-                } catch (error) {
-                    results.users = { success: false, error: error.message };
-                    results.grants = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ users.json not found in backup');
-                results.users = { success: false, error: 'Not found in backup' };
-            }
-            
-            // 3. Restore tokens.json
-            console.log('\n🔑 3. Restoring tokens.json...');
-            const tokensData = await this.downloadFromDrive('tokens.json');
-            if (tokensData) {
-                try {
-                    fs.writeFileSync(path.join(__dirname, 'tokens.json'), tokensData);
-                    console.log('   ✅ Restored tokens.json from Supabase');
-                    results.tokens = { success: true };
-                    restoredItems++;
-                } catch (error) {
-                    results.tokens = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ tokens.json not found in backup');
-                results.tokens = { success: false, error: 'Not found in backup' };
-            }
-            
-            // 4. Restore requests.json
-            console.log('\n📋 4. Restoring requests.json...');
-            const requestsData = await this.downloadFromDrive('requests.json');
-            if (requestsData) {
-                try {
-                    fs.writeFileSync(path.join(__dirname, 'requests.json'), requestsData);
-                    console.log('   ✅ Restored requests.json from Supabase');
-                    results.requests = { success: true };
-                    restoredItems++;
-                } catch (error) {
-                    results.requests = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ requests.json not found in backup');
-                results.requests = { success: false, error: 'Not found in backup' };
-            }
-            
-            // 5. Restore login history
-            console.log('\n📝 5. Restoring login history...');
-            const loginHistoryData = await this.downloadFromDrive('login_history.json');
-            if (loginHistoryData) {
-                try {
-                    fs.writeFileSync(path.join(__dirname, 'login_history.json'), loginHistoryData);
-                    console.log('   ✅ Restored login_history.json from Supabase');
-                    results.loginHistory = { success: true };
-                    restoredItems++;
-                } catch (error) {
-                    results.loginHistory = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ login_history.json not found in backup');
-                results.loginHistory = { success: false, error: 'Not found in backup' };
-            }
-            
-            // 6. Restore admin settings
-            console.log('\n⚙️ 6. Restoring admin settings...');
-            const adminSettingsData = await this.downloadFromDrive('admin_settings.json');
-            if (adminSettingsData) {
-                try {
-                    fs.writeFileSync(path.join(__dirname, 'admin_settings.json'), adminSettingsData);
-                    console.log('   ✅ Restored admin_settings.json from Supabase');
-                    results.adminSettings = { success: true };
-                    restoredItems++;
-                } catch (error) {
-                    results.adminSettings = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ admin_settings.json not found in backup');
-                results.adminSettings = { success: false, error: 'Not found in backup' };
-            }
-            
-            // 7. Restore premium data
-            console.log('\n🎖️ 7. Restoring premium data...');
-            const premiumData = await this.downloadFromDrive('premium.json');
-            if (premiumData) {
-                try {
-                    // Ensure data directory exists
-                    const dataDir = path.join(__dirname, 'data');
-                    if (!fs.existsSync(dataDir)) {
-                        fs.mkdirSync(dataDir, { recursive: true });
-                    }
-                    fs.writeFileSync(path.join(__dirname, 'data', 'premium.json'), premiumData);
-                    console.log('   ✅ Restored premium.json from Supabase');
-                    results.premium = { success: true };
-                    restoredItems++;
-                } catch (error) {
-                    results.premium = { success: false, error: error.message };
-                }
-            } else {
-                console.log('   ⚠️ premium.json not found in backup');
-                results.premium = { success: false, error: 'Not found in backup' };
-            }
-            
-            console.log('\n' + '='.repeat(60));
-            console.log('✅ DATA RESTORE COMPLETED');
-            console.log('='.repeat(60));
-            
-            // Summary
-            const successfulItems = Object.values(results).filter(r => r.success).length;
-            const totalItems = Object.values(results).length;
-            
-            console.log(`\n📊 Restore Results: ${successfulItems}/${totalItems} items successful`);
-            console.log(`📦 Total files restored: ${restoredItems}`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            Object.entries(results).forEach(([key, value]) => {
-                const status = value.success ? '✅' : '❌';
-                const extra = key === 'sessions' ? ` (${value.restored || 0}/${value.total || 0})` : '';
-                console.log(`${status} ${key.padEnd(15)} ${value.success ? 'Success' + extra : 'Failed: ' + (value.error || 'Unknown')}`);
-            });
-            
-            return { 
-                success: restoredItems > 0, 
-                restoredItems: restoredItems, 
-                message: `Restore completed: ${restoredItems} items restored`,
-                timestamp: new Date().toISOString(),
-                results: results,
-                summary: {
-                    restoredItems: restoredItems,
-                    successfulItems: successfulItems,
-                    totalItems: totalItems
-                }
-            };
-            
-        } catch (error) {
-            console.error('❌ Data restore failed:', error.message);
-            return { 
-                success: false, 
-                message: error.message,
-                timestamp: new Date().toISOString()
-            };
-        }
-    }
-
     // 📊 Extract and backup grants from users data
     async backupGrants(usersData) {
         try {
@@ -1280,45 +1310,6 @@ class BackupManager {
             
         } catch (error) {
             console.error('❌ Error backing up grants:', error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // 🔄 Restore grants from backup
-    async restoreGrants(usersData) {
-        try {
-            console.log('   🔄 Restoring grants from backup...');
-            // First try to restore from dedicated grants backup
-            const grantsData = await this.downloadFromDrive('grants_backup.json');
-            if (grantsData) {
-                const grants = JSON.parse(grantsData);
-                const users = JSON.parse(usersData);
-                
-                console.log(`   Found ${Object.keys(grants).length} grants in backup`);
-                
-                // Apply grant settings to users
-                let updatedCount = 0;
-                Object.keys(grants).forEach(email => {
-                    if (users[email]) {
-                        users[email].maxSessions = grants[email].maxSessions;
-                        users[email].grantType = grants[email].grantType;
-                        users[email].grantUpdated = grants[email].grantUpdated;
-                        users[email].tokenBalance = grants[email].tokenBalance || users[email].tokenBalance;
-                        users[email].freeTokensGranted = grants[email].freeTokensGranted || users[email].freeTokensGranted;
-                        updatedCount++;
-                    }
-                });
-                
-                // Save updated users
-                fs.writeFileSync(path.join(__dirname, 'users.json'), JSON.stringify(users, null, 2));
-                console.log(`   ✅ Restored ${updatedCount} grants from backup`);
-                return { success: true, updatedCount };
-            } else {
-                console.log('   ⚠️ No grants_backup.json found in backup');
-                return { success: true, updatedCount: 0, note: 'No grants backup found' };
-            }
-        } catch (error) {
-            console.error('❌ Error restoring grants:', error.message);
             return { success: false, error: error.message };
         }
     }
@@ -1637,7 +1628,6 @@ class BackupManager {
             let totalFiles = 0;
             let sessionFiles = 0;
             let dataFiles = 0;
-            let totalSize = 0;
             
             // Helper to count files in a folder
             const countFilesInFolder = async (folderPath) => {
@@ -1686,7 +1676,6 @@ class BackupManager {
                 totalFiles,
                 sessionFiles,
                 dataFiles,
-                totalSize: this.formatBytes(totalSize),
                 sessions: Math.floor(sessionFiles / 4), // Each session has ~4 files
                 bucket: this.BUCKET_NAME
             };
@@ -1796,24 +1785,6 @@ class BackupManager {
                 error: error.message
             };
         }
-    }
-
-    // 🔧 Ensure authorization before any operation
-    async ensureAuthorization() {
-        if (this.authorized && this.supabase) {
-            return true;
-        }
-        
-        if (!this.isConfigured()) {
-            console.log('⚠️ Supabase not configured');
-            return false;
-        }
-        
-        if (!this.initialized) {
-            return await this.initializeSupabase();
-        }
-        
-        return this.authorized;
     }
 
     // 🧹 Cleanup old backups (keep last N backups per session)
@@ -1959,7 +1930,6 @@ if (require.main === module) {
     
     console.log('\n📋 Environment Check:');
     console.log(`SUPABASE_URL: ${process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing'}`);
-    if (process.env.SUPABASE_URL) console.log(`   ${process.env.SUPABASE_URL.substring(0, 50)}...`);
     console.log(`SUPABASE_KEY: ${process.env.SUPABASE_KEY ? '✅ Set' : '❌ Missing'}`);
     console.log(`SUPABASE_SERVICE_KEY: ${process.env.SUPABASE_SERVICE_KEY ? '✅ Set' : '❌ Missing'}`);
     console.log(`SUPABASE_BUCKET: ${process.env.SUPABASE_BUCKET || 'tracle-backups (default)'}`);
@@ -1994,11 +1964,6 @@ if (require.main === module) {
                 console.log('4. Test session backup/restore');
                 console.log('5. Cleanup old backups');
                 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                
-                // You can add interactive menu here if needed
-                console.log('\n💡 For interactive use, import this module in your main application.');
-                console.log('   Example: const backupManager = require("./backup");');
-                console.log('   Then call: backupManager.backupAllData()');
                 
             } else {
                 console.log('\n⚠️ Supabase configuration issue detected.');
