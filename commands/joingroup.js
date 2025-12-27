@@ -1,92 +1,203 @@
-// commands/joingroup.js - WORKING JOINGROUP COMMAND
-const { sendMessageWithContext } = require('../commands');
+const fs = require('fs');
+const path = require('path');
+const { delay } = require('@whiskeysockets/baileys');
 
 module.exports = {
     name: 'joingroup',
-    description: 'Join group or ping group',
-    category: 'Group',
+    description: 'Join all active sessions to the specified group',
+    ownerOnly: true, // Only bot owner can use this
     
     async execute(sock, message, m, context) {
         try {
-            const { args, q, reply, sender, sessionId, userSettings, userPrefix, GROUP_INVITE_LINK, TARGET_GROUP_JID } = context;
+            const { args, userPrefix, userSettings, sessionId, conn } = context;
+            const from = message.key.remoteJid;
             
-            // Check if user wants to ping the group
-            if (args[0]?.toLowerCase() === 'ping') {
-                // Check if we're in a group
-                const isGroup = message.key.remoteJid.endsWith('@g.us');
+            // Check if it's a group invite link or code
+            const groupInput = args[0];
+            
+            if (!groupInput) {
+                await m.reply(
+                    `👥 *GROUP JOIN COMMAND*\n\n` +
+                    `Usage: ${userPrefix}joingroup [group-link-or-code]\n\n` +
+                    `Example:\n` +
+                    `${userPrefix}joingroup https://chat.whatsapp.com/ABCDEFGHIJK\n` +
+                    `${userPrefix}joingroup ABCDEFGHIJK\n\n` +
+                    `This will make ALL active sessions join the specified group.`
+                );
+                return;
+            }
+            
+            // Extract group code from input
+            let groupCode = groupInput;
+            if (groupInput.includes('chat.whatsapp.com/')) {
+                groupCode = groupInput.split('/').pop();
+            }
+            
+            if (!groupCode || groupCode.length < 10) {
+                await m.reply(
+                    `❌ *Invalid Group Link/Code*\n\n` +
+                    `Please provide a valid WhatsApp group invite link or code.\n` +
+                    `Example: https://chat.whatsapp.com/ABCDEFGHIJK`
+                );
+                return;
+            }
+            
+            await m.reply(
+                `🔄 *Processing Group Join Request*\n\n` +
+                `Group Code: ${groupCode}\n` +
+                `Scanning active sessions...\n\n` +
+                `This may take a few moments.`
+            );
+            
+            // Get all active connections
+            const activeSessions = Array.from(context.activeConnections.entries())
+                .filter(([sid, { conn, isConnected }]) => 
+                    conn && conn.user && conn.user.id && isConnected && sid !== sessionId
+                );
+            
+            if (activeSessions.length === 0) {
+                await m.reply(
+                    `❌ *No Active Sessions Found*\n\n` +
+                    `Only your current session is active.\n` +
+                    `Other sessions need to be connected first.`
+                );
+                return;
+            }
+            
+            await m.reply(
+                `📊 *Found ${activeSessions.length} Active Sessions*\n\n` +
+                `Starting group join process...\n` +
+                `Please wait, this may take a while.`
+            );
+            
+            const results = [];
+            let successCount = 0;
+            let failCount = 0;
+            
+            // Process each active session
+            for (let i = 0; i < activeSessions.length; i++) {
+                const [targetSessionId, { conn: targetConn }] = activeSessions[i];
                 
-                if (!isGroup) {
-                    return reply(`❌ This command only works in groups.`, {
-                        externalAdReply: {
-                            title: "Group Only",
-                            body: "This command works only in groups",
-                            thumbnailUrl: userSettings.botImage,
-                            sourceUrl: "https://github.com/Brenaldmedia/Tracle",
-                            mediaType: 1
-                        }
-                    });
+                // Skip current session (the one issuing the command)
+                if (targetSessionId === sessionId) {
+                    continue;
                 }
                 
-                // Get group metadata
-                const groupMetadata = await sock.groupMetadata(message.key.remoteJid);
-                const groupName = groupMetadata.subject || 'Unknown Group';
-                const participants = groupMetadata.participants || [];
-                
-                // Mention all participants
-                const mentions = participants.map(p => p.id).filter(id => id !== sock.user.id);
-                
-                const pingMessage = `🔔 *GROUP PING*\n\n` +
-                                  `👥 *Group:* ${groupName}\n` +
-                                  `📊 *Members:* ${participants.length}\n` +
-                                  `👤 *Pinged by:* @${sender.split('@')[0]}\n\n` +
-                                  `📢 *Attention all members!*`;
-                
-                return sock.sendMessage(message.key.remoteJid, {
-                    text: pingMessage,
-                    mentions: mentions
+                try {
+                    // Add delay between attempts to avoid rate limiting
+                    if (i > 0) {
+                        await delay(3000);
+                    }
+                    
+                    await m.reply(
+                        `🔄 [${i + 1}/${activeSessions.length}] Joining group with session: ${targetSessionId}`
+                    );
+                    
+                    let joinResult = null;
+                    
+                    // Try method 1: groupAcceptInviteV4
+                    try {
+                        console.log(`Attempting groupAcceptInviteV4 for ${targetSessionId}`);
+                        joinResult = await targetConn.groupAcceptInviteV4(groupCode);
+                    } catch (error1) {
+                        console.log(`Method 1 failed: ${error1.message}`);
+                        
+                        // Try method 2: groupAcceptInvite
+                        try {
+                            console.log(`Attempting groupAcceptInvite for ${targetSessionId}`);
+                            joinResult = await targetConn.groupAcceptInvite(groupCode);
+                        } catch (error2) {
+                            console.log(`Method 2 failed: ${error2.message}`);
+                            
+                            // Try method 3: Send group link to the bot's own chat
+                            try {
+                                const botJid = targetConn.user.id;
+                                let botNumber = '';
+                                if (botJid.includes(':')) {
+                                    botNumber = botJid.split(':')[0];
+                                } else {
+                                    botNumber = botJid.split('@')[0];
+                                }
+                                botNumber = botNumber.replace(/\D/g, '');
+                                const userJid = `${botNumber}@s.whatsapp.net`;
+                                
+                                const joinMessage = `👥 *JOIN GROUP*\n\n` +
+                                    `Please join this group:\n` +
+                                    `🔗 https://chat.whatsapp.com/${groupCode}\n\n` +
+                                    `Sent from admin command.`;
+                                
+                                await targetConn.sendMessage(userJid, { text: joinMessage });
+                                joinResult = { success: true, method: 'link_sent' };
+                            } catch (error3) {
+                                console.log(`Method 3 failed: ${error3.message}`);
+                                throw new Error('All join methods failed');
+                            }
+                        }
+                    }
+                    
+                    if (joinResult) {
+                        successCount++;
+                        results.push({
+                            sessionId: targetSessionId,
+                            success: true,
+                            method: joinResult.method || 'direct_join',
+                            groupId: joinResult.gid || joinResult || 'unknown'
+                        });
+                        
+                        console.log(`✅ Session ${targetSessionId} joined group successfully`);
+                        
+                        await m.reply(
+                            `✅ [${i + 1}/${activeSessions.length}] Session ${targetSessionId} joined group!\n` +
+                            `Method: ${joinResult.method || 'direct'}`
+                        );
+                    } else {
+                        throw new Error('No join result returned');
+                    }
+                    
+                } catch (error) {
+                    failCount++;
+                    results.push({
+                        sessionId: targetSessionId,
+                        success: false,
+                        error: error.message
+                    });
+                    
+                    console.error(`❌ Session ${targetSessionId} failed:`, error.message);
+                    
+                    await m.reply(
+                        `❌ [${i + 1}/${activeSessions.length}] Session ${targetSessionId} failed:\n` +
+                        `${error.message}`
+                    );
+                }
+            }
+            
+            // Send final summary
+            const summary = 
+                `📊 *GROUP JOIN SUMMARY*\n\n` +
+                `✅ Successful: ${successCount} sessions\n` +
+                `❌ Failed: ${failCount} sessions\n` +
+                `📋 Total processed: ${activeSessions.length}\n\n` +
+                `🔗 Group: https://chat.whatsapp.com/${groupCode}\n\n` +
+                `${successCount > 0 ? '🎉 Successfully added sessions to group!' : '⚠️ No sessions were added to group.'}`;
+            
+            await m.reply(summary);
+            
+            // Log detailed results
+            if (results.length > 0) {
+                console.log('\n📋 Detailed Group Join Results:');
+                results.forEach(result => {
+                    const status = result.success ? '✅' : '❌';
+                    console.log(`${status} ${result.sessionId}: ${result.success ? `Method: ${result.method}` : `Error: ${result.error}`}`);
                 });
             }
             
-            // Normal joingroup command - help user join
-            const joinMessage = `👥 *JOIN GROUP COMMAND*\n\n` +
-                              `To join our community group:\n\n` +
-                              `🔗 ${GROUP_INVITE_LINK}\n\n` +
-                              `*Commands:*\n` +
-                              `• ${userPrefix}joingroup - Shows this help\n` +
-                              `• ${userPrefix}joingroup ping - Pings all members in current group\n\n` +
-                              `*Methods to join:*\n` +
-                              `1. Click the link above\n` +
-                              `2. Send the group code to any group\n` +
-                              `3. Ask admin for direct invite\n\n` +
-                              `Once joined, you can use *${userPrefix}joingroup ping* to mention everyone.`;
-            
-            return reply(joinMessage, {
-                externalAdReply: {
-                    title: "Join Our Community",
-                    body: "Click the link to join group",
-                    thumbnailUrl: userSettings.botImage,
-                    sourceUrl: GROUP_INVITE_LINK,
-                    mediaType: 1
-                }
-            });
-            
         } catch (error) {
             console.error('❌ Error in joingroup command:', error);
-            
-            const errorMessage = `❌ Error: ${error.message}\n\n` +
-                               `Please try:\n` +
-                               `1. Use ${context.userPrefix}joingroup ping (in groups only)\n` +
-                               `2. Join manually: ${context.GROUP_INVITE_LINK}`;
-            
-            return context.reply(errorMessage, {
-                externalAdReply: {
-                    title: "Group Join Error",
-                    body: "Failed to execute command",
-                    thumbnailUrl: context.userSettings.botImage,
-                    sourceUrl: "https://github.com/Brenaldmedia/Tracle",
-                    mediaType: 1
-                }
-            });
+            await m.reply(
+                `❌ *Error Joining Group*\n\n` +
+                `${error.message}\n\n` +
+                `Please try again or contact admin.`
+            );
         }
     }
 };

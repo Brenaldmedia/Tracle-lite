@@ -430,21 +430,7 @@ function shouldBotRespond(conn, message, sessionId) {
             console.log(`🔒 Private mode - checking ownership...`);
             console.log(`Is Owner: ${isOwner}`);
             
-            if (!isOwner) {
-                console.log(`❌ Not owner - sending denial message`);
-                const userSettings = getUserSettings(sessionId);
-                sendMessageWithContext(conn, message.key.remoteJid, 
-                    `❌ Denied. Come back with ownership papers.`, {
-                    externalAdReply: {
-                        title: "Permission Denied",
-                        body: "This bot is in private mode",
-                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                        sourceUrl: REPO_LINK,
-                        mediaType: 1
-                    }
-                }).catch(err => console.error("Failed to send denial:", err));
-            }
-            
+            // IMPORTANT: Only respond to owner, silently ignore non-owners
             return isOwner;
         }
         
@@ -1757,6 +1743,49 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                     connectionData.connectedAt = Date.now();
                 }
                 
+                // ⭐⭐⭐ ADD BACKUP HERE ⭐⭐⭐
+                // Backup session to Supabase immediately after successful connection
+                setTimeout(async () => {
+                    try {
+                        console.log(`💾 Starting immediate backup for new connection: ${userNumber}`);
+                        
+                        // Check if creds.json exists and is registered
+                        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+                        const credsPath = path.join(sessionPath, 'creds.json');
+                        
+                        if (fs.existsSync(credsPath)) {
+                            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                            
+                            if (creds.registered) {
+                                console.log(`📱 Session ${userNumber} is registered, backing up to Supabase...`);
+                                
+                                // Trigger backup to Supabase
+                                const backupResult = await backupManager.backupSessionToDrive(userNumber);
+                                
+                                if (backupResult.success) {
+                                    console.log(`✅ Session ${userNumber} backed up to Supabase successfully (${backupResult.backedUpFiles} files)`);
+                                    
+                                    // Also backup user info if exists
+                                    const userInfoPath = path.join(sessionPath, 'user_info.json');
+                                    if (fs.existsSync(userInfoPath)) {
+                                        const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                                        console.log(`👤 User info backed up: ${userInfo.email || 'No email'}`);
+                                    }
+                                } else {
+                                    console.log(`⚠️ Backup failed for ${userNumber}: ${backupResult.error || 'Unknown error'}`);
+                                }
+                            } else {
+                                console.log(`⚠️ Session ${userNumber} not registered yet, skipping backup`);
+                            }
+                        } else {
+                            console.log(`❌ No creds.json found for ${userNumber}, cannot backup`);
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error during backup for ${userNumber}:`, error.message);
+                    }
+                }, 5000); // Wait 5 seconds after connection to ensure all files are saved
+                // ⭐⭐⭐ END OF ADDITION ⭐⭐⭐
+                
                 const timeout = pairingTimeouts.get(userNumber);
                 if (timeout) {
                     clearTimeout(timeout);
@@ -2077,7 +2106,27 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
             }
         });
 
-        sock.ev.on('creds.update', saveCreds);
+        // Find sock.ev.on('creds.update', saveCreds) and update it:
+        sock.ev.on('creds.update', async (creds) => {
+            // Save credentials locally first
+            saveCreds(creds);
+            
+            // Then backup to Supabase if registered
+            if (creds.registered) {
+                console.log(`💾 Credentials updated and registered for ${userNumber}, backing up to Supabase...`);
+                
+                setTimeout(async () => {
+                    try {
+                        const backupResult = await backupManager.backupNewUserSession(userNumber);
+                        if (backupResult.success) {
+                            console.log(`✅ Credentials backed up to Supabase for ${userNumber}`);
+                        }
+                    } catch (error) {
+                        console.error(`❌ Failed to backup credentials:`, error.message);
+                    }
+                }, 3000);
+            }
+        });
         
         if (!state.creds?.registered && !isRestoring) {
             console.log(`🔄 Generating pairing code for new user: ${userNumber}`);
@@ -3325,6 +3374,62 @@ app.post('/api/admin/reload-commands', adminManager.verifyAdminToken.bind(adminM
     }
 });
 
+// =============== TEST BACKUP ENDPOINT ===============
+app.post('/api/test-backup', async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        
+        if (!sessionId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Session ID is required' 
+            });
+        }
+        
+        console.log(`🧪 Testing backup for session: ${sessionId}`);
+        
+        // Check if session exists locally
+        const sessionPath = path.join(__dirname, 'sessions', sessionId);
+        if (!fs.existsSync(sessionPath)) {
+            return res.json({ 
+                success: false, 
+                message: 'Session not found locally' 
+            });
+        }
+        
+        // Check Supabase connection
+        const authorized = await backupManager.ensureAuthorization();
+        if (!authorized) {
+            return res.json({ 
+                success: false, 
+                message: 'Supabase not authorized' 
+            });
+        }
+        
+        // Perform backup
+        const backupResult = await backupManager.backupSessionToDrive(sessionId);
+        
+        // Check if session exists on Supabase
+        const checkResult = await backupManager.checkSessionOnDrive(sessionId);
+        
+        res.json({
+            success: backupResult.success,
+            message: backupResult.success ? 'Backup successful' : 'Backup failed',
+            backupResult: backupResult,
+            existsOnSupabase: checkResult.sessionExists,
+            fileCount: checkResult.fileCount,
+            sessionId: sessionId
+        });
+        
+    } catch (error) {
+        console.error('Test backup error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
 // =============== START SERVER ===============
 
 const PORT = process.env.PORT || 3000;
@@ -3383,6 +3488,8 @@ const startServer = async () => {
             console.log(`🔍 AUTO-OPEN VIEW-ONCE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antivv})`);
             console.log(`👥 GROUP JOIN: FIXED - Multiple methods implemented`);
             console.log(`🔒 OWNER COMMANDS: FIXED - Only session owner can use`);
+            console.log(`💾 BACKUP SYSTEM: ENABLED - Sessions auto-backed up to Supabase`);
+            console.log(`☁️ CLOUD RESTORE: ENABLED - Sessions restored from Supabase on startup`);
 
             // Restore existing sessions
             await restoreExistingSessions();

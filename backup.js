@@ -1,8 +1,9 @@
-// FILE: backup.js - COMPLETE FIXED VERSION WITH PROPER SESSION RESTORATION
+// FILE: backup.js - COMPLETE FIXED VERSION WITH PROPER SESSION RESTORATION AND BACKUP LOGGING
 const fs = require('fs-extra');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios'); // For IP geolocation
+const { delay } = require('@whiskeysockets/baileys');
 
 class BackupManager {
     constructor() {
@@ -31,6 +32,39 @@ class BackupManager {
         console.log('='.repeat(60) + '\n');
         
         this.IP_API_URL = 'http://ip-api.com/json/';
+    }
+
+    // 📝 Simple backup logging to Supabase Database
+    async logBackupToDB(sessionId, operation, status, filesCount = 0, errorMessage = null) {
+        try {
+            if (!await this.ensureAuthorization()) {
+                return { success: false };
+            }
+
+            const logData = {
+                session_id: sessionId,
+                operation: operation,
+                status: status,
+                files_count: filesCount,
+                error_message: errorMessage
+            };
+
+            const { error } = await this.supabase
+                .from('backup_logs')
+                .insert([logData]);
+
+            if (error) {
+                console.log(`⚠️ Could not log to DB:`, error.message);
+                return { success: false };
+            }
+
+            console.log(`📝 Logged ${operation} for ${sessionId} to database`);
+            return { success: true };
+
+        } catch (error) {
+            console.error(`❌ DB logging error:`, error.message);
+            return { success: false };
+        }
     }
 
     // Initialize Supabase
@@ -423,7 +457,105 @@ class BackupManager {
             return { success: false, error: error.message };
         }
     }
+     // ✅ Backup when new user connects - FIXED VERSION
+async backupNewUserSession(sessionId) {
+    try {
+        console.log(`\n🔄 STARTING BACKUP FOR NEW USER SESSION: ${sessionId}`);
+        
+        if (!await this.ensureAuthorization()) {
+            console.log(`⚠️ Supabase not authorized, skipping backup for ${sessionId}`);
+            return { success: false, error: 'Supabase not authorized' };
+        }
 
+        // Wait a bit to ensure files are written
+        await delay(2000);
+        
+        const sessionDir = path.join(__dirname, "sessions", sessionId);
+        console.log(`📁 Checking session directory: ${sessionDir}`);
+        
+        if (!fs.existsSync(sessionDir)) {
+            console.log(`❌ Session directory doesn't exist: ${sessionDir}`);
+            return { success: false, error: 'Session directory not found' };
+        }
+
+        // Check all files in session directory
+        const files = fs.readdirSync(sessionDir);
+        console.log(`📄 Found ${files.length} files in session:`, files);
+        
+        const credsPath = path.join(sessionDir, "creds.json");
+        if (!fs.existsSync(credsPath)) {
+            console.log(`❌ No creds.json found for ${sessionId}, cannot backup`);
+            return { success: false, error: 'No creds.json found' };
+        }
+        
+        // Read and check creds
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+        console.log(`🔍 Creds status - Registered: ${creds.registered || false}`);
+        
+        if (!creds.registered) {
+            console.log(`⚠️ Session ${sessionId} is not registered yet, will retry in 30 seconds`);
+            
+            // Schedule a retry for 30 seconds later
+            setTimeout(async () => {
+                console.log(`🔄 Retrying backup for ${sessionId} after registration delay`);
+                await this.backupNewUserSession(sessionId);
+            }, 30000);
+            
+            return { success: false, error: 'Session not registered yet' };
+        }
+        
+        console.log(`✅ Session ${sessionId} is registered, proceeding with backup...`);
+        
+        // Perform full session backup
+        const result = await this.backupSessionToDrive(sessionId);
+        
+        if (result.success) {
+            console.log(`🎉 SUCCESS: New user session ${sessionId} backed up to Supabase!`);
+            console.log(`📊 Files backed up: ${result.backedUpFiles || 0}`);
+            
+            // Also backup user info if available
+            const userInfoPath = path.join(sessionDir, "user_info.json");
+            if (fs.existsSync(userInfoPath)) {
+                try {
+                    const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
+                    console.log(`👤 User info: ${userInfo.email || 'No email'} (Token: ${userInfo.token ? 'Yes' : 'No'})`);
+                    
+                    // Backup user info as separate file
+                    const userInfoContent = fs.readFileSync(userInfoPath);
+                    const userInfoBackupPath = `sessions/${sessionId}/user_info_backup.json`;
+                    
+                    const { error: userInfoError } = await this.supabase
+                        .storage
+                        .from(this.BUCKET_NAME)
+                        .upload(userInfoBackupPath, userInfoContent, {
+                            contentType: 'application/json',
+                            upsert: true
+                        });
+                    
+                    if (!userInfoError) {
+                        console.log(`✅ User info also backed up to Supabase`);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Could not backup user info:`, error.message);
+                }
+            }
+        } else {
+            console.log(`❌ Backup failed for ${sessionId}:`, result.error);
+            
+            // Retry backup once after 10 seconds
+            setTimeout(async () => {
+                console.log(`🔄 Retrying failed backup for ${sessionId}...`);
+                await this.backupSessionToDrive(sessionId);
+            }, 10000);
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error(`💥 CRITICAL ERROR backing up new user session ${sessionId}:`, error);
+        return { success: false, error: error.message };
+    }
+}
     // 🔄 Auto restore ALL data on startup - FIXED VERSION
     async restoreAllData() {
         try {
@@ -804,6 +936,10 @@ class BackupManager {
 
             if (backedUpFiles > 0) {
                 console.log(`✅ Complete backup successful for ${sessionId} (${backedUpFiles} files)`);
+                
+                // Log to database (optional, won't break if fails)
+                await this.logBackupToDB(sessionId, 'backup', 'success', backedUpFiles);
+                
                 return { 
                     success: true, 
                     backedUpFiles, 
@@ -811,6 +947,10 @@ class BackupManager {
                 };
             } else {
                 console.log(`❌ No files backed up for ${sessionId}`);
+                
+                // Log failure to database
+                await this.logBackupToDB(sessionId, 'backup', 'failed', 0, errors.join(', '));
+                
                 return { 
                     success: false, 
                     error: 'No files backed up', 
@@ -1693,44 +1833,6 @@ class BackupManager {
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
-
-    // ✅ Backup when new user connects
-    async backupNewUserSession(sessionId) {
-        try {
-            if (!await this.ensureAuthorization()) {
-                console.log(`⚠️ Supabase not authorized, skipping backup for ${sessionId}`);
-                return { success: false, error: 'Supabase not authorized' };
-            }
-
-            console.log(`🔄 Backing up new user session: ${sessionId}`);
-            
-            // Check if creds.json exists and is registered
-            const credsPath = path.join(__dirname, "sessions", sessionId, "creds.json");
-            if (!fs.existsSync(credsPath)) {
-                console.log(`❌ No creds.json found for ${sessionId}, cannot backup`);
-                return { success: false, error: 'No creds.json found' };
-            }
-            
-            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-            if (!creds.registered) {
-                console.log(`⚠️ Session ${sessionId} is not registered yet, skipping backup`);
-                return { success: false, error: 'Session not registered' };
-            }
-            
-            const result = await this.backupSessionToDrive(sessionId);
-            
-            if (result.success) {
-                console.log(`✅ New user session ${sessionId} backed up to Supabase (${result.backedUpFiles} files)`);
-            } else {
-                console.log(`⚠️ Failed to backup new user session ${sessionId}: ${result.error}`);
-            }
-            
-            return result;
-        } catch (error) {
-            console.error(`❌ Error backing up new user session ${sessionId}:`, error.message);
-            return { success: false, error: error.message };
-        }
     }
 
     // 🆕 Function to restore and check if session exists on Supabase
