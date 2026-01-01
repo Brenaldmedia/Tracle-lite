@@ -1,4 +1,4 @@
-// script.js - FREE VERSION WITHOUT TOKENS
+// script.js - COMPLETE UPDATED VERSION (TOKEN-FREE)
 const socket = io();
 let countdownInterval;
 let currentUserNumber = null;
@@ -20,9 +20,10 @@ const elements = {
     codeDisplay: document.getElementById('codeDisplay'),
     countdown: document.getElementById('countdown'),
     connectedNumber: document.getElementById('connectedNumber'),
+    registerEmail: document.getElementById('registerEmail'),
     codeEmail: document.getElementById('codeEmail'),
     codeNumber: document.getElementById('codeNumber'),
-    validationResult: document.getElementById('validationResult'),
+    emailValidationResult: document.getElementById('emailValidationResult'),
     sessionsList: document.getElementById('sessionsList'),
     customModal: document.getElementById('customModal'),
     modalTitle: document.getElementById('modalTitle'),
@@ -71,6 +72,23 @@ function hideLoader(button) {
     delete button.dataset.originalHtml;
 }
 
+function showSectionLoader(sectionId, text = 'Loading...') {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    
+    const loader = document.createElement('div');
+    loader.className = 'section-loader';
+    loader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
+    loader.id = `${sectionId}-loader`;
+    
+    section.appendChild(loader);
+}
+
+function hideSectionLoader(sectionId) {
+    const loader = document.getElementById(`${sectionId}-loader`);
+    if (loader) loader.remove();
+}
+
 function showPairingSectionLoader(text = 'Generating pairing code...') {
     if (!elements.pairingSection) return;
     
@@ -97,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initSocket();
     initEventListeners();
-    checkSavedUser();
+    checkSavedEmail();
     checkThemePreference();
     checkAdminAccess();
     initAdminApplication();
@@ -204,9 +222,11 @@ function initAdminApplication() {
         });
         
         elements.adminReason.addEventListener('paste', function(e) {
+            // Allow paste to happen first
             setTimeout(() => {
                 updateWordCount();
                 
+                // If after paste we exceed 100 words, truncate
                 const text = this.value.trim();
                 const words = text.split(/\s+/).filter(word => word.length > 0);
                 
@@ -216,10 +236,25 @@ function initAdminApplication() {
                     
                     showToast('⚠️ Pasted text was truncated to 100 words maximum', 'warning');
                     
+                    // Update count again after truncation
                     updateWordCount();
                 }
             }, 0);
         });
+        
+        // Add validation before form submission (optional)
+        if (elements.adminForm) {
+            elements.adminForm.addEventListener('submit', function(e) {
+                const text = elements.adminReason.value.trim();
+                const words = text.split(/\s+/).filter(word => word.length > 0);
+                
+                if (words.length > 100) {
+                    e.preventDefault();
+                    showToast('⚠️ Please reduce your text to 100 words or less', 'warning');
+                    elements.adminReason.focus();
+                }
+            });
+        }
     }
     
     function updateWordCount() {
@@ -227,9 +262,11 @@ function initAdminApplication() {
         const words = text.split(/\s+/).filter(word => word.length > 0);
         const wordCount = words.length;
         
+        // Update character count display
         if (elements.charCount) {
             elements.charCount.textContent = `${wordCount} / 100 words`;
             
+            // Color coding
             if (wordCount > 100) {
                 elements.charCount.style.color = 'var(--accent-danger)';
             } else if (wordCount >= 80) {
@@ -240,11 +277,14 @@ function initAdminApplication() {
                 elements.charCount.style.color = 'var(--text-secondary)';
             }
             
+            // Only prevent typing if we're at or over 100 words
             if (wordCount >= 100) {
+                // Truncate if somehow we have more than 100 words
                 if (words.length > 100) {
                     const limitedText = words.slice(0, 100).join(' ');
                     elements.adminReason.value = limitedText;
                     
+                    // Update count again after truncation
                     setTimeout(() => updateWordCount(), 0);
                     
                     showToast('⚠️ Maximum 100 words reached', 'warning');
@@ -268,6 +308,7 @@ async function submitAdminApplication() {
         return;
     }
 
+    // Word count validation (DO NOT TOUCH THIS PART - keeping as is)
     const words = reason.split(/\s+/).filter(word => word.length > 0);
     
     if (words.length > 100) {
@@ -280,6 +321,7 @@ async function submitAdminApplication() {
         return;
     }
     
+    // Country validation
     if (!validateCountry(country)) {
         showModal('Invalid Country', 'Please enter a valid country name (letters, spaces, hyphens, and apostrophes only).', 'OK');
         return;
@@ -328,7 +370,7 @@ async function submitAdminApplication() {
                     elements.charCount.style.color = 'var(--accent-success)';
                 }
 
-                // Show success message
+                // Show success message directly in the section (like token request does)
                 showAdminApplicationSuccess(email, name);
                 
                 showToast('✅ Application submitted successfully!', 'success');
@@ -336,6 +378,7 @@ async function submitAdminApplication() {
                 showModal('Submission Failed', data.message || 'Failed to submit application. Please try again.', 'OK');
             }
         } else {
+            // Handle server errors better
             const errorData = await response.json().catch(() => ({ message: 'Server error occurred' }));
             throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
         }
@@ -354,6 +397,7 @@ function showAdminApplicationSuccess(email, name) {
     const section = document.getElementById('adminApplicationSection');
     if (!section) return;
     
+    // Replace the entire section content with success message
     section.innerHTML = `
         <div class="section-header">
             <h2><i class="fas fa-check-circle"></i> Application Submitted!</h2>
@@ -598,7 +642,11 @@ function showSection(section) {
     switch(section) {
         case 'home':
             headerTitle.textContent = 'Dashboard';
-            headerSubtitle.textContent = 'Welcome to Tracle-Lite Pro - Free Edition';
+            headerSubtitle.textContent = 'Welcome to Tracle-Lite Pro';
+            break;
+        case 'register':
+            headerTitle.textContent = 'Register';
+            headerSubtitle.textContent = 'Register your account for FREE';
             break;
         case 'features':
             headerTitle.textContent = 'Features';
@@ -635,11 +683,9 @@ function initSocket() {
         }
     });
     
-    // =============== FIXED: IMMEDIATE PAIRING CODE RECEIPT ===============
     socket.on('pairing-code', (data) => {
-        console.log('✅ Received pairing code for:', data.userNumber);
+        console.log('Received pairing code:', data);
         
-        // Check if this code is for the current user
         if (data.email !== currentUserEmail) {
             console.log('Ignoring pairing code for different user');
             return;
@@ -647,13 +693,8 @@ function initSocket() {
         
         currentUserNumber = data.userNumber;
         const code = data.pairingCode;
-        
-        // Hide loader and show code immediately
         hidePairingSectionLoader();
         showPairingCode(code);
-        
-        // Start countdown
-        startCountdown(180); // 3 minutes
     });
     
     socket.on('connected', (data) => {
@@ -678,7 +719,6 @@ function initSocket() {
             return;
         }
         showToast('Error: ' + data.error, 'error');
-        hidePairingSectionLoader();
     });
     
     socket.on('pairing-expired', (data) => {
@@ -691,7 +731,7 @@ function initSocket() {
     });
     
     socket.on('qr', (data) => {
-        console.log('Received QR data for:', data.userNumber);
+        console.log('Received QR data:', data);
         
         if (data.email !== currentUserEmail) {
             console.log('Ignoring QR for different user');
@@ -706,8 +746,8 @@ function initSocket() {
     });
 }
 
-// ===== USER MANAGEMENT =====
-function checkSavedUser() {
+// ===== EMAIL MANAGEMENT =====
+function checkSavedEmail() {
     const savedEmail = localStorage.getItem('user_email');
     
     if (savedEmail) {
@@ -717,16 +757,20 @@ function checkSavedUser() {
             elements.userEmail.textContent = savedEmail;
         }
         if (elements.userStatus) {
-            elements.userStatus.textContent = 'Free User';
+            elements.userStatus.textContent = 'Registered user';
             elements.userStatus.style.color = 'var(--accent-success)';
         }
+        if (elements.codeEmail) {
+            elements.codeEmail.value = savedEmail;
+        }
         
-        showToast('✅ Welcome back!', 'success');
+        showToast('✅ Welcome back! Your email is loaded.', 'success');
     }
 }
 
 function saveUserEmail(email) {
     localStorage.setItem('user_email', email);
+    localStorage.setItem('email_saved_at', Date.now());
     
     currentUserEmail = email;
     
@@ -734,26 +778,59 @@ function saveUserEmail(email) {
         elements.userEmail.textContent = email;
     }
     if (elements.userStatus) {
-        elements.userStatus.textContent = 'Free User';
+        elements.userStatus.textContent = 'Registered user';
         elements.userStatus.style.color = 'var(--accent-success)';
+    }
+    if (elements.codeEmail) {
+        elements.codeEmail.value = email;
     }
     
     showToast('✅ Email saved for this session', 'success');
 }
 
-// ===== MAIN PAIRING CODE FUNCTION - FIXED =====
+// ===== EMAIL VALIDATION =====
+async function validateEmailForUser(email) {
+    try {
+        const response = await fetch('/api/validate-email', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ 
+                email: email
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: Email validation failed`);
+        }
+        
+        const data = await response.json();
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Email validation error:', error);
+        return { 
+            valid: true, // Always valid for free version
+            message: 'Email is valid' 
+        };
+    }
+}
+
+// ===== MAIN PAIRING CODE FUNCTION =====
 async function getPairingCode() {
     const email = elements.codeEmail.value.trim();
     const number = elements.codeNumber.value.trim();
     
     if (!email || !number) {
-        showModal('Missing Information', 'Please fill in both Email and WhatsApp Number.', 'OK');
+        showModal('Missing Information', 'Please fill in all fields: Email and WhatsApp Number.', 'OK');
         return;
     }
     
     const validatedNumber = validateWhatsAppNumber(number);
     if (!validatedNumber) {
-        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 2348123456789)', 'OK');
+        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
         return;
     }
     
@@ -766,61 +843,63 @@ async function getPairingCode() {
     }
     
     try {
-        // Save user email first
-        saveUserEmail(email);
+        const validationResult = await validateEmailForUser(email);
         
-        // Show pairing section immediately
-        showPairingSectionLoader('Generating pairing code...');
-        
-        if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
-            elements.pairingSection.classList.remove('hidden');
-        }
-        
-        if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
-            elements.statusSection.classList.add('hidden');
-        }
-        
-        // Check if session exists
-        const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: email,
-                userNumber: validatedNumber
-            })
-        });
-        
-        if (sessionCheckResponse.ok) {
-            const sessionData = await sessionCheckResponse.json();
+        if (validationResult.valid) {
+            saveUserEmail(email);
             
-            if (sessionData.sessionExists) {
-                hideLoader(getCodeBtn);
-                showModal('Session Found', 
-                    `A session already exists for ${validatedNumber}.<br><br>
-                    <strong>Options:</strong><br>
-                    1. Restore existing session (if disconnected)<br>
-                    2. Generate new pairing code<br>
-                    3. Delete session and start fresh<br><br>
-                    <span style="color: var(--accent-warning); font-size: 12px;">
-                        Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
-                    </span>`,
-                    'Generate New Code',
-                    () => {
-                        createNewSession(validatedNumber, email, true);
-                    },
-                    () => {
-                        // Cancel
-                    }
-                );
+            showPairingSectionLoader('Generating pairing code...');
+            
+            if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+                elements.pairingSection.classList.remove('hidden');
+            }
+            
+            if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+                elements.statusSection.classList.add('hidden');
+            }
+            
+            const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    userNumber: validatedNumber
+                })
+            });
+            
+            if (sessionCheckResponse.ok) {
+                const sessionData = await sessionCheckResponse.json();
+                
+                if (sessionData.sessionExists) {
+                    hideLoader(getCodeBtn);
+                    showModal('Session Found', 
+                        `A session already exists for ${validatedNumber}.<br><br>
+                        <strong>Options:</strong><br>
+                        1. Restore existing session (if disconnected)<br>
+                        2. Generate new pairing code<br>
+                        3. Delete session and start fresh<br><br>
+                        <span style="color: var(--accent-warning); font-size: 12px;">
+                            Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
+                        </span>`,
+                        'Generate New Code',
+                        () => {
+                            createNewSession(validatedNumber, email, true);
+                        },
+                        () => {
+                            // Cancel
+                        }
+                    );
+                } else {
+                    createNewSession(validatedNumber, email, false);
+                }
             } else {
-                // Create new session - pairing code will be generated immediately
                 createNewSession(validatedNumber, email, false);
             }
+            
         } else {
-            // Create new session
-            createNewSession(validatedNumber, email, false);
+            hideLoader(getCodeBtn);
+            showModal('Email Error', validationResult.message || 'Failed to verify email.', 'OK');
         }
-        
     } catch (error) {
         console.error('Pairing code error:', error);
         hideLoader(getCodeBtn);
@@ -842,13 +921,12 @@ function createNewSession(userNumber, email, deleteExisting = false) {
 function actuallyCreateNewSession(userNumber, email) {
     showPairingSectionLoader('Creating new session...');
     
-    // Send create session request - server will generate pairing code immediately
     socket.emit('create-session', {
         userNumber: userNumber,
         email: email
     });
     
-    // Note: Pairing code will come via socket event
+    startCountdown(120);
 }
 
 function validateWhatsAppNumber(number) {
@@ -866,33 +944,26 @@ function validateWhatsAppNumber(number) {
 }
 
 function showPairingCode(code) {
-    // Make sure pairing section is visible
-    if (elements.pairingSection.classList.contains('hidden')) {
+    if (!elements.pairingSection.classList.contains('hidden')) {
         elements.pairingSection.classList.remove('hidden');
     }
     
-    // Hide status section if visible
     if (!elements.statusSection.classList.contains('hidden')) {
         elements.statusSection.classList.add('hidden');
     }
     
-    // Display the pairing code
     if (elements.codeDisplay) {
         elements.codeDisplay.innerHTML = `
             <div class="code-text">${code}</div>
             <button class="copy-btn" onclick="copyToClipboard('${code}')">
-                <i class="fas fa-copy"></i> Copy Code
+                <i class="fas fa-copy"></i> Copy
             </button>
-            <p class="code-instructions">
-                <i class="fas fa-info-circle"></i>
-                Open WhatsApp → Settings → Linked Devices → Link Device → Enter code
-            </p>
         `;
     }
     
-    showToast('✅ Pairing code generated! Click "Copy Code" to copy it.', 'success');
+    startCountdown(120);
+    showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
     
-    // Scroll to pairing section
     const codeSection = document.getElementById('pairingSection');
     if (codeSection) {
         setTimeout(() => {
@@ -969,6 +1040,71 @@ function stopCountdown() {
     }
 }
 
+// ===== USER REGISTRATION FUNCTIONS =====
+async function registerUser() {
+    const email = elements.registerEmail.value.trim();
+    
+    if (!email) {
+        showModal('Email Required', 'Please enter your email address to register.', 'OK');
+        return;
+    }
+    
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+        showModal('Invalid Email', 'Please enter a valid email address.', 'OK');
+        return;
+    }
+    
+    const registerBtn = document.querySelector('.primary-btn[onclick*="registerUser"]') ||
+                      document.querySelector('button:contains("Register Now")');
+    
+    if (registerBtn) {
+        showLoader(registerBtn, 'Registering...');
+    }
+    
+    try {
+        const response = await fetch('/api/register-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            saveUserEmail(email);
+            
+            showModal('Registration Successful', 
+                `<div style="text-align: center; padding: 20px;">
+                    <i class="fas fa-check-circle" style="font-size: 48px; color: var(--accent-success); margin-bottom: 20px;"></i>
+                    <h3 style="margin-bottom: 10px;">Registration Successful!</h3>
+                    <p>Your email <strong>${email}</strong> has been registered successfully.</p>
+                    <p>You can now use Tracle-Lite Pro for FREE!</p>
+                    <div style="background: var(--bg-tertiary); padding: 15px; border-radius: var(--border-radius); margin-top: 20px;">
+                        <p><i class="fas fa-info-circle"></i> <strong>What's Next:</strong></p>
+                        <p>1. Go to Dashboard to get pairing code</p>
+                        <p>2. Enter your WhatsApp number</p>
+                        <p>3. Connect your WhatsApp!</p>
+                    </div>
+                </div>`, 
+                'Get Started', 
+                () => {
+                    showSection('home');
+                });
+            
+        } else {
+            showModal('Registration Failed', data.message || 'Failed to register. Please try again.', 'OK');
+        }
+    } catch (error) {
+        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
+        console.error('Registration error:', error);
+    } finally {
+        if (registerBtn) {
+            hideLoader(registerBtn);
+        }
+    }
+}
+
 // ===== SESSIONS MANAGEMENT =====
 async function loadUserSessions() {
     try {
@@ -976,11 +1112,11 @@ async function loadUserSessions() {
             if (elements.sessionsList) {
                 elements.sessionsList.innerHTML = `
                     <div class="no-sessions">
-                        <i class="fas fa-key"></i>
+                        <i class="fas fa-user"></i>
                         <h4>Authentication Required</h4>
-                        <p>Please enter your email first.</p>
-                        <button class="primary-btn" onclick="showSection('home')">
-                            <i class="fas fa-home"></i> Go to Dashboard
+                        <p>Please register or enter your email first.</p>
+                        <button class="primary-btn" onclick="showSection('register')">
+                            <i class="fas fa-user-plus"></i> Register Now
                         </button>
                     </div>
                 `;
@@ -1107,15 +1243,21 @@ async function restoreSession(userNumber) {
             if (data.success) {
                 showToast('✅ Session restored! Generating new pairing code...', 'success');
                 
-                // Go to home section to see pairing code
                 showSection('home');
                 
                 if (elements.codeNumber) {
                     elements.codeNumber.value = userNumber;
                 }
                 
-                // This will trigger pairing code generation
                 showPairingSectionLoader('Restoring session and generating pairing code...');
+                
+                if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+                    elements.pairingSection.classList.remove('hidden');
+                }
+                
+                if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+                    elements.statusSection.classList.add('hidden');
+                }
                 
                 setTimeout(() => {
                     actuallyCreateNewSession(userNumber, currentUserEmail);
@@ -1263,7 +1405,7 @@ function checkAdminAccess() {
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text)
         .then(() => {
-            showToast('✅ Copied to clipboard!', 'success');
+            showToast('Copied to clipboard!', 'success');
         })
         .catch(err => {
             console.error('Failed to copy:', err);
@@ -1306,6 +1448,12 @@ function getToastIcon(type) {
 }
 
 function initEventListeners() {
+    if (elements.registerEmail) {
+        elements.registerEmail.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') registerUser();
+        });
+    }
+    
     if (elements.codeEmail) {
         elements.codeEmail.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') getPairingCode();
@@ -1373,6 +1521,7 @@ window.getPairingCode = getPairingCode;
 window.createNewSession = createNewSession;
 window.generateNewCode = generateNewCode;
 window.showSection = showSection;
+window.registerUser = registerUser;
 window.copyToClipboard = copyToClipboard;
 window.loadUserSessions = loadUserSessions;
 window.restoreSession = restoreSession;
@@ -1385,4 +1534,4 @@ window.submitAdminApplication = submitAdminApplication;
 window.closeAdminApplicationModal = closeAdminApplicationModal;
 
 // Initialize
-console.log('🚀 Tracle-Lite Pro Frontend Loaded - Free Edition (No Tokens)');
+console.log('🚀 Tracle-Lite Pro Frontend Loaded - Token-Free Version');
