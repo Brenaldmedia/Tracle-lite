@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracle-Lite Pro - Advanced WhatsApp Bot</title>
-      <link rel="icon" type="image/x-icon" href="/images/favicon.jpg">
+    <title>Tracle-Lite Pro - Free WhatsApp Bot</title>
+    <link rel="icon" type="image/x-icon" href="/images/favicon.jpg">
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -75,7 +75,7 @@
             </div>
             <div class="user-info">
                 <span class="user-email" id="userEmail">Welcome to Tracle-Lite</span>
-                <span class="user-status" id="userStatus">Get token to access all features</span>
+                <span class="user-status" id="userStatus">Free WhatsApp Bot</span>
             </div>
         </div>
 
@@ -83,11 +83,6 @@
             <div class="nav-item active" data-section="home">
                 <i class="fas fa-home"></i>
                 <span>Dashboard</span>
-            </div>
-
-            <div class="nav-item" data-section="token">
-                <i class="fas fa-key"></i>
-                <span>Get Token</span>
             </div>
 
             <div class="nav-item" data-section="features">
@@ -123,7 +118,7 @@
                 <i class="fas fa-users"></i>
                 <span>Active Users: <strong id="activeUsersCount">0</strong></span>
             </div>
-            <div class="version">v2.1.0</div>
+            <div class="version">v2.1.0 FREE</div>
         </div>
     </nav>
 
@@ -135,7 +130,7 @@
             </button>
             <div class="header-title">
                 <h1>Dashboard</h1>
-                <p>Welcome to Tracle-Lite Pro</p>
+                <p>Welcome to Tracle-Lite Pro - Free Edition</p>
             </div>
             <div class="header-stats">
                 <div class="stat-card">
@@ -156,35 +151,27 @@
                 <div class="welcome-card gradient-card">
                     <div class="welcome-text">
                         <h2><i class="fas fa-rocket"></i> Welcome to Tracle-Lite Pro</h2>
-                        <p>Advanced WhatsApp automation with premium features.</p>
+                        <p>Free WhatsApp automation with premium features.</p>
                     </div>
                     <div class="welcome-actions">
-                        <button class="action-btn primary-btn" data-section="token">
-                            <i class="fas fa-key"></i> Get Token
-                        </button>
-                        <button class="action-btn secondary-btn" data-section="features">
+                        <button class="action-btn primary-btn" data-section="features">
                             <i class="fas fa-eye"></i> View Features
                         </button>
                         <button class="action-btn secondary-btn" onclick="window.open('admin.html', '_blank')">
-                            <i class="fas fa-hand-paper"></i> Hello
+                            <i class="fas fa-hand-paper"></i> Free Use
                         </button>
                     </div>
                 </div>
 
-                <!-- THE ONLY GET CODE SECTION (NO QUIZ) -->
+                <!-- GET PAIRING CODE SECTION - NO TOKEN REQUIRED -->
                 <div class="get-bot-code-section" id="codeSection">
                     <h4><i class="fas fa-code"></i> Get Pairing Code</h4>
-                    <p>Enter your email, token and number to get the bot pairing code</p>
+                    <p>Enter your email and WhatsApp number to get started</p>
 
                     <div class="code-input-section">
                         <div class="input-group">
                             <div class="input-icon"><i class="fas fa-envelope"></i></div>
                             <input type="email" id="codeEmail" placeholder="your@gmail.com" required>
-                        </div>
-
-                        <div class="input-group">
-                            <div class="input-icon"><i class="fas fa-key"></i></div>
-                            <input type="text" id="codeTokenInput" placeholder="Tracle_xxxxxxxxx" required>
                         </div>
 
                         <div class="input-group">
@@ -197,7 +184,7 @@
                         </button>
                     </div>
 
-                    <div id="tokenValidationResult" class="validation-result"></div>
+                    <div id="validationResult" class="validation-result"></div>
                 </div>
 
                 <!-- Pairing section -->
@@ -238,38 +225,6 @@
                     <button class="secondary-btn" onclick="resetConnection()">
                         <i class="fas fa-plus"></i> Connect Another Device
                     </button>
-                </div>
-            </section>
-
-            <!-- TOKEN SECTION -->
-            <section class="content-section" id="tokenSection">
-                <div class="section-header">
-                    <h2><i class="fas fa-key"></i> Get Your Token</h2>
-                    <p>Request a token using your email.</p>
-                </div>
-
-                <div class="token-card">
-                    <div class="token-form">
-                        <div class="input-group">
-                            <div class="input-icon"><i class="fas fa-envelope"></i></div>
-                            <input type="email" id="emailInput" placeholder="yourname@gmail.com" required>
-                        </div>
-
-                        <button class="primary-btn" onclick="requestToken()">
-                            <i class="fas fa-paper-plane"></i> Request Token
-                        </button>
-                    </div>
-
-                    <div class="token-info">
-                        <div class="info-box">
-                            <i class="fas fa-info-circle"></i>
-                            <p>Tokens start with "Tracle_"</p>
-                        </div>
-                        <div class="info-box">
-                            <i class="fas fa-shield-alt"></i>
-                            <p>Admin approves requests</p>
-                        </div>
-                    </div>
                 </div>
             </section>
 

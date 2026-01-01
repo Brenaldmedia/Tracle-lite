@@ -1551,5 +1551,178 @@
     "freeToken": true,
     "lastTokenActivity": "2025-12-27T15:53:53.664Z",
     "paymentUpdated": "2025-12-27T15:53:56.335Z"
+  },
+  "onukemwashington902@gmail.com": {
+    "email": "onukemwashington902@gmail.com",
+    "firstRequest": "2025-12-31T16:18:49.866Z",
+    "lastRequest": "2025-12-31T22:28:08.756Z",
+    "totalRequests": 2,
+    "ipAddresses": [
+      "::ffff:10.1.88.189",
+      "::ffff:10.1.54.132"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "approved",
+    "paid": false,
+    "token": "Tracle_CCh1NmplzXO",
+    "tokenGenerated": "2025-12-31T22:28:47.415Z",
+    "createdAt": "2025-12-31T16:18:49.867Z",
+    "lastUpdated": "2025-12-31T22:36:08.356Z",
+    "tokenBalance": 1,
+    "freeTokensGranted": 1,
+    "amountPaid": 0,
+    "freeToken": true,
+    "lastTokenActivity": "2025-12-31T22:36:08.356Z"
+  },
+  "lbayohmohamed76@gmail.com": {
+    "email": "lbayohmohamed76@gmail.com",
+    "firstRequest": "2025-12-31T17:05:49.362Z",
+    "lastRequest": "2025-12-31T17:05:49.362Z",
+    "totalRequests": 1,
+    "ipAddresses": [
+      "::ffff:10.1.24.78"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_12 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6.1 Mobile/15E148 Safari/604.1"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "pending",
+    "paid": false,
+    "token": null,
+    "tokenGenerated": null,
+    "createdAt": "2025-12-31T17:05:49.362Z",
+    "lastUpdated": "2025-12-31T17:05:49.362Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 0,
+    "freeToken": true
+  },
+  "mahautierepierreantoine@gmail.com": {
+    "email": "mahautierepierreantoine@gmail.com",
+    "firstRequest": "2025-12-31T18:17:24.514Z",
+    "lastRequest": "2025-12-31T22:41:07.570Z",
+    "totalRequests": 3,
+    "ipAddresses": [
+      "::ffff:10.1.59.38",
+      "::ffff:10.1.90.124",
+      "::ffff:10.1.39.65"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "pending",
+    "paid": false,
+    "token": null,
+    "tokenGenerated": null,
+    "createdAt": "2025-12-31T18:17:24.514Z",
+    "lastUpdated": "2025-12-31T22:41:07.570Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 0,
+    "freeToken": true
+  },
+  "dancc0808@gmail.com": {
+    "email": "dancc0808@gmail.com",
+    "firstRequest": "2025-12-31T19:18:45.179Z",
+    "lastRequest": "2025-12-31T19:18:45.179Z",
+    "totalRequests": 1,
+    "ipAddresses": [
+      "::ffff:10.1.88.5"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "approved",
+    "paid": false,
+    "token": "Tracle_T0kJ5mszFb3",
+    "tokenGenerated": "2025-12-31T19:19:09.849Z",
+    "createdAt": "2025-12-31T19:18:45.179Z",
+    "lastUpdated": "2025-12-31T19:19:11.578Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 0,
+    "freeToken": true,
+    "lastTokenActivity": "2025-12-31T19:19:09.849Z"
+  },
+  "ivanebitu76@gmail.com": {
+    "email": "ivanebitu76@gmail.com",
+    "firstRequest": "2025-12-31T21:25:23.095Z",
+    "lastRequest": "2025-12-31T21:25:23.095Z",
+    "totalRequests": 1,
+    "ipAddresses": [
+      "::ffff:10.1.16.244"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "pending",
+    "paid": false,
+    "token": null,
+    "tokenGenerated": null,
+    "createdAt": "2025-12-31T21:25:23.095Z",
+    "lastUpdated": "2025-12-31T21:25:23.095Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 0,
+    "freeToken": true
+  },
+  "francisblaqyagbo@gmail.com": {
+    "email": "francisblaqyagbo@gmail.com",
+    "firstRequest": "2025-12-31T22:08:10.551Z",
+    "lastRequest": "2025-12-31T22:08:10.551Z",
+    "totalRequests": 1,
+    "ipAddresses": [
+      "::ffff:10.1.34.18"
+    ],
+    "userAgents": [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36"
+    ],
+    "location": "Unknown",
+    "country": "Unknown",
+    "countryName": "Unknown",
+    "city": "Unknown",
+    "region": "Unknown",
+    "timezone": "Unknown",
+    "status": "pending",
+    "paid": false,
+    "token": null,
+    "tokenGenerated": null,
+    "createdAt": "2025-12-31T22:08:10.551Z",
+    "lastUpdated": "2025-12-31T22:08:10.551Z",
+    "tokenBalance": 0,
+    "freeTokensGranted": 0,
+    "amountPaid": 0,
+    "freeToken": true
   }
 }

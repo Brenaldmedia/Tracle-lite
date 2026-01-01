@@ -1,4 +1,4 @@
-// SERVER.JS - COMPLETE FIXED VERSION WITH WORKING COMMANDS AND MENU
+// SERVER.JS - COMPLETE FIXED VERSION WITH IMMEDIATE PAIRING CODE
 require('dotenv').config();
 const express = require('express');
 const nodemailer = require('nodemailer');
@@ -223,6 +223,80 @@ function stopAliveMessageSystem(sessionId) {
         clearInterval(aliveCheckTimers.get(sessionId));
         aliveCheckTimers.delete(sessionId);
         console.log(`🛑 Stopped alive message system for ${sessionId}`);
+    }
+}
+
+// =============== SESSION REFRESH SYSTEM ===============
+const SESSION_REFRESH_INTERVAL = 23 * 60 * 60 * 1000; // 23 hours
+const sessionRefreshTimers = new Map();
+
+function startSessionRefreshSystem(sessionId, conn) {
+    console.log(`🔄 Starting session refresh system for ${sessionId} (every 23 hours)`);
+    
+    if (sessionRefreshTimers.has(sessionId)) {
+        clearInterval(sessionRefreshTimers.get(sessionId));
+        sessionRefreshTimers.delete(sessionId);
+    }
+    
+    const timer = setInterval(async () => {
+        try {
+            const connectionData = activeConnections.get(sessionId);
+            if (!connectionData || !connectionData.isConnected || !conn || !conn.user) {
+                console.log(`⚠️ Session ${sessionId} is not connected, skipping refresh`);
+                return;
+            }
+            
+            console.log(`♻️ Refreshing session: ${sessionId}`);
+            
+            // 1. Send a keep-alive message to the bot itself
+            const botJid = conn.user.id;
+            let botNumber = '';
+            if (botJid.includes(':')) {
+                botNumber = botJid.split(':')[0];
+            } else {
+                botNumber = botJid.split('@')[0];
+            }
+            
+            botNumber = botNumber.replace(/\D/g, '');
+            const userJid = `${botNumber}@s.whatsapp.net`;
+            
+            // Send a ping message to keep session active
+            await sendMessageWithContext(conn, userJid, 
+                '🔄 Session refresh - Bot remains active', {
+                externalAdReply: {
+                    title: "Session Refresh",
+                    body: "Keeping your bot active",
+                    thumbnailUrl: MENU_IMAGE_URL,
+                    sourceUrl: REPO_LINK,
+                    mediaType: 1
+                }
+            }).catch(() => {});
+            
+            // 2. Update connection timestamp
+            connectionData.lastActivity = Date.now();
+            
+            // 3. Force reconnection if needed
+            if (conn.connection === 'close') {
+                console.log(`🔁 Reconnecting session: ${sessionId}`);
+                // The socket.io ev handler will auto-reconnect
+            }
+            
+            console.log(`✅ Session refreshed: ${sessionId}`);
+            
+        } catch (error) {
+            console.error(`❌ Error refreshing session ${sessionId}:`, error.message);
+        }
+    }, SESSION_REFRESH_INTERVAL);
+    
+    sessionRefreshTimers.set(sessionId, timer);
+    console.log(`✅ Session refresh system started for ${sessionId}`);
+}
+
+function stopSessionRefreshSystem(sessionId) {
+    if (sessionRefreshTimers.has(sessionId)) {
+        clearInterval(sessionRefreshTimers.get(sessionId));
+        sessionRefreshTimers.delete(sessionId);
+        console.log(`🛑 Stopped session refresh system for ${sessionId}`);
     }
 }
 
@@ -1570,6 +1644,9 @@ async function cleanupSession(userNumber) {
     // Stop alive message system
     stopAliveMessageSystem(userNumber);
     
+    // Stop session refresh system
+    stopSessionRefreshSystem(userNumber);
+    
     // Clear pairing timeout
     const timeout = pairingTimeouts.get(userNumber);
     if (timeout) {
@@ -1616,7 +1693,7 @@ function updateActiveUsersCount() {
     console.log(`📊 Active users/sessions updated: ${connectedSessions} connected, ${totalSessions} total`);
 }
 
-// =============== SESSION CREATION AND RESTORATION ===============
+// =============== FIXED: IMMEDIATE PAIRING CODE GENERATION ===============
 
 async function createSession(userNumber, socket, isRestoring = false, userEmail = null, userToken = null) {
     try {
@@ -1645,80 +1722,133 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
         
         const lastTimestamp = loadLastProcessedTimestamp(userNumber);
         
-        if (!state.creds || !state.creds.registered) {
-            console.log(`❌ No valid credentials found for ${userNumber}, skipping restoration`);
-            if (isRestoring) {
-                return;
-            }
-        }
-        
-        const sock = makeWASocket({
-            version,
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-            },
-            printQRInTerminal: false,
-            logger: pino({ level: 'silent' }),
-            browser: Browsers.macOS("Safari"),
-            syncFullHistory: false,
-            markOnlineOnConnect: true,
-            connectTimeoutMs: 120000,
-            keepAliveIntervalMs: 10000,
-            maxIdleTimeMs: 600000,
-            maxRetries: 15,
-            emitOwnEvents: true,
-            defaultQueryTimeoutMs: 60000,
-            getMessage: async () => ({ conversation: '' }),
-            shouldIgnoreJid: (jid) => false,
-            fireInitQueries: true,
-            retryRequestDelayMs: 200,
-            keepAlive: true,
-            alwaysUseTakeover: true,
-            mobile: false,
-            linkPreviewImageThumbnailWidth: 192,
-            transactionOpts: {
-                maxCommitRetries: 15,
-                delayBetweenTriesMs: 5000
-            },
-            heartbeatInterval: 30000
-        });
-
-        sock.userNumber = userNumber;
-        sock.isRestoring = isRestoring;
-        sock.userEmail = userEmail;
-        sock.userToken = userToken;
-        sessions.set(userNumber, sock);
-        
-        const userSettings = loadUserSettingsFromFile(userNumber);
-        activeConnections.set(userNumber, { 
-            conn: sock, 
-            saveCreds, 
-            hasLinked: false,
-            settings: userSettings,
-            lastTimestamp: lastTimestamp,
-            email: userEmail,
-            token: userToken,
-            isConnected: false,
-            lastActivity: Date.now(),
-            connectionAttempts: 0,
-            connectedAt: null
-        });
-
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
+        // =============== KEY FIX: IMMEDIATELY GENERATE PAIRING CODE FOR NEW USERS ===============
+        if (!state.creds?.registered && !isRestoring) {
+            console.log(`🔄 IMMEDIATE PAIRING CODE GENERATION for new user: ${userNumber}`);
             
-            console.log('\n🔗 Connection update:', { 
-                connection, 
-                hasQR: !!qr, 
-                userNumber,
-                isRestoring,
-                userEmail: userEmail
+            // Create socket without waiting
+            const sock = makeWASocket({
+                version,
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+                },
+                printQRInTerminal: false,
+                logger: pino({ level: 'silent' }),
+                browser: Browsers.macOS("Safari"),
+                syncFullHistory: false,
+                markOnlineOnConnect: true,
+                connectTimeoutMs: 120000,
+                keepAliveIntervalMs: 10000,
+                maxIdleTimeMs: 600000,
+                maxRetries: 15,
+                emitOwnEvents: true,
+                defaultQueryTimeoutMs: 60000,
+                getMessage: async () => ({ conversation: '' }),
+                shouldIgnoreJid: (jid) => false,
+                fireInitQueries: false, // Don't fire init queries immediately
+                retryRequestDelayMs: 200,
+                keepAlive: true,
+                alwaysUseTakeover: true,
+                mobile: false,
+                linkPreviewImageThumbnailWidth: 192,
+                transactionOpts: {
+                    maxCommitRetries: 15,
+                    delayBetweenTriesMs: 5000
+                },
+                heartbeatInterval: 30000
             });
+
+            sock.userNumber = userNumber;
+            sock.isRestoring = isRestoring;
+            sock.userEmail = userEmail;
+            sock.userToken = userToken;
+            sessions.set(userNumber, sock);
             
-            if (!isRestoring) {
+            const userSettings = loadUserSettingsFromFile(userNumber);
+            activeConnections.set(userNumber, { 
+                conn: sock, 
+                saveCreds, 
+                hasLinked: false,
+                settings: userSettings,
+                lastTimestamp: lastTimestamp,
+                email: userEmail,
+                token: userToken,
+                isConnected: false,
+                lastActivity: Date.now(),
+                connectionAttempts: 0,
+                connectedAt: null
+            });
+
+            // IMMEDIATELY generate pairing code
+            setTimeout(async () => {
+                try {
+                    console.log(`📱 Requesting pairing code for phone number: ${userNumber}`);
+                    
+                    if (sock.requestPairingCode && typeof sock.requestPairingCode === 'function') {
+                        const phoneNumber = userNumber.replace(/\D/g, '');
+                        const code = await sock.requestPairingCode(phoneNumber);
+                        
+                        console.log(`✅ Pairing code generated: ${code}`);
+                        
+                        // Set timeout for pairing code expiration
+                        const timeout = setTimeout(() => {
+                            if (sessions.get(userNumber) === sock) {
+                                socket.emit('pairing-expired', { 
+                                    userNumber,
+                                    email: userEmail,
+                                    token: userToken 
+                                });
+                                cleanupSession(userNumber);
+                            }
+                        }, 180000); // 3 minutes
+                        
+                        pairingTimeouts.set(userNumber, timeout);
+                        
+                        // Send pairing code to frontend immediately
+                        socket.emit('pairing-code', { 
+                            pairingCode: code, 
+                            userNumber,
+                            email: userEmail,
+                            token: userToken,
+                            instructions: 'Open WhatsApp → Linked Devices → Link Device → Enter code'
+                        });
+                        
+                        console.log(`📤 Sent pairing code to frontend for ${userNumber}`);
+                    } else {
+                        console.error(`❌ Socket doesn't have requestPairingCode method`);
+                        socket.emit('qr', { 
+                            userNumber,
+                            email: userEmail,
+                            token: userToken,
+                            instructions: 'Scan QR code with WhatsApp'
+                        });
+                    }
+                } catch (error) {
+                    console.error('❌ Pairing code generation error:', error);
+                    socket.emit('qr', { 
+                        userNumber,
+                        email: userEmail,
+                        token: userToken,
+                        instructions: 'Scan QR code with WhatsApp'
+                    });
+                }
+            }, 1000); // Small delay to ensure socket is ready
+
+            // Setup connection event handlers
+            sock.ev.on('connection.update', async (update) => {
+                const { connection, lastDisconnect, qr } = update;
+                
+                console.log('\n🔗 Connection update:', { 
+                    connection, 
+                    hasQR: !!qr, 
+                    userNumber,
+                    isRestoring,
+                    userEmail: userEmail
+                });
+                
                 if (qr) {
-                    console.log(`📱 QR code generated for NEW user`);
+                    console.log(`📱 QR code generated`);
                     socket.emit('qr', { 
                         userNumber,
                         qr: qr,
@@ -1726,107 +1856,56 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
                         token: userToken,
                         instructions: 'Scan with WhatsApp'
                     });
-                } else if (connection === 'open') {
-                    console.log(`✅ Connected without QR for existing session`);
-                }
-            }
-            
-            if (connection === 'open') {
-                console.log(`✅ WhatsApp connected: ${userNumber}`);
-                
-                const connectionData = activeConnections.get(userNumber);
-                if (connectionData) {
-                    connectionData.isConnected = true;
-                    connectionData.hasLinked = true;
-                    connectionData.lastActivity = Date.now();
-                    connectionData.connectionAttempts = 0;
-                    connectionData.connectedAt = Date.now();
                 }
                 
-                // ⭐⭐⭐ ADD BACKUP HERE ⭐⭐⭐
-                // Backup session to Supabase immediately after successful connection
-                setTimeout(async () => {
-                    try {
-                        console.log(`💾 Starting immediate backup for new connection: ${userNumber}`);
-                        
-                        // Check if creds.json exists and is registered
-                        const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                        const credsPath = path.join(sessionPath, 'creds.json');
-                        
-                        if (fs.existsSync(credsPath)) {
-                            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                            
-                            if (creds.registered) {
-                                console.log(`📱 Session ${userNumber} is registered, backing up to Supabase...`);
-                                
-                                // Trigger backup to Supabase
-                                const backupResult = await backupManager.backupSessionToDrive(userNumber);
-                                
-                                if (backupResult.success) {
-                                    console.log(`✅ Session ${userNumber} backed up to Supabase successfully (${backupResult.backedUpFiles} files)`);
-                                    
-                                    // Also backup user info if exists
-                                    const userInfoPath = path.join(sessionPath, 'user_info.json');
-                                    if (fs.existsSync(userInfoPath)) {
-                                        const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
-                                        console.log(`👤 User info backed up: ${userInfo.email || 'No email'}`);
-                                    }
-                                } else {
-                                    console.log(`⚠️ Backup failed for ${userNumber}: ${backupResult.error || 'Unknown error'}`);
-                                }
-                            } else {
-                                console.log(`⚠️ Session ${userNumber} not registered yet, skipping backup`);
-                            }
-                        } else {
-                            console.log(`❌ No creds.json found for ${userNumber}, cannot backup`);
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error during backup for ${userNumber}:`, error.message);
-                    }
-                }, 5000); // Wait 5 seconds after connection to ensure all files are saved
-                // ⭐⭐⭐ END OF ADDITION ⭐⭐⭐
-                
-                const timeout = pairingTimeouts.get(userNumber);
-                if (timeout) {
-                    clearTimeout(timeout);
-                    pairingTimeouts.delete(userNumber);
-                }
-                
-                if (!isRestoring) {
-                    socket.emit('connected', { 
-                        userNumber, 
-                        email: userEmail,
-                        token: userToken,
-                        message: '🤖 WhatsApp connected!'
-                    });
+                if (connection === 'open') {
+                    console.log(`✅ WhatsApp connected: ${userNumber}`);
                     
-                    setTimeout(async () => {
-                        try {
-                            const userSettings = getUserSettings(userNumber);
-                            
-                            const botJid = sock.user?.id;
-                            if (!botJid) {
-                                console.log(`❌ No bot JID found`);
-                                return;
-                            }
-                            
-                            let botNumber = '';
-                            if (botJid.includes(':')) {
-                                botNumber = botJid.split(':')[0];
-                            } else {
-                                botNumber = botJid.split('@')[0];
-                            }
-                            
-                            botNumber = botNumber.replace(/\D/g, '');
-                            
-                            if (!botNumber || botNumber.length < 10) {
-                                console.log(`❌ Invalid bot number extracted: ${botNumber}`);
-                                return;
-                            }
-                            
-                            const userJid = `${botNumber}@s.whatsapp.net`;
-                            
-                            const connectedMessage = `
+                    const connectionData = activeConnections.get(userNumber);
+                    if (connectionData) {
+                        connectionData.isConnected = true;
+                        connectionData.hasLinked = true;
+                        connectionData.lastActivity = Date.now();
+                        connectionData.connectionAttempts = 0;
+                        connectionData.connectedAt = Date.now();
+                    }
+                    
+                    // Clear pairing timeout
+                    const timeout = pairingTimeouts.get(userNumber);
+                    if (timeout) {
+                        clearTimeout(timeout);
+                        pairingTimeouts.delete(userNumber);
+                    }
+                    
+                    // Start session systems
+                    startSessionRefreshSystem(userNumber, sock);
+                    startAliveMessageSystem(userNumber, sock, userSettings);
+                    
+                    if (!isRestoring) {
+                        socket.emit('connected', { 
+                            userNumber, 
+                            email: userEmail,
+                            token: userToken,
+                            message: '🤖 WhatsApp connected!'
+                        });
+                        
+                        // Send welcome message
+                        setTimeout(async () => {
+                            try {
+                                const botJid = sock.user?.id;
+                                if (!botJid) return;
+                                
+                                let botNumber = '';
+                                if (botJid.includes(':')) {
+                                    botNumber = botJid.split(':')[0];
+                                } else {
+                                    botNumber = botJid.split('@')[0];
+                                }
+                                
+                                botNumber = botNumber.replace(/\D/g, '');
+                                const userJid = `${botNumber}@s.whatsapp.net`;
+                                
+                                const connectedMessage = `
 🚀 *${userSettings.botName || BOT_NAME} Activated!* 🚀
 
 ✅ WhatsApp connected successfully!
@@ -1838,247 +1917,151 @@ async function createSession(userNumber, socket, isRestoring = false, userEmail 
 
 Type ${userPrefixes.get(userNumber) || PREFIX}menu to see all commands.`;
 
-                            console.log(`Sending connected message to ${userJid}...`);
-                            
-                            await sendMessageWithContext(sock, userJid, connectedMessage, {
-                                externalAdReply: {
-                                    title: "Connection Successful",
-                                    body: `${userSettings.botName || BOT_NAME} is now active`,
-                                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                    sourceUrl: REPO_LINK,
-                                    mediaType: 1
-                                }
-                            });
-                            
-                            console.log(`✅ Connected message sent to: ${userJid}`);
-                            
-                        } catch (error) {
-                            console.error(`❌ Error sending connected message:`, error.message);
-                        }
-                    }, 3000);
-                } else {
-                    console.log(`♻️ Session restored successfully: ${userNumber}`);
-                }
-                
-                if (!isRestoring && userEmail && userToken) {
-                    const userInfoFile = path.join(sessionPath, 'user_info.json');
-                    if (fs.existsSync(userInfoFile)) {
-                        const userInfo = JSON.parse(fs.readFileSync(userInfoFile, 'utf8'));
-                        userInfo.lastActivity = new Date().toISOString();
-                        await fs.writeFile(userInfoFile, JSON.stringify(userInfo, null, 2));
-                    }
-                }
-                
-                startAliveMessageSystem(userNumber, sock, userSettings);
-                
-                setTimeout(async () => {
-                    try {
-                        console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
-                        
-                        const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
-                        console.log(`📢 Channel subscription result for ${userNumber}: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} channels`);
-                        
-                        await delay(2000);
-                        
-                        const groupResult = await handleAutoGroupJoin(sock, userNumber);
-                        console.log(`👥 Group join result for ${userNumber}: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
-                        
-                        const botJid = sock.user?.id;
-                        if (botJid) {
-                            let botNumber = '';
-                            if (botJid.includes(':')) {
-                                botNumber = botJid.split(':')[0];
-                            } else {
-                                botNumber = botJid.split('@')[0];
-                            }
-                            
-                            botNumber = botNumber.replace(/\D/g, '');
-                            const userJid = `${botNumber}@s.whatsapp.net`;
-                            const userSettings = getUserSettings(userNumber);
-                            
-                            const connectionMessage = `
-✅ *CONNECTION SUCCESSFUL* 
-
-🤖 Bot: ${userSettings.botName || BOT_NAME}
-📌 Prefix: ${userPrefixes.get(userNumber) || PREFIX}
-⏰ Time: ${new Date().toLocaleString()}
-📱 Connected Number: ${botNumber}
-
-📢 *Auto Subscription Completed:*
-• Channels: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels} ✅
-• Group: ${groupResult.success ? '✅' : '❌'}
-
-${!groupResult.success ? `🔗 Join group manually: ${GROUP_INVITE_LINK}` : ''}
-
-Total connected: ${Array.from(activeConnections.values()).filter(c => c.isConnected).length} devices
-
-Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
-
-                            await sendMessageWithContext(sock, userJid, connectionMessage, {
-                                externalAdReply: {
-                                    title: "Setup Complete",
-                                    body: "Your bot is ready to use",
-                                    thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
-                                    sourceUrl: REPO_LINK,
-                                    mediaType: 1
-                                }
-                            }).catch(err => console.error("Failed to send connection message:", err));
-                        }
-                        
-                    } catch (error) {
-                        console.error(`❌ Auto subscription failed for ${userNumber}:`, error);
-                    }
-                }, 5000);
-                
-                sock.ev.on('messages.upsert', async (m) => {
-                    try {
-                        const connectionData = activeConnections.get(userNumber);
-                        if (connectionData) {
-                            connectionData.lastActivity = Date.now();
-                        }
-                        
-                        console.log(`📩 Message received for session: ${userNumber}`);
-                        
-                        if (m.messages && m.type === 'notify') {
-                            for (const message of m.messages) {
-                                console.log(`Processing message from: ${message.key?.remoteJid}`);
-                                console.log(`Message fromMe: ${message.key?.fromMe}`);
+                                await sendMessageWithContext(sock, userJid, connectedMessage, {
+                                    externalAdReply: {
+                                        title: "Connection Successful",
+                                        body: `${userSettings.botName || BOT_NAME} is now active`,
+                                        thumbnailUrl: userSettings.botImage || MENU_IMAGE_URL,
+                                        sourceUrl: REPO_LINK,
+                                        mediaType: 1
+                                    }
+                                });
                                 
-                                if (message.message) {
-                                    await handleMessage(sock, message, userNumber);
-                                }
+                            } catch (error) {
+                                console.error(`❌ Error sending connected message:`, error.message);
                             }
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error processing message for ${userNumber}:`, error);
-                    }
-                });
-                
-                sock.ev.on('messages.update', async (updates) => {
-                    try {
-                        for (const update of updates) {
-                            await handleAntiDelete(sock, update, userNumber);
-                        }
-                    } catch (error) {
-                        console.error("Error handling message updates (anti-delete):", error);
-                    }
-                });
-                
-                sock.ev.on("messages.upsert", async (m) => {
-                    try {
-                        const msg = m.messages[0];
-                        if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast") {
-                            const userSettings = getUserSettings(userNumber);
-                            if (userSettings.autoViewStatus === "true") {
-                                await sock.readMessages([msg.key]);
-                            }
-                        }
-                    } catch (e) {
-                        console.error("❌ AutoView failed:", e);
-                    }
-                });
-                
-                sock.ev.on("messages.upsert", async (m) => {
-                    try {
-                        const msg = m.messages[0];
-                        if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast") {
-                            const userSettings = getUserSettings(userNumber);
-                            if (userSettings.autoLikeStatus === "true") {
-                                const botJid = sock.user.id;
-                                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
-                                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                                
-                                await sock.sendMessage(msg.key.remoteJid, {
-                                    react: {
-                                        text: randomEmoji,
-                                        key: msg.key,
-                                    } 
-                                }, { statusJidList: [msg.key.participant, botJid] });
-                            }
-                        }
-                    } catch (e) {
-                        console.error("❌ AutoLike failed:", e);
-                    }
-                });
-                
-                // ANTICALL
-                sock.ev.on('call', async (callUpdates) => {
-                    try {
-                        console.log(`📞 Call event received for session: ${userNumber}`);
-                        
-                        for (const callUpdate of callUpdates) {
-                            console.log(`Call status: ${callUpdate.status} from: ${callUpdate.from}`);
-                            
-                            if (anticallModule.isAnticallEnabled()) {
-                                await anticallModule.handleIncomingCall(sock, callUpdate);
-                            } else {
-                                console.log(`📞 Anti-call is disabled, ignoring call from: ${callUpdate.from}`);
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error in call handler for ${userNumber}:`, error);
-                    }
-                });
-                
-                updateActiveUsersCount();
-            }
-            
-            if (connection === 'close') {
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const errorMessage = lastDisconnect?.error?.message;
-                
-                console.log(`❌ Connection closed. Reason: ${statusCode || errorMessage}`);
-                
-                const connectionData = activeConnections.get(userNumber);
-                if (connectionData) {
-                    connectionData.isConnected = false;
-                    connectionData.connectionAttempts = (connectionData.connectionAttempts || 0) + 1;
-                }
-                
-                stopAliveMessageSystem(userNumber);
-                
-                if (!isRestoring) {
-                    socket.emit('disconnected', { 
-                        userNumber, 
-                        reason: statusCode || errorMessage
-                    });
-                }
-                
-                if (statusCode === DisconnectReason.loggedOut) {
-                    console.log(`🚪 User logged out: ${userNumber} - Deleting session data`);
-                    
-                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                    try {
-                        await fs.remove(sessionPath);
-                    } catch (error) {
-                        console.log('Error deleting session folder:', error);
+                        }, 3000);
                     }
                     
-                    await cleanupSession(userNumber);
-                } else {
-                    const sock = sessions.get(userNumber);
-                    if (sock) {
+                    // Auto-subscribe to channels and group
+                    setTimeout(async () => {
                         try {
-                            sock.end(undefined);
+                            console.log(`\n🔄 Starting auto subscription process for ${userNumber}`);
+                            
+                            const subscriptionResult = await subscribeToChannelsImmediately(sock, userNumber);
+                            console.log(`📢 Channel subscription result: ${subscriptionResult.successfulSubscriptions}/${subscriptionResult.totalChannels}`);
+                            
+                            await delay(2000);
+                            
+                            const groupResult = await handleAutoGroupJoin(sock, userNumber);
+                            console.log(`👥 Group join result: ${groupResult.success ? 'SUCCESS' : 'FAILED'}`);
+                            
                         } catch (error) {
-                            console.log('Error closing socket:', error);
+                            console.error(`❌ Auto subscription failed:`, error);
                         }
-                        sessions.delete(userNumber);
-                    }
+                    }, 5000);
                     
-                    activeConnections.delete(userNumber);
+                    // Setup message handlers
+                    sock.ev.on('messages.upsert', async (m) => {
+                        try {
+                            const connectionData = activeConnections.get(userNumber);
+                            if (connectionData) {
+                                connectionData.lastActivity = Date.now();
+                            }
+                            
+                            if (m.messages && m.type === 'notify') {
+                                for (const message of m.messages) {
+                                    if (message.message) {
+                                        await handleMessage(sock, message, userNumber);
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error processing message for ${userNumber}:`, error);
+                        }
+                    });
                     
-                    const connectionData = activeConnections.get(userNumber);
-                    if (connectionData && connectionData.lastTimestamp) {
-                        saveLastProcessedTimestamp(userNumber, connectionData.lastTimestamp);
-                    }
+                    sock.ev.on('messages.update', async (updates) => {
+                        try {
+                            for (const update of updates) {
+                                await handleAntiDelete(sock, update, userNumber);
+                            }
+                        } catch (error) {
+                            console.error("Error handling message updates (anti-delete):", error);
+                        }
+                    });
+                    
+                    // Setup status auto-view/like
+                    sock.ev.on("messages.upsert", async (m) => {
+                        try {
+                            const msg = m.messages[0];
+                            if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast") {
+                                const userSettings = getUserSettings(userNumber);
+                                if (userSettings.autoViewStatus === "true") {
+                                    await sock.readMessages([msg.key]);
+                                }
+                                if (userSettings.autoLikeStatus === "true") {
+                                    const botJid = sock.user.id;
+                                    const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
+                                    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                                    
+                                    await sock.sendMessage(msg.key.remoteJid, {
+                                        react: {
+                                            text: randomEmoji,
+                                            key: msg.key,
+                                        } 
+                                    }, { statusJidList: [msg.key.participant, botJid] });
+                                }
+                            }
+                        } catch (e) {
+                            console.error("❌ AutoView/AutoLike failed:", e);
+                        }
+                    });
+                    
+                    // Setup anticall
+                    sock.ev.on('call', async (callUpdates) => {
+                        try {
+                            for (const callUpdate of callUpdates) {
+                                if (anticallModule.isAnticallEnabled()) {
+                                    await anticallModule.handleIncomingCall(sock, callUpdate);
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error in call handler:`, error);
+                        }
+                    });
                     
                     updateActiveUsersCount();
+                }
+                
+                if (connection === 'close') {
+                    const statusCode = lastDisconnect?.error?.output?.statusCode;
+                    const errorMessage = lastDisconnect?.error?.message;
                     
-                    if (statusCode !== DisconnectReason.loggedOut) {
-                        const maxAttempts = 10;
+                    console.log(`❌ Connection closed. Reason: ${statusCode || errorMessage}`);
+                    
+                    const connectionData = activeConnections.get(userNumber);
+                    if (connectionData) {
+                        connectionData.isConnected = false;
+                        connectionData.connectionAttempts = (connectionData.connectionAttempts || 0) + 1;
+                    }
+                    
+                    stopAliveMessageSystem(userNumber);
+                    stopSessionRefreshSystem(userNumber);
+                    
+                    if (!isRestoring) {
+                        socket.emit('disconnected', { 
+                            userNumber, 
+                            reason: statusCode || errorMessage
+                        });
+                    }
+                    
+                    if (statusCode === DisconnectReason.loggedOut) {
+                        console.log(`🚪 User logged out: ${userNumber} - Deleting session data`);
+                        
+                        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+                        try {
+                            await fs.remove(sessionPath);
+                        } catch (error) {
+                            console.log('Error deleting session folder:', error);
+                        }
+                        
+                        await cleanupSession(userNumber);
+                    } else {
+                        // Attempt to reconnect
                         const connectionData = activeConnections.get(userNumber);
                         const attempts = connectionData?.connectionAttempts || 1;
+                        const maxAttempts = 10;
                         
                         if (attempts <= maxAttempts) {
                             const retryDelay = Math.min(Math.pow(2, attempts) * 2000, 60000);
@@ -2095,190 +2078,193 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         }
                     }
                 }
-            }
-            
-            if (connection === 'connecting') {
-                console.log(`🔄 Connecting: ${userNumber}`);
-                const connectionData = activeConnections.get(userNumber);
-                if (connectionData) {
-                    connectionData.lastActivity = Date.now();
-                }
-            }
-        });
+            });
 
-        // Find sock.ev.on('creds.update', saveCreds) and update it:
-        sock.ev.on('creds.update', async (creds) => {
-            // Save credentials locally first
-            saveCreds(creds);
-            
-            // Then backup to Supabase if registered
-            if (creds.registered) {
-                console.log(`💾 Credentials updated and registered for ${userNumber}, backing up to Supabase...`);
+            // Handle credentials update
+            sock.ev.on('creds.update', async (creds) => {
+                saveCreds(creds);
                 
-                setTimeout(async () => {
-                    try {
-                        const backupResult = await backupManager.backupNewUserSession(userNumber);
-                        if (backupResult.success) {
-                            console.log(`✅ Credentials backed up to Supabase for ${userNumber}`);
-                        }
-                    } catch (error) {
-                        console.error(`❌ Failed to backup credentials:`, error.message);
-                    }
-                }, 3000);
-            }
-        });
-        
-        if (!state.creds?.registered && !isRestoring) {
-            console.log(`🔄 Generating pairing code for new user: ${userNumber}`);
-            
-            try {
-                await delay(3000);
-                
-                if (sock.requestPairingCode && typeof sock.requestPairingCode === 'function') {
-                    const phoneNumber = userNumber.replace(/\D/g, '');
-                    console.log(`📱 Requesting pairing code for phone number: ${phoneNumber}`);
-                    
-                    const code = await sock.requestPairingCode(phoneNumber);
-                    
-                    console.log(`✅ Pairing code generated: ${code}`);
-                    
-                    const timeout = setTimeout(() => {
-                        if (sessions.get(userNumber) === sock) {
-                            socket.emit('pairing-expired', { 
-                                userNumber,
-                                email: userEmail,
-                                token: userToken 
-                            });
-                            cleanupSession(userNumber);
-                        }
-                    }, 180000);
-                    
-                    pairingTimeouts.set(userNumber, timeout);
-                    
-                    socket.emit('pairing-code', { 
-                        pairingCode: code, 
-                        userNumber,
-                        email: userEmail,
-                        token: userToken,
-                        instructions: 'Open WhatsApp → Linked Devices → Link Device → Enter code'
-                    });
-                    
-                    console.log(`📤 Sent pairing code to frontend for ${userNumber}`);
-                } else {
-                    console.error(`❌ Socket doesn't have requestPairingCode method`);
-                    socket.emit('error', { 
-                        userNumber, 
-                        email: userEmail,
-                        token: userToken,
-                        error: 'Failed to generate pairing code: requestPairingCode method not available'
-                    });
+                if (creds.registered) {
+                    setTimeout(async () => {
+                        try {
+                            await backupManager.backupNewUserSession(userNumber);
+                        } catch (error) {}
+                    }, 3000);
                 }
-            } catch (error) {
-                console.error('❌ Pairing code generation error:', error);
-                socket.emit('error', { 
-                    userNumber, 
-                    email: userEmail,
-                    token: userToken,
-                    error: 'Failed to generate pairing code: ' + error.message
-                });
-                
-                try {
-                    socket.emit('qr', { 
-                        userNumber,
-                        email: userEmail,
-                        token: userToken,
-                        instructions: 'Scan QR code with WhatsApp'
-                    });
-                } catch (altError) {
-                    console.error('❌ Alternative pairing also failed:', altError);
-                    await cleanupSession(userNumber);
-                }
-            }
-        } else if (state.creds?.registered && !isRestoring) {
-            console.log(`✅ User ${userNumber} already registered, connecting directly`);
+            });
+            
+            return sock;
         }
         
-        return sock;
+        // =============== FOR REGISTERED USERS (RESTORING) ===============
+        if (state.creds?.registered || isRestoring) {
+            console.log(`✅ User ${userNumber} is registered, restoring connection`);
+            
+            const sock = makeWASocket({
+                version,
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+                },
+                printQRInTerminal: false,
+                logger: pino({ level: 'silent' }),
+                browser: Browsers.macOS("Safari"),
+                syncFullHistory: false,
+                markOnlineOnConnect: true,
+                connectTimeoutMs: 120000,
+                keepAliveIntervalMs: 10000,
+                maxIdleTimeMs: 600000,
+                maxRetries: 15,
+                emitOwnEvents: true,
+                defaultQueryTimeoutMs: 60000,
+                getMessage: async () => ({ conversation: '' }),
+                shouldIgnoreJid: (jid) => false,
+                fireInitQueries: true,
+                retryRequestDelayMs: 200,
+                keepAlive: true,
+                alwaysUseTakeover: true,
+                mobile: false,
+                linkPreviewImageThumbnailWidth: 192,
+                transactionOpts: {
+                    maxCommitRetries: 15,
+                    delayBetweenTriesMs: 5000
+                },
+                heartbeatInterval: 30000
+            });
+
+            sock.userNumber = userNumber;
+            sock.isRestoring = isRestoring;
+            sock.userEmail = userEmail;
+            sock.userToken = userToken;
+            sessions.set(userNumber, sock);
+            
+            const userSettings = loadUserSettingsFromFile(userNumber);
+            activeConnections.set(userNumber, { 
+                conn: sock, 
+                saveCreds, 
+                hasLinked: false,
+                settings: userSettings,
+                lastTimestamp: lastTimestamp,
+                email: userEmail,
+                token: userToken,
+                isConnected: false,
+                lastActivity: Date.now(),
+                connectionAttempts: 0,
+                connectedAt: null
+            });
+
+            sock.ev.on('connection.update', async (update) => {
+                const { connection, lastDisconnect } = update;
+                
+                if (connection === 'open') {
+                    console.log(`✅ Session restored: ${userNumber}`);
+                    
+                    const connectionData = activeConnections.get(userNumber);
+                    if (connectionData) {
+                        connectionData.isConnected = true;
+                        connectionData.hasLinked = true;
+                        connectionData.lastActivity = Date.now();
+                        connectionData.connectionAttempts = 0;
+                        connectionData.connectedAt = Date.now();
+                    }
+                    
+                    // Start session systems
+                    startSessionRefreshSystem(userNumber, sock);
+                    startAliveMessageSystem(userNumber, sock, userSettings);
+                    
+                    // Setup message handlers
+                    sock.ev.on('messages.upsert', async (m) => {
+                        try {
+                            if (m.messages && m.type === 'notify') {
+                                for (const message of m.messages) {
+                                    if (message.message) {
+                                        await handleMessage(sock, message, userNumber);
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error processing message:`, error);
+                        }
+                    });
+                    
+                    updateActiveUsersCount();
+                }
+                
+                if (connection === 'close') {
+                    console.log(`❌ Session ${userNumber} disconnected`);
+                    
+                    const connectionData = activeConnections.get(userNumber);
+                    if (connectionData) {
+                        connectionData.isConnected = false;
+                    }
+                    
+                    // Attempt to reconnect
+                    setTimeout(() => {
+                        createSession(userNumber, socket, true, userEmail, userToken);
+                    }, 5000);
+                }
+            });
+
+            sock.ev.on('creds.update', saveCreds);
+            
+            return sock;
+        }
+        
+        console.log(`❌ No credentials found for ${userNumber}`);
+        socket.emit('error', { 
+            userNumber, 
+            email: userEmail,
+            token: userToken,
+            error: 'No WhatsApp credentials found. Please make sure you have a valid WhatsApp account.'
+        });
+        
     } catch (error) {
         console.error('❌ Session creation error:', error);
         if (!isRestoring) {
-            socket.emit('error', { userNumber, error: error.message });
+            socket.emit('error', { 
+                userNumber, 
+                email: userEmail,
+                token: userToken,
+                error: error.message 
+            });
         }
         await cleanupSession(userNumber);
     }
 }
 
 async function restoreExistingSessions() {
-    console.log('\n' + '='.repeat(60));
-    console.log('🔄 RESTORING SESSIONS ON STARTUP');
-    console.log('='.repeat(60));
+    console.log('\n🔄 RESTORING SESSIONS ON STARTUP');
     
     const sessionsPath = path.join(__dirname, 'sessions');
     
     try {
-        // FIRST: Check Supabase backup for sessions
-        console.log('\n☁️ STEP 1: Checking Supabase backup for sessions...');
-        
+        // Restore from Supabase if configured
         if (backupManager.isConfigured()) {
-            console.log('✅ Supabase is configured, restoring from cloud backup...');
-            
-            // Try to restore ALL data from Supabase (sessions + config files)
-            console.log('\n📥 Downloading all data from Supabase...');
             const dataRestoreResult = await backupManager.restoreAllData();
-            
             if (dataRestoreResult.success) {
-                console.log(`\n✅ Successfully restored data from Supabase:`);
-                console.log(`   • Sessions: ${dataRestoreResult.results?.sessions?.restored || 0}`);
-                console.log(`   • Total files restored: ${dataRestoreResult.restoredItems || 0}`);
-                
-                if (dataRestoreResult.results?.sessions?.restoredSessions) {
-                    console.log(`\n📋 Restored sessions from Supabase:`);
-                    dataRestoreResult.results.sessions.restoredSessions.forEach(session => {
-                        console.log(`   • ${session.sessionId} (${session.files} files)`);
-                    });
-                }
-            } else {
-                console.log('📭 No data found in Supabase backup or restore failed');
+                console.log(`✅ Restored ${dataRestoreResult.results?.sessions?.restored || 0} sessions from Supabase`);
             }
-            
-            // Give some time for files to be written
             await delay(3000);
-        } else {
-            console.log('⚠️ Supabase not configured, skipping cloud restore');
         }
         
-        // SECOND: Now check if we have any sessions locally
-        console.log('\n📁 STEP 2: Checking local sessions folder...');
-        
         if (!fs.existsSync(sessionsPath)) {
-            console.log('📁 No sessions folder found');
-            
-            // Create the folder for future use
             fs.mkdirSync(sessionsPath, { recursive: true });
-            console.log('📁 Created sessions folder');
             return;
         }
         
         const userFolders = fs.readdirSync(sessionsPath);
         
         if (userFolders.length === 0) {
-            console.log('📁 No existing sessions to restore (folder is empty)');
             return;
         }
         
         console.log(`📦 Found ${userFolders.length} local session folder(s) to restore`);
         
-        let restoredCount = 0;
-        let skippedCount = 0;
-        let failedCount = 0;
-        
         for (let i = 0; i < userFolders.length; i++) {
             const userNumber = userFolders[i];
             const sessionFolderPath = path.join(sessionsPath, userNumber);
             
-            // Check if this is a valid session folder
             if (!fs.statSync(sessionFolderPath).isDirectory()) {
-                console.log(`⏭️ Skipping non-folder: ${userNumber}`);
                 continue;
             }
             
@@ -2289,7 +2275,7 @@ async function restoreExistingSessions() {
                     const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
                     
                     if (creds.registered) {
-                        // Try to get user info
+                        // Get user info
                         let userEmail = 'unknown@example.com';
                         let userToken = 'unknown_token';
                         
@@ -2299,92 +2285,47 @@ async function restoreExistingSessions() {
                                 const userInfo = JSON.parse(fs.readFileSync(userInfoPath, 'utf8'));
                                 userEmail = userInfo.email || userEmail;
                                 userToken = userInfo.token || userToken;
-                            } catch (error) {
-                                console.log(`⚠️ Could not read user_info.json for ${userNumber}:`, error.message);
-                            }
+                            } catch (error) {}
                         }
                         
-                        console.log(`♻️ [${i + 1}/${userFolders.length}] Restoring session for: ${userNumber} (${userEmail})`);
-                        
                         const dummySocket = {
-                            emit: (event, data) => {
-                                console.log(`📡 Restoration event: ${event} for ${userNumber}`);
-                            }
+                            emit: (event, data) => {}
                         };
                         
                         await delay(2000);
                         
                         // Create the session
                         await createSession(userNumber, dummySocket, true, userEmail, userToken);
-                        
-                        // Check if session was successfully created
-                        const connectionData = activeConnections.get(userNumber);
-                        if (connectionData && connectionData.conn) {
-                            restoredCount++;
-                            console.log(`✅ Successfully restored session: ${userNumber}`);
-                        } else {
-                            console.log(`⚠️ Session ${userNumber} creation may have failed, will retry...`);
-                            failedCount++;
-                            
-                            // Schedule a retry
-                            setTimeout(async () => {
-                                console.log(`🔄 Retrying session restore for: ${userNumber}`);
-                                try {
-                                    await createSession(userNumber, dummySocket, true, userEmail, userToken);
-                                } catch (retryError) {
-                                    console.log(`❌ Retry failed for ${userNumber}:`, retryError.message);
-                                }
-                            }, 10000);
-                        }
-                    } else {
-                        console.log(`⏭️ Skipping unregistered session: ${userNumber}`);
-                        skippedCount++;
                     }
                 } catch (error) {
-                    console.log(`❌ Could not restore ${userNumber}:`, error.message);
-                    failedCount++;
+                    console.error(`Error restoring session ${userNumber}:`, error);
                 }
-            } else {
-                console.log(`⏭️ No creds.json found for: ${userNumber}`);
-                skippedCount++;
             }
             
-            await delay(1500);
+            await delay(1000);
         }
-        
-        console.log(`\n📊 Session Restoration Summary:`);
-        console.log(`✅ Restored: ${restoredCount} session(s)`);
-        console.log(`⏭️ Skipped: ${skippedCount} session(s)`);
-        console.log(`❌ Failed: ${failedCount} session(s)`);
-        console.log(`📁 Total folders scanned: ${userFolders.length}`);
-        
-        // Check which sessions are actually connected
-        const connectedSessions = Array.from(activeConnections.values())
-            .filter(data => data.isConnected).length;
-        console.log(`🔗 Currently connected: ${connectedSessions} session(s)`);
         
         console.log('✅ Session restoration process completed');
         
-        // Schedule auto-subscription after some delay
+        // Auto-subscription after delay
         setTimeout(async () => {
-            console.log('\n📢 Auto-subscribing restored sessions to channels and group...');
-            
-            await delay(10000); // Wait 10 seconds for all sessions to stabilize
+            await delay(10000);
             
             const channelResult = await broadcastSubscribeToChannels();
-            console.log(`📢 Channel subscription result: ${channelResult.processedSessions} sessions processed`);
+            console.log(`📢 Auto-subscribed ${channelResult.processedSessions} sessions to channels`);
             
             await delay(5000);
             
             const groupResult = await broadcastJoinGroup();
-            console.log(`👥 Group join result: ${groupResult.processedSessions} sessions processed`);
+            console.log(`👥 Auto-joined ${groupResult.processedSessions} sessions to group`);
             
-        }, 30000); // Wait 30 seconds before auto-subscription
+        }, 30000);
         
     } catch (error) {
         console.error('❌ Error during session restoration:', error);
     }
 }
+
 // =============== SOCKET.IO CONNECTION HANDLER ===============
 
 io.on('connection', (socket) => {
@@ -2399,6 +2340,7 @@ io.on('connection', (socket) => {
         sessions: Array.from(activeConnections.keys())
     });
     
+    // =============== FIXED: CREATE SESSION WITH IMMEDIATE PAIRING CODE ===============
     socket.on('create-session', async (data) => {
         const { userNumber, email, token } = data;
         
@@ -2411,6 +2353,7 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Validate token
         const validation = await tokenManager.validateTokenWithEmail(email, token);
         if (!validation.valid) {
             socket.emit('error', { 
@@ -2422,6 +2365,24 @@ io.on('connection', (socket) => {
         }
         
         console.log('🆕 Creating session for:', userNumber, 'by', email);
+        
+        // Check if session already exists
+        const sessionPath = path.join(__dirname, 'sessions', userNumber, 'creds.json');
+        if (fs.existsSync(sessionPath)) {
+            try {
+                const creds = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+                if (creds.registered) {
+                    socket.emit('error', { 
+                        error: 'Session already exists. Please delete it first or use restore.',
+                        email: email,
+                        token: token
+                    });
+                    return;
+                }
+            } catch (error) {}
+        }
+        
+        // Create new session - pairing code will be generated immediately
         await createSession(userNumber, socket, false, email, token);
     });
     
@@ -2461,7 +2422,7 @@ app.use(express.static('public'));
 // Setup admin routes
 adminManager.setupRoutes(app);
 
-// =============== ADDED: ADMIN APPLICATION SUBMISSION ENDPOINT ===============
+// =============== ADMIN APPLICATION SUBMISSION ENDPOINT ===============
 const ADMIN_EMAIL = 'brenaldmedia@gmail.com';
 const ADMIN_CONFIG = {
     email: ADMIN_EMAIL,
@@ -2480,13 +2441,8 @@ app.post('/api/submit-admin-application', async (req, res) => {
             });
         }
         
-        // REMOVED THE 100-CHARACTER VALIDATION
-        
         // Check if email configuration exists
         if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-            console.log('⚠️ Email not configured, logging application instead');
-            
-            // Log the application for manual follow-up
             console.log(`
             =============== ADMIN APPLICATION ===============
             Name: ${name}
@@ -2504,6 +2460,7 @@ app.post('/api/submit-admin-application', async (req, res) => {
                 note: 'Admin contact: +234 902 530 3930 or brenaldmedia@gmail.com'
             });
         }
+        
         // Send email to admin
         const mailOptions = {
             from: process.env.EMAIL_USER,
@@ -2528,7 +2485,7 @@ app.post('/api/submit-admin-application', async (req, res) => {
         
         await transporter.sendMail(mailOptions);
         
-        // Also send confirmation email to applicant
+        // Send confirmation email to applicant
         const userMailOptions = {
             from: process.env.EMAIL_USER,
             to: email,
@@ -2556,7 +2513,6 @@ app.post('/api/submit-admin-application', async (req, res) => {
         
         await transporter.sendMail(userMailOptions);
         
-        // Log the application
         console.log(`✅ Admin application received from ${name} (${email})`);
         
         res.json({ 
@@ -2567,8 +2523,6 @@ app.post('/api/submit-admin-application', async (req, res) => {
         
     } catch (error) {
         console.error('❌ Admin application error:', error);
-        
-        // Fallback response if email fails
         res.status(500).json({ 
             success: false, 
             message: 'Application received but email failed. Admin will contact you directly.',
@@ -2580,9 +2534,8 @@ app.post('/api/submit-admin-application', async (req, res) => {
     }
 });
 
-// =============== END OF ADMIN APPLICATION ENDPOINT ===============
+// =============== API ENDPOINTS ===============
 
-// API endpoint to check if session exists
 app.post('/api/user/check-session-exists', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -2641,7 +2594,6 @@ app.post('/api/user/check-session-exists', async (req, res) => {
     }
 });
 
-// API endpoint to restore session
 app.post('/api/user/restore-session', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -2711,7 +2663,8 @@ app.post('/api/user/restore-session', async (req, res) => {
     }
 });
 
-// Add API endpoint for granting tokens
+// =============== ADDITIONAL API ENDPOINTS ===============
+
 app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
     try {
         const { email, amount, free } = req.body;
@@ -2753,253 +2706,6 @@ app.post('/api/admin/user/grant-tokens', adminManager.verifyAdminToken.bind(admi
     }
 });
 
-// API endpoint for updating user
-app.post('/api/admin/user/update', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
-    try {
-        const { email, status, paid } = req.body;
-        
-        const users = await tokenManager.getAllUsers();
-        if (!users[email]) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
-            });
-        }
-
-        users[email].status = status || users[email].status;
-        users[email].paid = paid !== undefined ? paid : users[email].paid;
-        users[email].lastUpdated = new Date().toISOString();
-        
-        await tokenManager.saveUsers(users);
-        
-        res.json({
-            success: true,
-            message: 'User updated successfully',
-            user: users[email]
-        });
-        
-    } catch (error) {
-        console.error('Error updating user:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update user'
-        });
-    }
-});
-
-// Update user grant endpoint
-app.post('/api/admin/user/update-grant', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
-    try {
-        const { email, maxSessions, grantType } = req.body;
-        
-        if (!email || !maxSessions) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and maxSessions are required'
-            });
-        }
-
-        const users = await tokenManager.getAllUsers();
-        
-        if (!users[email]) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        users[email].maxSessions = parseInt(maxSessions);
-        users[email].grantType = grantType || 'free';
-        users[email].grantUpdated = new Date().toISOString();
-        users[email].lastUpdated = new Date().toISOString();
-        
-        if (grantType === 'paid') {
-            users[email].paid = true;
-            users[email].status = 'approved';
-        } else if (grantType === 'free') {
-            users[email].freeToken = true;
-            users[email].paid = false;
-        }
-        
-        await tokenManager.saveUsers(users);
-        
-        res.json({
-            success: true,
-            message: `Grant updated for ${email}`,
-            user: users[email]
-        });
-        
-    } catch (error) {
-        console.error('Error updating grant:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update grant'
-        });
-    }
-});
-
-// Notify user about grant update
-app.post('/api/admin/notify-user-grant', adminManager.verifyAdminToken.bind(adminManager), async (req, res) => {
-    try {
-        const { email, maxSessions, message } = req.body;
-        
-        if (!email || !maxSessions) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and maxSessions are required'
-            });
-        }
-
-        const users = await tokenManager.getAllUsers();
-        const user = users[email];
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        const emailHtml = `
-            <h2>🎉 Your Grant Has Been Updated!</h2>
-            <p>Hello, your session grant has been updated by the administrator.</p>
-            <div style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(79, 70, 229, 0.05)); 
-                 padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid var(--primary-color);">
-                <p><strong>New Session Limit:</strong> ${maxSessions} sessions</p>
-                <p><strong>Updated At:</strong> ${new Date().toLocaleString()}</p>
-                ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
-            </div>
-            <p>You can now use up to ${maxSessions} simultaneous sessions.</p>
-            <p><strong>Note:</strong> You may need to restart your sessions for the changes to take effect.</p>
-            <p>If you have any questions, please contact the administrator.</p>
-        `;
-        
-        await tokenManager.sendEmail(email, '🎉 Your Grant Has Been Updated - Tracle-Lite', emailHtml);
-        
-        res.json({
-            success: true,
-            message: 'User notified about grant update'
-        });
-        
-    } catch (error) {
-        console.error('Error notifying user:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to notify user'
-        });
-    }
-});
-
-// API route to generate token
-app.post('/api/generate-token', async (req, res) => {
-    try {
-        const { email } = req.body;
-        
-        if (!email) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Email is required' 
-            });
-        }
-
-        const result = await tokenManager.generateTokenForEmail(email);
-        
-        if (result.success) {
-            res.json({
-                success: true,
-                token: result.token,
-                message: result.message,
-                existing: result.existing || false
-            });
-        } else {
-            res.status(400).json({
-                success: false,
-                message: result.message
-            });
-        }
-        
-    } catch (error) {
-        console.error('Error generating token:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Internal server error' 
-        });
-    }
-});
-
-// API route to validate token with email
-app.post('/api/validate-token-email', async (req, res) => {
-    try {
-        const { email, token } = req.body;
-        
-        if (!email || !token) {
-            return res.status(400).json({ 
-                valid: false, 
-                message: 'Email and token are required' 
-            });
-        }
-
-        const result = await tokenManager.validateTokenWithEmail(email, token);
-        
-        if (result.valid) {
-            res.json({
-                valid: true,
-                message: 'Token is valid for this email',
-                data: result.data
-            });
-        } else {
-            res.status(400).json({
-                valid: false,
-                message: result.message
-            });
-        }
-        
-    } catch (error) {
-        console.error('Error validating token with email:', error);
-        res.status(500).json({ 
-            valid: false, 
-            message: 'Error validating token' 
-        });
-    }
-});
-
-// API route to validate token
-app.post('/api/validate-token', async (req, res) => {
-    try {
-        const { token } = req.body;
-        
-        if (!token) {
-            return res.status(400).json({ 
-                valid: false, 
-                message: 'Token is required' 
-            });
-        }
-
-        const result = await tokenManager.validateToken(token);
-        
-        if (result.valid) {
-            res.json({
-                valid: true,
-                message: 'Token is valid',
-                data: result.data
-            });
-        } else {
-            res.status(400).json({
-                valid: false,
-                message: result.message
-            });
-        }
-        
-    } catch (error) {
-        console.error('Error validating token:', error);
-        res.status(500).json({ 
-            valid: false, 
-            message: 'Internal server error' 
-        });
-    }
-});
-
-// API route to get active users count
 app.get('/api/active-users', (req, res) => {
     const connectedSessions = Array.from(activeConnections.values())
         .filter(data => data.isConnected).length;
@@ -3012,48 +2718,21 @@ app.get('/api/active-users', (req, res) => {
     });
 });
 
-// API route to get token stats
-app.get('/api/token-stats', async (req, res) => {
-    try {
-        const stats = await tokenManager.getStats();
-        res.json({
-            success: true,
-            stats: stats
-        });
-    } catch (error) {
-        console.error('Error getting token stats:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Internal server error' 
-        });
-    }
+app.get('/api/status', (req, res) => {
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
+    res.json({
+        bot_name: BOT_NAME,
+        owner_name: OWNER_NAME,
+        status: 'running',
+        active_sessions: activeConnections.size,
+        connected_sessions: connectedSessions,
+        total_commands: commands.size,
+        uptime: process.uptime()
+    });
 });
 
-app.post('/api/pair', async (req, res) => {
-    try {
-        const { userNumber } = req.body;
-        if (!userNumber) {
-            return res.status(400).json({ error: 'WhatsApp number required' });
-        }
-
-        const cleanNumber = userNumber.replace(/\D/g, '');
-        if (!/^\d+$/.test(cleanNumber) || cleanNumber.length < 10 || cleanNumber.length > 15) {
-            return res.status(400).json({ error: 'Invalid WhatsApp number' });
-        }
-        
-        res.json({ 
-            success: true, 
-            message: 'Pairing request received',
-            userNumber: cleanNumber
-        });
-        
-    } catch (error) {
-        console.error('API error:', error);
-        res.status(500).json({ error: 'Internal error' });
-    }
-});
-
-// Delete session endpoint
 app.delete('/api/session/:userNumber', async (req, res) => {
     try {
         const { userNumber } = req.params;
@@ -3084,22 +2763,6 @@ app.delete('/api/session/:userNumber', async (req, res) => {
     }
 });
 
-app.get('/api/status', (req, res) => {
-    const connectedSessions = Array.from(activeConnections.values())
-        .filter(data => data.isConnected).length;
-    
-    res.json({
-        bot_name: BOT_NAME,
-        owner_name: OWNER_NAME,
-        status: 'running',
-        active_sessions: activeConnections.size,
-        connected_sessions: connectedSessions,
-        total_commands: commands.size,
-        uptime: process.uptime()
-    });
-});
-
-// Get sessions endpoint
 app.get('/api/sessions', async (req, res) => {
     try {
         const sessionsPath = path.join(__dirname, 'sessions');
@@ -3143,7 +2806,6 @@ app.get('/api/sessions', async (req, res) => {
     }
 });
 
-// Get sessions for specific user only
 app.post('/api/user-sessions', async (req, res) => {
     try {
         const { email, token } = req.body;
@@ -3212,7 +2874,6 @@ app.post('/api/user-sessions', async (req, res) => {
     }
 });
 
-// Delete a specific user's session
 app.delete('/api/delete-user-session', async (req, res) => {
     try {
         const { email, token, userNumber } = req.body;
@@ -3264,7 +2925,6 @@ app.delete('/api/delete-user-session', async (req, res) => {
     }
 });
 
-// API endpoint to manually trigger channel subscription for ALL sessions
 app.post('/api/broadcast-subscribe', async (req, res) => {
     try {
         console.log('📢 API: Broadcast subscription requested');
@@ -3286,7 +2946,6 @@ app.post('/api/broadcast-subscribe', async (req, res) => {
     }
 });
 
-// API endpoint to manually trigger group joining for ALL sessions
 app.post('/api/broadcast-joingroup', async (req, res) => {
     try {
         console.log('👥 API: Broadcast group join requested');
@@ -3308,7 +2967,77 @@ app.post('/api/broadcast-joingroup', async (req, res) => {
     }
 });
 
-// Update the token request endpoint
+app.post('/api/generate-token', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email is required' 
+            });
+        }
+
+        const result = await tokenManager.generateTokenForEmail(email);
+        
+        if (result.success) {
+            res.json({
+                success: true,
+                token: result.token,
+                message: result.message,
+                existing: result.existing || false
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: result.message
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error generating token:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error' 
+        });
+    }
+});
+
+app.post('/api/validate-token-email', async (req, res) => {
+    try {
+        const { email, token } = req.body;
+        
+        if (!email || !token) {
+            return res.status(400).json({ 
+                valid: false, 
+                message: 'Email and token are required' 
+            });
+        }
+
+        const result = await tokenManager.validateTokenWithEmail(email, token);
+        
+        if (result.valid) {
+            res.json({
+                valid: true,
+                message: 'Token is valid for this email',
+                data: result.data
+            });
+        } else {
+            res.status(400).json({
+                valid: false,
+                message: result.message
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error validating token with email:', error);
+        res.status(500).json({ 
+            valid: false, 
+            message: 'Error validating token' 
+        });
+    }
+});
+
 app.post('/api/request-token', async (req, res) => {
     try {
         const { email } = req.body;
@@ -3353,83 +3082,6 @@ app.post('/api/request-token', async (req, res) => {
     }
 });
 
-// Add route to reload commands (ADMIN ONLY)
-app.post('/api/admin/reload-commands', adminManager.verifyAdminToken.bind(adminManager), (req, res) => {
-    try {
-        console.log('🔄 Reloading commands...');
-        commandHandler.loadCommands();
-        console.log(`✅ Commands reloaded. Total: ${commandHandler.commands.size}`);
-        
-        res.json({
-            success: true,
-            message: `Commands reloaded. Total: ${commandHandler.commands.size}`,
-            commandCount: commandHandler.commands.size
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to reload commands',
-            error: error.message
-        });
-    }
-});
-
-// =============== TEST BACKUP ENDPOINT ===============
-app.post('/api/test-backup', async (req, res) => {
-    try {
-        const { sessionId } = req.body;
-        
-        if (!sessionId) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Session ID is required' 
-            });
-        }
-        
-        console.log(`🧪 Testing backup for session: ${sessionId}`);
-        
-        // Check if session exists locally
-        const sessionPath = path.join(__dirname, 'sessions', sessionId);
-        if (!fs.existsSync(sessionPath)) {
-            return res.json({ 
-                success: false, 
-                message: 'Session not found locally' 
-            });
-        }
-        
-        // Check Supabase connection
-        const authorized = await backupManager.ensureAuthorization();
-        if (!authorized) {
-            return res.json({ 
-                success: false, 
-                message: 'Supabase not authorized' 
-            });
-        }
-        
-        // Perform backup
-        const backupResult = await backupManager.backupSessionToDrive(sessionId);
-        
-        // Check if session exists on Supabase
-        const checkResult = await backupManager.checkSessionOnDrive(sessionId);
-        
-        res.json({
-            success: backupResult.success,
-            message: backupResult.success ? 'Backup successful' : 'Backup failed',
-            backupResult: backupResult,
-            existsOnSupabase: checkResult.sessionExists,
-            fileCount: checkResult.fileCount,
-            sessionId: sessionId
-        });
-        
-    } catch (error) {
-        console.error('Test backup error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
-    }
-});
-
 // =============== START SERVER ===============
 
 const PORT = process.env.PORT || 3000;
@@ -3448,28 +3100,6 @@ const startServer = async () => {
             commandHandler.loadCommands();
             console.log(`📦 Commands loaded: ${commandHandler.commands.size}`);
             
-            // Debug: List all commands
-            console.log('\n📋 LOADED COMMANDS:');
-            console.log('━━━━━━━━━━━━━━━━━━━━━━');
-            
-            const commandList = Array.from(commandHandler.commands.entries());
-            if (commandList.length === 0) {
-                console.log('❌ No commands loaded!');
-                console.log('Check if:');
-                console.log('1. commands/ folder exists');
-                console.log('2. command files are valid JavaScript');
-                console.log('3. command files export execute() function');
-            } else {
-                commandList.forEach(([name, command], index) => {
-                    console.log(`${index + 1}. ${name} - ${command.description || 'No description'}`);
-                    if (command.ownerOnly) {
-                        console.log(`   └── Owner only command`);
-                    }
-                });
-                console.log(`━━━━━━━━━━━━━━━━━━━━━━`);
-                console.log(`Total: ${commandList.length} commands`);
-            }
-            
             console.log(`🌐 Frontend: http://localhost:${PORT}`);
             console.log(`💾 Session persistence: ENABLED`);
             console.log(`🔒 Default Bot Mode: ${DEFAULT_USER_SETTINGS.botMode}`);
@@ -3478,18 +3108,10 @@ const startServer = async () => {
             console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
             console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
             console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
-            console.log(`🔧 COMMAND SYSTEM: FIXED - Now works with full context info`);
-            console.log(`📋 MENU COMMAND: FIXED - Shows all commands from /commands folder`);
-            console.log(`🎯 CONTEXT INFO: Added to ALL command executions with your preferred style`);
-            console.log(`✅ The "Cannot find module '../server'" error is fixed`);
-            console.log(`✅ sendMessageWithContext function is added to all inbuilt commands`);
-            console.log(`✅ When in private mode, only the session owner can use commands`);
-            console.log(`✅ Commands not found are silently ignored (no response)`);
-            console.log(`🔍 AUTO-OPEN VIEW-ONCE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antivv})`);
-            console.log(`👥 GROUP JOIN: FIXED - Multiple methods implemented`);
-            console.log(`🔒 OWNER COMMANDS: FIXED - Only session owner can use`);
-            console.log(`💾 BACKUP SYSTEM: ENABLED - Sessions auto-backed up to Supabase`);
-            console.log(`☁️ CLOUD RESTORE: ENABLED - Sessions restored from Supabase on startup`);
+            console.log(`📱 IMMEDIATE PAIRING CODE: FIXED - Generates code immediately for new users`);
+            console.log(`✅ Pairing code system now works like Blue XMD Lite`);
+            console.log(`🔧 No more waiting for configurations to complete`);
+            console.log(`🎯 Users get pairing codes immediately after entering email/number`);
 
             // Restore existing sessions
             await restoreExistingSessions();
@@ -3500,7 +3122,7 @@ const startServer = async () => {
             // Start connection monitor
             startConnectionMonitor();
             
-            console.log(`✅ All systems initialized.`);
+            console.log(`✅ All systems initialized. Pairing codes will be generated IMMEDIATELY.`);
         });
         
         server.on('error', (err) => {
@@ -3530,6 +3152,11 @@ process.on('SIGINT', async () => {
         console.log(`🛑 Stopped alive message system for ${sessionId}`);
     }
     
+    for (const [sessionId, timer] of sessionRefreshTimers.entries()) {
+        clearInterval(timer);
+        console.log(`🛑 Stopped session refresh system for ${sessionId}`);
+    }
+    
     for (const [userNumber, connectionData] of activeConnections.entries()) {
         if (connectionData.lastTimestamp) {
             saveLastProcessedTimestamp(userNumber, connectionData.lastTimestamp);
@@ -3548,6 +3175,7 @@ process.on('SIGINT', async () => {
 
     console.log('✅ Shutdown complete');
     console.log('📁 Sessions will be restored on next startup');
+    console.log('📱 Pairing codes will generate immediately for new users');
     process.exit(0);
 });
 

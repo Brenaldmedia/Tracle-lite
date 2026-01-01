@@ -1,8 +1,7 @@
-// script.js - COMPLETE UPDATED VERSION
+// script.js - FREE VERSION WITHOUT TOKENS
 const socket = io();
 let countdownInterval;
 let currentUserNumber = null;
-let currentUserToken = null;
 let currentUserEmail = null;
 
 // ===== DOM ELEMENTS =====
@@ -21,11 +20,9 @@ const elements = {
     codeDisplay: document.getElementById('codeDisplay'),
     countdown: document.getElementById('countdown'),
     connectedNumber: document.getElementById('connectedNumber'),
-    emailInput: document.getElementById('emailInput'),
     codeEmail: document.getElementById('codeEmail'),
-    codeTokenInput: document.getElementById('codeTokenInput'),
     codeNumber: document.getElementById('codeNumber'),
-    tokenValidationResult: document.getElementById('tokenValidationResult'),
+    validationResult: document.getElementById('validationResult'),
     sessionsList: document.getElementById('sessionsList'),
     customModal: document.getElementById('customModal'),
     modalTitle: document.getElementById('modalTitle'),
@@ -74,23 +71,6 @@ function hideLoader(button) {
     delete button.dataset.originalHtml;
 }
 
-function showSectionLoader(sectionId, text = 'Loading...') {
-    const section = document.getElementById(sectionId);
-    if (!section) return;
-    
-    const loader = document.createElement('div');
-    loader.className = 'section-loader';
-    loader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
-    loader.id = `${sectionId}-loader`;
-    
-    section.appendChild(loader);
-}
-
-function hideSectionLoader(sectionId) {
-    const loader = document.getElementById(`${sectionId}-loader`);
-    if (loader) loader.remove();
-}
-
 function showPairingSectionLoader(text = 'Generating pairing code...') {
     if (!elements.pairingSection) return;
     
@@ -117,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initSocket();
     initEventListeners();
-    checkSavedToken();
+    checkSavedUser();
     checkThemePreference();
     checkAdminAccess();
     initAdminApplication();
@@ -224,11 +204,9 @@ function initAdminApplication() {
         });
         
         elements.adminReason.addEventListener('paste', function(e) {
-            // Allow paste to happen first
             setTimeout(() => {
                 updateWordCount();
                 
-                // If after paste we exceed 100 words, truncate
                 const text = this.value.trim();
                 const words = text.split(/\s+/).filter(word => word.length > 0);
                 
@@ -238,25 +216,10 @@ function initAdminApplication() {
                     
                     showToast('⚠️ Pasted text was truncated to 100 words maximum', 'warning');
                     
-                    // Update count again after truncation
                     updateWordCount();
                 }
             }, 0);
         });
-        
-        // Add validation before form submission (optional)
-        if (elements.adminForm) {
-            elements.adminForm.addEventListener('submit', function(e) {
-                const text = elements.adminReason.value.trim();
-                const words = text.split(/\s+/).filter(word => word.length > 0);
-                
-                if (words.length > 100) {
-                    e.preventDefault();
-                    showToast('⚠️ Please reduce your text to 100 words or less', 'warning');
-                    elements.adminReason.focus();
-                }
-            });
-        }
     }
     
     function updateWordCount() {
@@ -264,11 +227,9 @@ function initAdminApplication() {
         const words = text.split(/\s+/).filter(word => word.length > 0);
         const wordCount = words.length;
         
-        // Update character count display
         if (elements.charCount) {
             elements.charCount.textContent = `${wordCount} / 100 words`;
             
-            // Color coding
             if (wordCount > 100) {
                 elements.charCount.style.color = 'var(--accent-danger)';
             } else if (wordCount >= 80) {
@@ -279,14 +240,11 @@ function initAdminApplication() {
                 elements.charCount.style.color = 'var(--text-secondary)';
             }
             
-            // Only prevent typing if we're at or over 100 words
             if (wordCount >= 100) {
-                // Truncate if somehow we have more than 100 words
                 if (words.length > 100) {
                     const limitedText = words.slice(0, 100).join(' ');
                     elements.adminReason.value = limitedText;
                     
-                    // Update count again after truncation
                     setTimeout(() => updateWordCount(), 0);
                     
                     showToast('⚠️ Maximum 100 words reached', 'warning');
@@ -310,7 +268,6 @@ async function submitAdminApplication() {
         return;
     }
 
-    // Word count validation (DO NOT TOUCH THIS PART - keeping as is)
     const words = reason.split(/\s+/).filter(word => word.length > 0);
     
     if (words.length > 100) {
@@ -323,7 +280,6 @@ async function submitAdminApplication() {
         return;
     }
     
-    // Country validation
     if (!validateCountry(country)) {
         showModal('Invalid Country', 'Please enter a valid country name (letters, spaces, hyphens, and apostrophes only).', 'OK');
         return;
@@ -341,7 +297,6 @@ async function submitAdminApplication() {
     }
 
     try {
-        // FIXED: Using correct endpoint
         const response = await fetch('/api/submit-admin-application', {
             method: 'POST',
             headers: { 
@@ -373,7 +328,7 @@ async function submitAdminApplication() {
                     elements.charCount.style.color = 'var(--accent-success)';
                 }
 
-                // Show success message directly in the section (like token request does)
+                // Show success message
                 showAdminApplicationSuccess(email, name);
                 
                 showToast('✅ Application submitted successfully!', 'success');
@@ -381,7 +336,6 @@ async function submitAdminApplication() {
                 showModal('Submission Failed', data.message || 'Failed to submit application. Please try again.', 'OK');
             }
         } else {
-            // Handle server errors better
             const errorData = await response.json().catch(() => ({ message: 'Server error occurred' }));
             throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
         }
@@ -400,7 +354,6 @@ function showAdminApplicationSuccess(email, name) {
     const section = document.getElementById('adminApplicationSection');
     if (!section) return;
     
-    // Replace the entire section content with success message
     section.innerHTML = `
         <div class="section-header">
             <h2><i class="fas fa-check-circle"></i> Application Submitted!</h2>
@@ -645,11 +598,7 @@ function showSection(section) {
     switch(section) {
         case 'home':
             headerTitle.textContent = 'Dashboard';
-            headerSubtitle.textContent = 'Welcome to Tracle-Lite Pro';
-            break;
-        case 'token':
-            headerTitle.textContent = 'Get Token';
-            headerSubtitle.textContent = 'Request your access token';
+            headerSubtitle.textContent = 'Welcome to Tracle-Lite Pro - Free Edition';
             break;
         case 'features':
             headerTitle.textContent = 'Features';
@@ -686,22 +635,29 @@ function initSocket() {
         }
     });
     
+    // =============== FIXED: IMMEDIATE PAIRING CODE RECEIPT ===============
     socket.on('pairing-code', (data) => {
-        console.log('Received pairing code:', data);
+        console.log('✅ Received pairing code for:', data.userNumber);
         
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        // Check if this code is for the current user
+        if (data.email !== currentUserEmail) {
             console.log('Ignoring pairing code for different user');
             return;
         }
         
         currentUserNumber = data.userNumber;
         const code = data.pairingCode;
+        
+        // Hide loader and show code immediately
         hidePairingSectionLoader();
         showPairingCode(code);
+        
+        // Start countdown
+        startCountdown(180); // 3 minutes
     });
     
     socket.on('connected', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        if (data.email !== currentUserEmail) {
             console.log('Ignoring connection for different user');
             return;
         }
@@ -711,21 +667,22 @@ function initSocket() {
     });
     
     socket.on('disconnected', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        if (data.email !== currentUserEmail) {
             return;
         }
         showToast('WhatsApp session disconnected', 'warning');
     });
     
     socket.on('error', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        if (data.email !== currentUserEmail) {
             return;
         }
         showToast('Error: ' + data.error, 'error');
+        hidePairingSectionLoader();
     });
     
     socket.on('pairing-expired', (data) => {
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        if (data.email !== currentUserEmail) {
             return;
         }
         showToast('Pairing code expired. Generate a new one.', 'warning');
@@ -734,9 +691,9 @@ function initSocket() {
     });
     
     socket.on('qr', (data) => {
-        console.log('Received QR data:', data);
+        console.log('Received QR data for:', data.userNumber);
         
-        if (data.email !== currentUserEmail || data.token !== currentUserToken) {
+        if (data.email !== currentUserEmail) {
             console.log('Ignoring QR for different user');
             return;
         }
@@ -749,102 +706,54 @@ function initSocket() {
     });
 }
 
-// ===== TOKEN MANAGEMENT =====
-function checkSavedToken() {
-    const savedToken = localStorage.getItem('user_token');
+// ===== USER MANAGEMENT =====
+function checkSavedUser() {
     const savedEmail = localStorage.getItem('user_email');
     
-    if (savedToken && savedEmail) {
-        currentUserToken = savedToken;
+    if (savedEmail) {
         currentUserEmail = savedEmail;
         
         if (elements.userEmail) {
             elements.userEmail.textContent = savedEmail;
         }
         if (elements.userStatus) {
-            elements.userStatus.textContent = 'Token: ' + savedToken.substring(0, 12) + '...';
+            elements.userStatus.textContent = 'Free User';
             elements.userStatus.style.color = 'var(--accent-success)';
         }
-        if (elements.codeTokenInput) {
-            elements.codeTokenInput.value = savedToken;
-        }
         
-        showToast('✅ Welcome back! Your token is loaded.', 'success');
+        showToast('✅ Welcome back!', 'success');
     }
 }
 
-function saveUserToken(token, email) {
-    localStorage.setItem('user_token', token);
+function saveUserEmail(email) {
     localStorage.setItem('user_email', email);
-    localStorage.setItem('token_saved_at', Date.now());
     
-    currentUserToken = token;
     currentUserEmail = email;
     
     if (elements.userEmail) {
         elements.userEmail.textContent = email;
     }
     if (elements.userStatus) {
-        elements.userStatus.textContent = 'Token: ' + token.substring(0, 12) + '...';
+        elements.userStatus.textContent = 'Free User';
         elements.userStatus.style.color = 'var(--accent-success)';
     }
-    if (elements.codeTokenInput) {
-        elements.codeTokenInput.value = token;
-    }
     
-    showToast('✅ Token saved for this session', 'success');
+    showToast('✅ Email saved for this session', 'success');
 }
 
-// ===== TOKEN VALIDATION =====
-async function validateTokenForUser(email, token) {
-    try {
-        const response = await fetch('/api/validate-token-email', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ 
-                email: email,
-                token: token 
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: Token validation failed`);
-        }
-        
-        const data = await response.json();
-        return data;
-        
-    } catch (error) {
-        console.error('❌ Token validation error:', error);
-        return { 
-            valid: false, 
-            message: 'Failed to validate token. Please try again.' 
-        };
-    }
-}
-
-// ===== MAIN PAIRING CODE FUNCTION =====
+// ===== MAIN PAIRING CODE FUNCTION - FIXED =====
 async function getPairingCode() {
     const email = elements.codeEmail.value.trim();
-    const token = elements.codeTokenInput.value.trim();
     const number = elements.codeNumber.value.trim();
     
-    if (!email || !token || !number) {
-        showModal('Missing Information', 'Please fill in all fields: Email, Token, and WhatsApp Number.', 'OK');
-        return;
-    }
-    
-    if (!token.startsWith('Tracle_') || token.length !== 18) {
-        showModal('Invalid Token', 'Token should start with "Tracle_" and be exactly 18 characters long.', 'OK');
+    if (!email || !number) {
+        showModal('Missing Information', 'Please fill in both Email and WhatsApp Number.', 'OK');
         return;
     }
     
     const validatedNumber = validateWhatsAppNumber(number);
     if (!validatedNumber) {
-        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 1234567890, 441234567890)', 'OK');
+        showModal('Invalid Number', 'Please enter a valid WhatsApp number with country code (e.g., 2348123456789)', 'OK');
         return;
     }
     
@@ -857,64 +766,61 @@ async function getPairingCode() {
     }
     
     try {
-        const validationResult = await validateTokenForUser(email, token);
+        // Save user email first
+        saveUserEmail(email);
         
-        if (validationResult.valid) {
-            saveUserToken(token, email);
-            
-            showPairingSectionLoader('Generating pairing code...');
-            
-            if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
-                elements.pairingSection.classList.remove('hidden');
-            }
-            
-            if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
-                elements.statusSection.classList.add('hidden');
-            }
-            
-            const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: email,
-                    token: token,
-                    userNumber: validatedNumber
-                })
-            });
-            
-            if (sessionCheckResponse.ok) {
-                const sessionData = await sessionCheckResponse.json();
-                
-                if (sessionData.sessionExists) {
-                    hideLoader(getCodeBtn);
-                    showModal('Session Found', 
-                        `A session already exists for ${validatedNumber}.<br><br>
-                        <strong>Options:</strong><br>
-                        1. Restore existing session (if disconnected)<br>
-                        2. Generate new pairing code<br>
-                        3. Delete session and start fresh<br><br>
-                        <span style="color: var(--accent-warning); font-size: 12px;">
-                            Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
-                        </span>`,
-                        'Generate New Code',
-                        () => {
-                            createNewSession(validatedNumber, email, token, true);
-                        },
-                        () => {
-                            // Cancel
-                        }
-                    );
-                } else {
-                    createNewSession(validatedNumber, email, token, false);
-                }
-            } else {
-                createNewSession(validatedNumber, email, token, false);
-            }
-            
-        } else {
-            hideLoader(getCodeBtn);
-            showModal('Token Error', validationResult.message || 'Failed to verify token.', 'OK');
+        // Show pairing section immediately
+        showPairingSectionLoader('Generating pairing code...');
+        
+        if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
+            elements.pairingSection.classList.remove('hidden');
         }
+        
+        if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
+            elements.statusSection.classList.add('hidden');
+        }
+        
+        // Check if session exists
+        const sessionCheckResponse = await fetch('/api/user/check-session-exists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: email,
+                userNumber: validatedNumber
+            })
+        });
+        
+        if (sessionCheckResponse.ok) {
+            const sessionData = await sessionCheckResponse.json();
+            
+            if (sessionData.sessionExists) {
+                hideLoader(getCodeBtn);
+                showModal('Session Found', 
+                    `A session already exists for ${validatedNumber}.<br><br>
+                    <strong>Options:</strong><br>
+                    1. Restore existing session (if disconnected)<br>
+                    2. Generate new pairing code<br>
+                    3. Delete session and start fresh<br><br>
+                    <span style="color: var(--accent-warning); font-size: 12px;">
+                        Note: If you choose "Generate New Code", the existing session will be deleted and replaced with a new one.
+                    </span>`,
+                    'Generate New Code',
+                    () => {
+                        createNewSession(validatedNumber, email, true);
+                    },
+                    () => {
+                        // Cancel
+                    }
+                );
+            } else {
+                // Create new session - pairing code will be generated immediately
+                createNewSession(validatedNumber, email, false);
+            }
+        } else {
+            // Create new session
+            createNewSession(validatedNumber, email, false);
+        }
+        
     } catch (error) {
         console.error('Pairing code error:', error);
         hideLoader(getCodeBtn);
@@ -923,26 +829,26 @@ async function getPairingCode() {
     }
 }
 
-function createNewSession(userNumber, email, token, deleteExisting = false) {
+function createNewSession(userNumber, email, deleteExisting = false) {
     if (deleteExisting) {
-        deleteUserSessionImmediately(userNumber, email, token, () => {
-            actuallyCreateNewSession(userNumber, email, token);
+        deleteUserSessionImmediately(userNumber, email, () => {
+            actuallyCreateNewSession(userNumber, email);
         });
     } else {
-        actuallyCreateNewSession(userNumber, email, token);
+        actuallyCreateNewSession(userNumber, email);
     }
 }
 
-function actuallyCreateNewSession(userNumber, email, token) {
+function actuallyCreateNewSession(userNumber, email) {
     showPairingSectionLoader('Creating new session...');
     
+    // Send create session request - server will generate pairing code immediately
     socket.emit('create-session', {
         userNumber: userNumber,
-        email: email,
-        token: token
+        email: email
     });
     
-    startCountdown(120);
+    // Note: Pairing code will come via socket event
 }
 
 function validateWhatsAppNumber(number) {
@@ -960,26 +866,33 @@ function validateWhatsAppNumber(number) {
 }
 
 function showPairingCode(code) {
-    if (!elements.pairingSection.classList.contains('hidden')) {
+    // Make sure pairing section is visible
+    if (elements.pairingSection.classList.contains('hidden')) {
         elements.pairingSection.classList.remove('hidden');
     }
     
+    // Hide status section if visible
     if (!elements.statusSection.classList.contains('hidden')) {
         elements.statusSection.classList.add('hidden');
     }
     
+    // Display the pairing code
     if (elements.codeDisplay) {
         elements.codeDisplay.innerHTML = `
             <div class="code-text">${code}</div>
             <button class="copy-btn" onclick="copyToClipboard('${code}')">
-                <i class="fas fa-copy"></i> Copy
+                <i class="fas fa-copy"></i> Copy Code
             </button>
+            <p class="code-instructions">
+                <i class="fas fa-info-circle"></i>
+                Open WhatsApp → Settings → Linked Devices → Link Device → Enter code
+            </p>
         `;
     }
     
-    startCountdown(120);
-    showToast('✅ Pairing code generated! Click "Copy" to copy it.', 'success');
+    showToast('✅ Pairing code generated! Click "Copy Code" to copy it.', 'success');
     
+    // Scroll to pairing section
     const codeSection = document.getElementById('pairingSection');
     if (codeSection) {
         setTimeout(() => {
@@ -1056,81 +969,16 @@ function stopCountdown() {
     }
 }
 
-// ===== TOKEN REQUEST FUNCTIONS =====
-async function requestToken() {
-    const email = elements.emailInput.value.trim();
-    
-    if (!email) {
-        showModal('Email Required', 'Please enter your email address to request a token.', 'OK');
-        return;
-    }
-    
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@(gmail\.com|outlook\.com)$/;
-    if (!emailRegex.test(email)) {
-        showModal('Invalid Email', 'Only @gmail.com or @outlook.com emails are allowed.', 'OK');
-        return;
-    }
-    
-    const requestBtn = document.querySelector('.primary-btn[onclick*="requestToken"]') ||
-                      document.querySelector('button:contains("Request Token")');
-    
-    if (requestBtn) {
-        showLoader(requestBtn, 'Requesting...');
-    }
-    
-    try {
-        const response = await fetch('/api/request-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showModal('Request Submitted', 
-                `<div style="text-align: center; padding: 20px;">
-                    <i class="fas fa-check-circle" style="font-size: 48px; color: var(--accent-success); margin-bottom: 20px;"></i>
-                    <h3 style="margin-bottom: 10px;">Token Request Submitted!</h3>
-                    <p>${data.message}</p>
-                    <p><strong>Your request has been sent to admin.</strong></p>
-                    <p>Please wait for admin approval and check your email <strong>${email}</strong> for the token.</p>
-                    <div style="background: var(--bg-tertiary); padding: 15px; border-radius: var(--border-radius); margin-top: 20px;">
-                        <p><i class="fas fa-info-circle"></i> <strong>Contact Admin if you have issues:</strong></p>
-                        <p>📧 Email: <a href="mailto:brenaldmedia@gmail.com" class="clickable-link email-link" target="_blank">brenaldmedia@gmail.com</a></p>
-                        <p>📱 WhatsApp: <a href="https://wa.me/2349025303930" class="clickable-link whatsapp-link" target="_blank">+234 902 530 3930</a></p>
-                    </div>
-                </div>`, 
-                'Got it', 
-                () => {
-                    if (elements.emailInput) {
-                        elements.emailInput.value = '';
-                    }
-                });
-            
-        } else {
-            showModal('Request Failed', data.message || 'Failed to request token. Please try again.', 'OK');
-        }
-    } catch (error) {
-        showModal('Network Error', 'Failed to connect to server. Please check your internet connection.', 'OK');
-        console.error('Token request error:', error);
-    } finally {
-        if (requestBtn) {
-            hideLoader(requestBtn);
-        }
-    }
-}
-
 // ===== SESSIONS MANAGEMENT =====
 async function loadUserSessions() {
     try {
-        if (!currentUserEmail || !currentUserToken) {
+        if (!currentUserEmail) {
             if (elements.sessionsList) {
                 elements.sessionsList.innerHTML = `
                     <div class="no-sessions">
                         <i class="fas fa-key"></i>
                         <h4>Authentication Required</h4>
-                        <p>Please enter your email and token first.</p>
+                        <p>Please enter your email first.</p>
                         <button class="primary-btn" onclick="showSection('home')">
                             <i class="fas fa-home"></i> Go to Dashboard
                         </button>
@@ -1155,8 +1003,7 @@ async function loadUserSessions() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
-                email: currentUserEmail,
-                token: currentUserToken
+                email: currentUserEmail
             })
         });
         
@@ -1232,7 +1079,7 @@ async function loadUserSessions() {
 
 // ===== SESSION MANAGEMENT FUNCTIONS =====
 async function restoreSession(userNumber) {
-    if (!currentUserEmail || !currentUserToken) {
+    if (!currentUserEmail) {
         showToast('Authentication required', 'error');
         return;
     }
@@ -1250,7 +1097,6 @@ async function restoreSession(userNumber) {
             },
             body: JSON.stringify({
                 email: currentUserEmail,
-                token: currentUserToken,
                 userNumber: userNumber
             })
         });
@@ -1261,24 +1107,18 @@ async function restoreSession(userNumber) {
             if (data.success) {
                 showToast('✅ Session restored! Generating new pairing code...', 'success');
                 
+                // Go to home section to see pairing code
                 showSection('home');
                 
                 if (elements.codeNumber) {
                     elements.codeNumber.value = userNumber;
                 }
                 
+                // This will trigger pairing code generation
                 showPairingSectionLoader('Restoring session and generating pairing code...');
                 
-                if (elements.pairingSection && elements.pairingSection.classList.contains('hidden')) {
-                    elements.pairingSection.classList.remove('hidden');
-                }
-                
-                if (elements.statusSection && !elements.statusSection.classList.contains('hidden')) {
-                    elements.statusSection.classList.add('hidden');
-                }
-                
                 setTimeout(() => {
-                    actuallyCreateNewSession(userNumber, currentUserEmail, currentUserToken);
+                    actuallyCreateNewSession(userNumber, currentUserEmail);
                 }, 1000);
             } else {
                 showToast('❌ ' + data.message, 'error');
@@ -1297,7 +1137,7 @@ async function restoreSession(userNumber) {
 }
 
 async function deleteUserSession(userNumber) {
-    if (!currentUserEmail || !currentUserToken) {
+    if (!currentUserEmail) {
         showToast('Authentication required', 'error');
         return;
     }
@@ -1306,7 +1146,7 @@ async function deleteUserSession(userNumber) {
         `Are you sure you want to delete session for ${userNumber}? This will disconnect WhatsApp and remove all session data.`,
         'Delete',
         () => {
-            deleteUserSessionImmediately(userNumber, currentUserEmail, currentUserToken);
+            deleteUserSessionImmediately(userNumber, currentUserEmail);
         },
         () => {
             // Cancel
@@ -1314,7 +1154,7 @@ async function deleteUserSession(userNumber) {
     );
 }
 
-async function deleteUserSessionImmediately(userNumber, email, token, callback = null) {
+async function deleteUserSessionImmediately(userNumber, email, callback = null) {
     const deleteBtn = document.getElementById(`delete-btn-${userNumber}`);
     if (deleteBtn) {
         showLoader(deleteBtn, 'Deleting...');
@@ -1328,7 +1168,6 @@ async function deleteUserSessionImmediately(userNumber, email, token, callback =
             },
             body: JSON.stringify({
                 email: email,
-                token: token,
                 userNumber: userNumber
             })
         });
@@ -1350,8 +1189,7 @@ async function deleteUserSessionImmediately(userNumber, email, token, callback =
             
             socket.emit('disconnect-session', {
                 userNumber: userNumber,
-                email: email,
-                token: token
+                email: email
             });
             
             if (callback) {
@@ -1372,7 +1210,7 @@ async function deleteUserSessionImmediately(userNumber, email, token, callback =
 }
 
 function generateNewCode() {
-    if (!currentUserNumber || !currentUserEmail || !currentUserToken) {
+    if (!currentUserNumber || !currentUserEmail) {
         showToast('Please enter your details first', 'error');
         return;
     }
@@ -1387,7 +1225,7 @@ function generateNewCode() {
     showPairingSectionLoader('Generating new pairing code...');
     
     setTimeout(() => {
-        createNewSession(currentUserNumber, currentUserEmail, currentUserToken, true);
+        createNewSession(currentUserNumber, currentUserEmail, true);
         if (getCodeBtn) {
             hideLoader(getCodeBtn);
         }
@@ -1425,7 +1263,7 @@ function checkAdminAccess() {
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text)
         .then(() => {
-            showToast('Copied to clipboard!', 'success');
+            showToast('✅ Copied to clipboard!', 'success');
         })
         .catch(err => {
             console.error('Failed to copy:', err);
@@ -1468,12 +1306,6 @@ function getToastIcon(type) {
 }
 
 function initEventListeners() {
-    if (elements.emailInput) {
-        elements.emailInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') requestToken();
-        });
-    }
-    
     if (elements.codeEmail) {
         elements.codeEmail.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') getPairingCode();
@@ -1483,17 +1315,6 @@ function initEventListeners() {
     if (elements.codeNumber) {
         elements.codeNumber.addEventListener('input', (e) => {
             e.target.value = e.target.value.replace(/\D/g, '');
-        });
-    }
-    
-    if (elements.codeTokenInput) {
-        elements.codeTokenInput.addEventListener('input', (e) => {
-            const token = e.target.value;
-            if (token.startsWith('Tracle_') && token.length === 18) {
-                e.target.style.borderColor = 'var(--accent-success)';
-            } else {
-                e.target.style.borderColor = '';
-            }
         });
     }
     
@@ -1533,8 +1354,7 @@ window.addEventListener('beforeunload', () => {
     if (currentUserNumber) {
         socket.emit('disconnect-session', {
             userNumber: currentUserNumber,
-            email: currentUserEmail,
-            token: currentUserToken
+            email: currentUserEmail
         });
     }
 });
@@ -1553,7 +1373,6 @@ window.getPairingCode = getPairingCode;
 window.createNewSession = createNewSession;
 window.generateNewCode = generateNewCode;
 window.showSection = showSection;
-window.requestToken = requestToken;
 window.copyToClipboard = copyToClipboard;
 window.loadUserSessions = loadUserSessions;
 window.restoreSession = restoreSession;
@@ -1566,4 +1385,4 @@ window.submitAdminApplication = submitAdminApplication;
 window.closeAdminApplicationModal = closeAdminApplicationModal;
 
 // Initialize
-console.log('🚀 Tracle-Lite Pro Frontend Loaded - Fixed Admin Application Modal');
+console.log('🚀 Tracle-Lite Pro Frontend Loaded - Free Edition (No Tokens)');
