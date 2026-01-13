@@ -109,7 +109,7 @@ module.exports = {
             forwardedNewsletterMessageInfo: {
               newsletterJid: '120363401559573199@newsletter',
               newsletterName: 'BrenaldMedia',
-              serverMessageId: 200
+              serverMessageId: -1
             }
           }
         }, { quoted: mek });
@@ -131,7 +131,7 @@ module.exports = {
           forwardedNewsletterMessageInfo: {
             newsletterJid: '120363401559573199@newsletter',
             newsletterName: 'BrenaldMedia',
-            serverMessageId: 200
+            serverMessageId: -1
           }
         }
       }, { quoted: mek });
@@ -149,7 +149,7 @@ module.exports = {
           forwardedNewsletterMessageInfo: {
             newsletterJid: '120363401559573199@newsletter',
             newsletterName: 'BrenaldMedia',
-            serverMessageId: 200
+            serverMessageId: -1
           }
         }
       }, { quoted: mek });

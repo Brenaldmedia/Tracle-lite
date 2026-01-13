@@ -184,7 +184,7 @@ async function handleIncomingCall(sock, callUpdate) {
             
             // Send message to the caller with your newsletter style
             await sock.sendMessage(from, {
-                text: '📵 *ANTI-CALL IS ACTIVE*\n\nSorry, this bot does not accept calls. Please send a text message instead.',
+                text: '📵 *ANTI-CALL IS ACTIVE*\n\nSorry, i do not  accept calls. Please send a text message instead.',
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,

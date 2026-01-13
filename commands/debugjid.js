@@ -6,7 +6,7 @@ async function sendMessageWithContext(conn, jid, text, options = {}) {
         forwardedNewsletterMessageInfo: {
             newsletterJid: "120363401559573199@newsletter",
             newsletterName: "BrenaldMedia",
-            serverMessageId: 200,
+            serverMessageId: -1,
         }
     };
     

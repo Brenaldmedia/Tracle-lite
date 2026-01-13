@@ -1,63 +1,44 @@
 const { 
     getAntilink, 
     setAntilink, 
-    removeAntilink 
-} = require('../lib/index');
+    removeAntilink,
+    getAllAntilinkSettings,
+    isAntilinkEnabled,
+    parseGroupIdentifier,
+    getGroupJidFromLink
+} = require('../lib/antilink');
 
 module.exports = {
     name: 'antilink',
     pattern: ['antilink'],
-    description: 'Manage antilink settings for groups',
-    usage: '.antilink <on/off/set/get> <delete/kick/warn>',
-    category: 'group',
+    description: 'Manage antilink settings for groups (can be used in DM or group)',
+    usage: 'In group: .antilink <on/off/set> <delete/kick/warn>\nIn DM: .antilink <delete/kick/warn> <group_jid_or_link>',
+    category: 'moderation',
     ownerOnly: false,
-    groupOnly: true,
+    groupOnly: false, // Can be used in DM too
     adminOnly: true,
     
     async execute(conn, message, m, context) {
         try {
-            const { from, sender, isGroup, groupMetadata, args, reply, userPrefix, userSettings, isAdmins, sendMessageWithContext } = context;
+            const { from, sender, isGroup, groupMetadata, args, reply, userPrefix, userSettings, isAdmins, sendMessageWithContext, sessionId } = context;
             
-            // Check if it's a group
-            if (!isGroup) {
-                return await sendMessageWithContext(conn, from, 
-                    '❌ This command can only be used in groups!', {
-                    quoted: message,
-                    externalAdReply: {
-                        title: "Group Only Command",
-                        body: "Antilink settings can only be configured in groups",
-                        thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                        sourceUrl: context.REPO_LINK,
-                        mediaType: 1
-                    }
-                });
-            }
-
-            // Check if sender is admin
-            if (!isAdmins) {
-                return await sendMessageWithContext(conn, from, 
-                    `❌ *Permission Denied!*\n\nOnly group admins can configure antilink settings.`, {
-                    quoted: message,
-                    externalAdReply: {
-                        title: "Admin Only Command",
-                        body: "This command requires admin privileges",
-                        thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                        sourceUrl: context.REPO_LINK,
-                        mediaType: 1
-                    }
-                });
-            }
-
             const action = args[0]?.toLowerCase();
             
             if (!action) {
-                const usage = `\`\`\`🔗 *ANTILINK SYSTEM - ADMIN PANEL*\`\`\`
+                const usage = `\`\`\`🔗 *ANTILINK SYSTEM*\`\`\`
 
-📌 *Available Commands:*
+📌 *Usage in Group:*
 • \`${userPrefix}antilink on\` - Enable antilink
 • \`${userPrefix}antilink set delete|kick|warn\` - Set action
 • \`${userPrefix}antilink off\` - Disable antilink
 • \`${userPrefix}antilink get\` - Check current settings
+
+📌 *Usage in DM:*
+• \`${userPrefix}antilink delete <group_jid_or_link>\`
+• \`${userPrefix}antilink kick <group_jid_or_link>\`
+• \`${userPrefix}antilink warn <group_jid_or_link>\`
+• \`${userPrefix}antilink off <group_jid_or_link>\`
+• \`${userPrefix}antilink get <group_jid_or_link>\`
 
 ⚡ *Available Actions:*
 • \`delete\` - Delete link messages
@@ -70,11 +51,122 @@ module.exports = {
                     quoted: message,
                     externalAdReply: {
                         title: `${userSettings.botName || context.BOT_NAME} Antilink`,
-                        body: "Configure link protection for your group",
+                        body: "Configure link protection for your groups",
                         thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
                         sourceUrl: context.REPO_LINK,
                         mediaType: 1
                     }
+                });
+            }
+
+            // Handle DM commands
+            if (!isGroup) {
+                if (args.length < 2) {
+                    return await sendMessageWithContext(conn, from,
+                        `❌ *Missing Group Identifier*\n\nUsage in DM:\n• ${userPrefix}antilink <delete/kick/warn/off/get> <group_jid_or_link>\n\nExamples:\n• ${userPrefix}antilink delete 120363420555765995@g.us\n• ${userPrefix}antilink kick https://chat.whatsapp.com/HZnha8aKKQRDBOAtK5qUeC`, {
+                        quoted: message
+                    });
+                }
+
+                const dmAction = action;
+                const groupIdentifier = args.slice(1).join(' ');
+                
+                // Parse group jid
+                let groupJid = groupIdentifier;
+                if (groupIdentifier.includes('chat.whatsapp.com')) {
+                    groupJid = await getGroupJidFromLink(conn, groupIdentifier);
+                    if (!groupJid) {
+                        return await sendMessageWithContext(conn, from,
+                            `❌ *Invalid Group Link*\n\nCould not extract group JID from the link.\nPlease provide a valid WhatsApp group link or JID.`, {
+                            quoted: message
+                        });
+                    }
+                } else if (!groupIdentifier.includes('@g.us')) {
+                    groupJid = `${groupIdentifier}@g.us`;
+                }
+
+                // Check if user is admin in the target group
+                let userIsAdmin = false;
+                try {
+                    const groupMetadata = await conn.groupMetadata(groupJid);
+                    const participant = groupMetadata.participants.find(p => p.id === sender);
+                    userIsAdmin = participant && (participant.admin === 'admin' || participant.admin === 'superadmin');
+                } catch (error) {
+                    console.error('Error checking admin status:', error);
+                }
+
+                if (!userIsAdmin) {
+                    return await sendMessageWithContext(conn, from,
+                        `❌ *Permission Denied*\n\nYou must be an admin in the group "${groupJid}" to configure antilink settings.`, {
+                        quoted: message
+                    });
+                }
+
+                // Check if bot is admin in the group
+                let botIsAdmin = false;
+                try {
+                    const groupMetadata = await conn.groupMetadata(groupJid);
+                    const botId = conn.user?.id;
+                    const participant = groupMetadata.participants.find(p => p.id === botId);
+                    botIsAdmin = participant && (participant.admin === 'admin' || participant.admin === 'superadmin');
+                } catch (error) {
+                    console.error('Error checking bot admin status:', error);
+                }
+
+                switch (dmAction) {
+                    case 'delete':
+                    case 'kick':
+                    case 'warn':
+                        if (!botIsAdmin && (dmAction === 'delete' || dmAction === 'kick')) {
+                            await setAntilink(groupJid, dmAction);
+                            return await sendMessageWithContext(conn, from,
+                                `⚠️ *Antilink Enabled with Limitations*\n\n✅ Antilink set to "${dmAction}" for group:\n${groupJid}\n\n❌ *Warning:* Bot is not admin in this group!\nThe "${dmAction}" action requires bot admin permissions.\n\nPlease make the bot admin for full functionality.`, {
+                                quoted: message
+                            });
+                        }
+                        
+                        await setAntilink(groupJid, dmAction);
+                        return await sendMessageWithContext(conn, from,
+                            `✅ *Antilink Configured Successfully*\n\nGroup: ${groupJid}\nAction: ${dmAction.toUpperCase()}\nBot Admin: ${botIsAdmin ? '✅ Yes' : '❌ No'}\n\n${dmAction === 'delete' ? '🔨 Links will be deleted' : ''}\
+                            ${dmAction === 'kick' ? '👢 Users will be kicked immediately' : ''}\
+                            ${dmAction === 'warn' ? '⚠️ Users will be warned (3 warnings = kick)' : ''}`, {
+                            quoted: message
+                        });
+
+                    case 'off':
+                        await removeAntilink(groupJid);
+                        return await sendMessageWithContext(conn, from,
+                            `✅ *Antilink Disabled*\n\nAntilink protection has been turned off for group:\n${groupJid}\n\n⚠️ Links are now allowed in this group.`, {
+                            quoted: message
+                        });
+
+                    case 'get':
+                        const config = await getAntilink(groupJid);
+                        if (!config) {
+                            return await sendMessageWithContext(conn, from,
+                                `❌ *No Configuration*\n\nAntilink is not configured for group:\n${groupJid}\n\nUse: ${userPrefix}antilink <delete/kick/warn> ${groupJid}`, {
+                                quoted: message
+                            });
+                        }
+                        
+                        return await sendMessageWithContext(conn, from,
+                            `🔗 *Antilink Status*\n\nGroup: ${groupJid}\nStatus: ${config.enabled ? '✅ ENABLED' : '❌ DISABLED'}\nAction: ${config.action.toUpperCase()}\nBot Admin: ${botIsAdmin ? '✅ Yes' : '❌ No'}\n\n${config.enabled ? '🛡️ Protection is active' : '⚠️ Protection is disabled'}`, {
+                            quoted: message
+                        });
+
+                    default:
+                        return await sendMessageWithContext(conn, from,
+                            `❌ *Invalid Action*\n\nValid actions: delete, kick, warn, off, get\n\nExample: ${userPrefix}antilink delete 120363420555765995@g.us`, {
+                            quoted: message
+                        });
+                }
+            }
+
+            // Handle group commands (existing functionality)
+            if (!isAdmins) {
+                return await sendMessageWithContext(conn, from, 
+                    `❌ *Permission Denied!*\n\nOnly group admins can configure antilink settings.`, {
+                    quoted: message
                 });
             }
 
@@ -83,56 +175,28 @@ module.exports = {
                     const existingConfig = await getAntilink(from);
                     if (existingConfig?.enabled) {
                         return await sendMessageWithContext(conn, from,
-                            `✅ *Antilink Status*\n\nAntilink is already enabled in this group\n\nAction: ${existingConfig.action.toUpperCase()}\nType: ${existingConfig.type}`, {
-                            quoted: message,
-                            externalAdReply: {
-                                title: "Already Enabled",
-                                body: "Antilink is already active",
-                                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                                sourceUrl: context.REPO_LINK,
-                                mediaType: 1
-                            }
+                            `✅ *Antilink Status*\n\nAntilink is already enabled in this group\n\nAction: ${existingConfig.action.toUpperCase()}`, {
+                            quoted: message
                         });
                     }
-                    await setAntilink(from, 'on', 'delete');
+                    await setAntilink(from, 'delete');
                     return await sendMessageWithContext(conn, from,
                         `🔗 *ANTILINK ENABLED SUCCESSFULLY*\n\n✅ Link protection is now active\n⚡ Default action: Delete messages\n\nUse \`${userPrefix}antilink set <action>\` to change action`, {
-                        quoted: message,
-                        externalAdReply: {
-                            title: "Antilink Enabled",
-                            body: "Link protection is now active",
-                            thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                            sourceUrl: context.REPO_LINK,
-                            mediaType: 1
-                        }
+                        quoted: message
                     });
 
                 case 'off':
                     await removeAntilink(from);
                     return await sendMessageWithContext(conn, from,
                         `🔓 *ANTILINK DISABLED*\n\n✅ Link protection has been turned off\n⚠️ Links are now allowed in this group\n\nUse \`${userPrefix}antilink on\` to enable again`, {
-                        quoted: message,
-                        externalAdReply: {
-                            title: "Antilink Disabled",
-                            body: "Links are now allowed",
-                            thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                            sourceUrl: context.REPO_LINK,
-                            mediaType: 1
-                        }
+                        quoted: message
                     });
 
                 case 'set':
                     if (args.length < 2) {
                         return await sendMessageWithContext(conn, from,
                             `❌ *Missing Action*\n\nPlease specify an action: delete, kick, or warn\n\nExample: \`${userPrefix}antilink set kick\``, {
-                            quoted: message,
-                            externalAdReply: {
-                                title: "Missing Action",
-                                body: "Specify delete/kick/warn",
-                                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                                sourceUrl: context.REPO_LINK,
-                                mediaType: 1
-                            }
+                            quoted: message
                         });
                     }
                     
@@ -140,30 +204,16 @@ module.exports = {
                     if (!['delete', 'kick', 'warn'].includes(setAction)) {
                         return await sendMessageWithContext(conn, from,
                             `❌ *Invalid Action*\n\nPlease choose from: delete, kick, warn\n\nExample: \`${userPrefix}antilink set kick\``, {
-                            quoted: message,
-                            externalAdReply: {
-                                title: "Invalid Action",
-                                body: "Choose delete/kick/warn",
-                                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                                sourceUrl: context.REPO_LINK,
-                                mediaType: 1
-                            }
+                            quoted: message
                         });
                     }
                     
-                    await setAntilink(from, 'on', setAction);
+                    await setAntilink(from, setAction);
                     return await sendMessageWithContext(conn, from,
                         `⚡ *ANTILINK ACTION UPDATED*\n\n✅ Action successfully changed to: ${setAction.toUpperCase()}\n\n${setAction === 'delete' ? '🔨 Links will be deleted' : ''}\
                         ${setAction === 'kick' ? '👢 Users will be kicked immediately' : ''}\
                         ${setAction === 'warn' ? '⚠️ Users will be warned (3 warnings = kick)' : ''}`, {
-                        quoted: message,
-                        externalAdReply: {
-                            title: "Action Updated",
-                            body: `Action set to: ${setAction}`,
-                            thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                            sourceUrl: context.REPO_LINK,
-                            mediaType: 1
-                        }
+                        quoted: message
                     });
 
                 case 'get':
@@ -171,63 +221,26 @@ module.exports = {
                     if (!config) {
                         return await sendMessageWithContext(conn, from,
                             `❌ *NO ANTILINK CONFIGURATION*\n\nAntilink is not configured for this group\n\nUse \`${userPrefix}antilink on\` to enable it`, {
-                            quoted: message,
-                            externalAdReply: {
-                                title: "Not Configured",
-                                body: "Antilink is not enabled",
-                                thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                                sourceUrl: context.REPO_LINK,
-                                mediaType: 1
-                            }
+                            quoted: message
                         });
                     }
                     
-                    const status = config.enabled ? '✅ ENABLED' : '❌ DISABLED';
-                    const actionEmoji = {
-                        'delete': '🔨',
-                        'kick': '👢', 
-                        'warn': '⚠️'
-                    }[config.action] || '⚙️';
-                    
                     return await sendMessageWithContext(conn, from,
-                        `🔗 *ANTILINK STATUS REPORT*\n\n📋 Status: ${status}\n${actionEmoji} Action: ${config.action.toUpperCase()}\n📊 Type: ${config.type}\n\n👑 *Note:* Admin links are always allowed`, {
-                        quoted: message,
-                        externalAdReply: {
-                            title: "Antilink Status",
-                            body: `Status: ${config.enabled ? 'Active' : 'Inactive'}`,
-                            thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                            sourceUrl: context.REPO_LINK,
-                            mediaType: 1
-                        }
+                        `🔗 *ANTILINK STATUS REPORT*\n\n📋 Status: ${config.enabled ? '✅ ENABLED' : '❌ DISABLED'}\n⚡ Action: ${config.action.toUpperCase()}\n\n👑 *Note:* Admin links are always allowed`, {
+                        quoted: message
                     });
 
                 default:
                     return await sendMessageWithContext(conn, from,
                         `❌ *Invalid Option*\n\nPlease use one of these options:\n\`${userPrefix}antilink on\` - Enable\n\`${userPrefix}antilink set <action>\` - Set action\n\`${userPrefix}antilink off\` - Disable\n\`${userPrefix}antilink get\` - Check status`, {
-                        quoted: message,
-                        externalAdReply: {
-                            title: "Invalid Option",
-                            body: "Use on/off/set/get",
-                            thumbnailUrl: userSettings.botImage || context.MENU_IMAGE_URL,
-                            sourceUrl: context.REPO_LINK,
-                            mediaType: 1
-                        }
-                    });
+                        quoted: message
+                        });
             }
         } catch (error) {
             console.error('Error in antilink command:', error);
             return await sendMessageWithContext(conn, message.key.remoteJid, 
                 `❌ *Command Error*\n\nAn error occurred while processing the antilink command\n\nError: ${error.message}`, {
-                quoted: message,
-                contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: "120363401559573199@newsletter",
-                        newsletterName: "BrenaldMedia",
-                        serverMessageId: 200,
-                    }
-                }
+                quoted: message
             });
         }
     }

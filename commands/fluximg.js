@@ -1,50 +1,69 @@
-// === fluximg.js ===
 const axios = require("axios");
 
 module.exports = {
-  pattern: "fluximg",
-  desc: "Generate Flux image 🎇",
-  category: "ai",
-  react: "🎇",
-  filename: __filename,
-  use: ".fluximg <prompt>",
+    pattern: "fluximg",
+    desc: "Generate image using Flux model",
+    category: "ai",
+    react: "🎇",
+    filename: __filename,
+    use: "<prompt>",
 
-  execute: async (conn, mek, m, { from, reply, args }) => {
-    try {
-      const prompt = args.join(" ") || "A handsome gentleman";
-
-      await reply("> ⏳ Generating Flux image...");
-
-      const { data } = await axios.get(
-        `https://api.giftedtech.co.ke/api/ai/fluximg?apikey=gifted&prompt=${encodeURIComponent(prompt)}`
-      );
-
-      // Check response validity
-      if (!data || !data.success || !data.result) {
-        console.error("[fluximg.js] Invalid API response:", data);
-        return reply(`⚠️ Couldn’t generate flux image.\n\n📝 Response: ${JSON.stringify(data)}`);
-      }
-
-      // Send image
-      await conn.sendMessage(
-        from,
-        { image: { url: data.result }, caption: `🎇 *Flux Image Generated*\n\n✨ Prompt: *${prompt}*` },
-        { quoted: mek }
-      );
-
-    } catch (e) {
-      console.error("[fluximg.js]", e);
-
-      let errMsg = "⚠️ Error generating flux image.";
-      if (e.response?.data) {
-        errMsg += `\n\n📝 API Response: ${JSON.stringify(e.response.data)}`;
-      } else if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND") {
-        errMsg += "\n\n🌐 Connection error. API might be down.";
-      } else {
-        errMsg += `\n\nError: ${e.message}`;
-      }
-
-      reply(errMsg);
+    execute: async (conn, message, m, { from, reply, q }) => {
+        try {
+            if (!q) {
+                return reply(`🎇 *Flux Image Generator*\n\nUsage: ${PREFIX}fluximg <prompt>\n\nExample: ${PREFIX}fluximg modern city architecture`);
+            }
+            
+            await reply(`🎇 *Generating Flux image...*\n\nPrompt: "${q}"`);
+            
+            // Using the working API
+            const response = await axios.get(`https://api.bk9.dev/ai/fluximg?q=${encodeURIComponent(q)}`, {
+                timeout: 30000
+            });
+            
+            if (response.data.status && response.data.result) {
+                // Send reaction
+                await conn.sendMessage(from, {
+                    react: { text: "🎨", key: message.key }
+                }).catch(() => {});
+                
+                // Send image
+                await conn.sendMessage(
+                    from,
+                    { 
+                        image: { url: response.data.result }, 
+                        caption: `🎇 *Flux Image Generated*\n\n✨ *Prompt:* ${q}\n\n🔧 *Model:* Flux AI\n📱 *Bot:* Tracle-Lite` 
+                    },
+                    { quoted: message }
+                );
+                
+            } else {
+                await reply(`❌ *Couldn't generate flux image!*\n\nResponse: ${JSON.stringify(response.data, null, 2)}`);
+                
+                // React with error emoji
+                await conn.sendMessage(from, {
+                    react: { text: "❌", key: message.key }
+                }).catch(() => {});
+            }
+            
+        } catch (error) {
+            console.error("[fluximg.js]", error);
+            
+            let errMsg = "❌ *Error generating flux image!*\n\n";
+            if (error.response?.data) {
+                errMsg += `📝 *API Response:* ${JSON.stringify(error.response.data, null, 2)}`;
+            } else if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+                errMsg += "🌐 *Connection error. API might be down.*";
+            } else {
+                errMsg += `🔧 *Error:* ${error.message}`;
+            }
+            
+            await reply(errMsg);
+            
+            // React with error emoji
+            await conn.sendMessage(from, {
+                react: { text: "❌", key: message.key }
+            }).catch(() => {});
+        }
     }
-  },
 };

@@ -58,7 +58,7 @@ module.exports = {
                         forwardedNewsletterMessageInfo: {
                             newsletterJid: "120363401559573199@newsletter",
                             newsletterName: "BrenaldMedia",
-                            serverMessageId: 200
+                            serverMessageId: -1
                         },
                         externalAdReply: {
                             title: "✅ Already Connected",
@@ -100,7 +100,7 @@ module.exports = {
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: "120363401559573199@newsletter",
                         newsletterName: "BrenaldMedia",
-                        serverMessageId: 200
+                        serverMessageId: -1
                     },
                     externalAdReply: {
                         title: "🔗 Connect via Web",
