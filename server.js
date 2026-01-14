@@ -490,6 +490,8 @@ if (IS_PTERODACTYL_PRIMARY) {
     const { Antilink, getAntilink } = require('./lib/index');
     // Import antibadword module
     const antibadwordModule = require('./lib/antibadword');
+    // Import anticall command
+   const anticallModule = require('./commands/anticall');
 
     const sendMessageWithContext = commandHandler.sendMessageWithContext || async function(conn, jid, text, options = {}) {
         const contextInfo = {
@@ -864,18 +866,21 @@ Anyway… stay chaotic. 🌚`;
         }, CONNECTION_CHECK_INTERVAL);
     }
 
-    function getUserSettings(sessionId) {
-        const userConnection = activeConnections.get(sessionId);
-        if (userConnection && userConnection.settings) {
-            return userConnection.settings;
+function getUserSettings(sessionId) {
+    const userConnection = activeConnections.get(sessionId);
+    if (userConnection && userConnection.settings) {
+        if (userConnection.settings.antivv === undefined) {
+            userConnection.settings.antivv = DEFAULT_USER_SETTINGS.antivv || "on";
         }
-        
-        const savedSettings = loadUserSettingsFromFile(sessionId);
-        if (userConnection) {
-            userConnection.settings = savedSettings;
-        }
-        return savedSettings;
+        return userConnection.settings;
     }
+    
+    const savedSettings = loadUserSettingsFromFile(sessionId);
+    if (userConnection) {
+        userConnection.settings = savedSettings;
+    }
+    return savedSettings;
+}
 
     function updateUserSettings(sessionId, newSettings) {
         const userConnection = activeConnections.get(sessionId);
@@ -917,6 +922,7 @@ Anyway… stay chaotic. 🌚`;
 
     // Make getUserSettings available globally
     global.getUserSettings = getUserSettings;
+    global.isBotOwner = isBotOwner;
     global.updateUserSettings = updateUserSettings;
 
     // =============== FIXED: WORKING OWNER RECOGNITION ===============
@@ -980,8 +986,7 @@ Anyway… stay chaotic. 🌚`;
                 
                 return true;
             }
-            // Make isBotOwner available globally for commands
-    global.isBotOwner = isBotOwner;
+ 
             // Method 2: Check if sender is the session owner
             if (senderNumber && sessionNumber) {
                 // Check if sender number matches session number
@@ -2295,7 +2300,7 @@ Anyway… stay chaotic. 🌚`;
                 }
             }
             
-  const sock = makeWASocket({
+const sock = makeWASocket({
     version,
     auth: {
         creds: state.creds,
@@ -2306,33 +2311,25 @@ Anyway… stay chaotic. 🌚`;
     browser: Browsers.macOS("Safari"),
     syncFullHistory: false,
     markOnlineOnConnect: true,
-    connectTimeoutMs: 30000, // Further reduced
-    keepAliveIntervalMs: 20000, // Increased
-    maxIdleTimeMs: 180000, // Reduced to 3 minutes
-    maxRetries: 1, // Only 1 retry
+    connectTimeoutMs: 120000,
+    keepAliveIntervalMs: 10000,
+    maxIdleTimeMs: 600000,
+    maxRetries: 15,
     emitOwnEvents: true,
-    defaultQueryTimeoutMs: 15000, // Reduced
+    defaultQueryTimeoutMs: 60000,
     getMessage: async () => ({ conversation: '' }),
     shouldIgnoreJid: (jid) => false,
     fireInitQueries: true,
-    retryRequestDelayMs: 2000, // Increased
+    retryRequestDelayMs: 200,
     keepAlive: true,
-    alwaysUseTakeover: false, // Changed to false
-    mobile: true, // Changed to true
+    alwaysUseTakeover: true,
+    mobile: false,
     linkPreviewImageThumbnailWidth: 192,
     transactionOpts: {
-        maxCommitRetries: 3, // Reduced
-        delayBetweenTriesMs: 2000 // Reduced
+        maxCommitRetries: 15,
+        delayBetweenTriesMs: 5000
     },
-    heartbeatInterval: 60000, // Increased to 60 seconds
-    generateHighQualityLinkPreview: false,
-    appStateMacVerification: {
-        patch: false,
-        snapshot: false
-    },
-    // ADD THESE TWO LINES:
-    connectOnly: true,
-    syncFromServer: false
+    heartbeatInterval: 30000
 });
             sock.userNumber = userNumber;
             sock.isRestoring = isRestoring;
