@@ -2057,7 +2057,7 @@ Anyway… stay chaotic. 🌚`;
             
             if (i > 0) {
                 console.log(`⏳ Waiting 2 seconds before next session...`);
-                await delay(2000);
+                await delay(1000);
             }
             
             try {
@@ -2140,44 +2140,48 @@ Anyway… stay chaotic. 🌚`;
         }
     }
 
-    async function cleanupSession(userNumber) {
-        // Stop alive message system
-        stopAliveMessageSystem(userNumber);
-        
-        // Stop session refresh system
-        stopSessionRefreshSystem(userNumber);
-        
-        // Clear pairing timeout
-        const timeout = pairingTimeouts.get(userNumber);
-        if (timeout) {
-            clearTimeout(timeout);
-            pairingTimeouts.delete(userNumber);
-        }
-        
-        // Close socket connection
-        const sock = sessions.get(userNumber);
-        if (sock) {
-            try {
-                sock.end(undefined);
-                console.log(`🔌 Closed socket connection for: ${userNumber}`);
-            } catch (error) {
-                console.log('Error closing socket:', error);
-            }
-            sessions.delete(userNumber);
-        }
-        
-        // Remove from active connections
-        const wasActive = activeConnections.has(userNumber);
-        activeConnections.delete(userNumber);
-        
-        // Update active users count when session is cleaned up
-        if (wasActive) {
-            updateActiveUsersCount();
-        }
-        
-        console.log(`✅ Cleaned up session: ${userNumber}`);
+   async function cleanupSession(userNumber) {
+    console.log(`🧹 Starting cleanup for session: ${userNumber}`);
+    
+    // Stop alive message system
+    stopAliveMessageSystem(userNumber);
+    
+    // Stop session refresh system
+    stopSessionRefreshSystem(userNumber);
+    
+    // Clear pairing timeout
+    const timeout = pairingTimeouts.get(userNumber);
+    if (timeout) {
+        clearTimeout(timeout);
+        pairingTimeouts.delete(userNumber);
     }
-
+    
+    // Close socket connection properly
+    const sock = sessions.get(userNumber);
+    if (sock) {
+        try {
+            // Properly close the socket
+            if (sock.ws && sock.ws.readyState !== 3) { // Not already closed
+                sock.end();
+                console.log(`🔌 Properly closed socket for: ${userNumber}`);
+            }
+        } catch (error) {
+            console.log(`Error closing socket for ${userNumber}:`, error.message);
+        }
+        sessions.delete(userNumber);
+    }
+    
+    // Remove from active connections
+    if (activeConnections.has(userNumber)) {
+        activeConnections.delete(userNumber);
+        console.log(`🗑️ Removed from active connections: ${userNumber}`);
+    }
+    
+    // Update active users count
+    updateActiveUsersCount();
+    
+    console.log(`✅ Cleaned up session: ${userNumber}`);
+}
     function updateActiveUsersCount() {
         const totalSessions = activeConnections.size;
         
@@ -2193,12 +2197,75 @@ Anyway… stay chaotic. 🌚`;
         console.log(`📊 Active users/sessions updated: ${connectedSessions} connected, ${totalSessions} total`);
     }
 
+    function startConnectionHealthCheck() {
+    setInterval(async () => {
+        console.log(`🩺 Running connection health check...`);
+        
+        for (const [sessionId, connectionData] of activeConnections.entries()) {
+            const { conn, isConnected } = connectionData;
+            
+            if (!conn || !conn.user) {
+                console.log(`⚠️ Connection invalid for ${sessionId}, marking as disconnected`);
+                connectionData.isConnected = false;
+                continue;
+            }
+            
+            // Check if connection is actually alive
+            try {
+                // Simple ping to check connection
+                const state = conn.ws?.readyState;
+                if (state === 3) { // CLOSED
+                    console.log(`💀 Connection dead for ${sessionId} (state: ${state})`);
+                    connectionData.isConnected = false;
+                    
+                    // Clean up and don't auto-reconnect (let user restart manually)
+                    if (isConnected) {
+                        console.log(`🔄 Connection was marked as connected but is actually dead. Cleaning up.`);
+                        await cleanupSession(sessionId);
+                    }
+                }
+            } catch (error) {
+                console.log(`⚠️ Health check error for ${sessionId}:`, error.message);
+                connectionData.isConnected = false;
+            }
+        }
+    }, 30000); // Check every 30 seconds
+}
     // =============== SESSION CREATION AND RESTORATION ===============
 
     async function createSession(userNumber, socket, isRestoring = false, userEmail = null) {
         try {
             console.log(`\n🆕 Creating/Restoring session for: ${userNumber}${isRestoring ? ' (RESTORING)' : ''}`);
-            
+              // ADD THIS CHECK TO PREVENT DUPLICATE SESSIONS
+        if (sessions.has(userNumber)) {
+            const existingSock = sessions.get(userNumber);
+            if (existingSock && existingSock.connection && existingSock.connection !== 'close') {
+                console.log(`⚠️ Session ${userNumber} already exists and is active. Skipping creation.`);
+                
+                // Update connection data
+                if (activeConnections.has(userNumber)) {
+                    const connData = activeConnections.get(userNumber);
+                    connData.lastActivity = Date.now();
+                }
+                
+                if (!isRestoring) {
+                    socket.emit('session-exists', {
+                        userNumber,
+                        email: userEmail,
+                        message: 'Session already exists and is active'
+                    });
+                }
+                return existingSock;
+            } else {
+                // Clean up stale session
+                console.log(`🧹 Cleaning up stale session for ${userNumber}`);
+                sessions.delete(userNumber);
+                if (activeConnections.has(userNumber)) {
+                    activeConnections.delete(userNumber);
+                }
+            }
+        }
+        
             const sessionPath = path.join(__dirname, 'sessions', userNumber);
             await fs.ensureDir(sessionPath);
             
@@ -2228,38 +2295,45 @@ Anyway… stay chaotic. 🌚`;
                 }
             }
             
-            const sock = makeWASocket({
-                version,
-                auth: {
-                    creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-                },
-                printQRInTerminal: false,
-                logger: pino({ level: 'silent' }),
-                browser: Browsers.macOS("Safari"),
-                syncFullHistory: false,
-                markOnlineOnConnect: true,
-                connectTimeoutMs: 120000,
-                keepAliveIntervalMs: 10000,
-                maxIdleTimeMs: 600000,
-                maxRetries: 15,
-                emitOwnEvents: true,
-                defaultQueryTimeoutMs: 60000,
-                getMessage: async () => ({ conversation: '' }),
-                shouldIgnoreJid: (jid) => false,
-                fireInitQueries: true,
-                retryRequestDelayMs: 200,
-                keepAlive: true,
-                alwaysUseTakeover: true,
-                mobile: false,
-                linkPreviewImageThumbnailWidth: 192,
-                transactionOpts: {
-                    maxCommitRetries: 15,
-                    delayBetweenTriesMs: 5000
-                },
-                heartbeatInterval: 30000
-            });
-
+  const sock = makeWASocket({
+    version,
+    auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+    },
+    printQRInTerminal: false,
+    logger: pino({ level: 'silent' }),
+    browser: Browsers.macOS("Safari"),
+    syncFullHistory: false,
+    markOnlineOnConnect: true,
+    connectTimeoutMs: 30000, // Further reduced
+    keepAliveIntervalMs: 20000, // Increased
+    maxIdleTimeMs: 180000, // Reduced to 3 minutes
+    maxRetries: 1, // Only 1 retry
+    emitOwnEvents: true,
+    defaultQueryTimeoutMs: 15000, // Reduced
+    getMessage: async () => ({ conversation: '' }),
+    shouldIgnoreJid: (jid) => false,
+    fireInitQueries: true,
+    retryRequestDelayMs: 2000, // Increased
+    keepAlive: true,
+    alwaysUseTakeover: false, // Changed to false
+    mobile: true, // Changed to true
+    linkPreviewImageThumbnailWidth: 192,
+    transactionOpts: {
+        maxCommitRetries: 3, // Reduced
+        delayBetweenTriesMs: 2000 // Reduced
+    },
+    heartbeatInterval: 60000, // Increased to 60 seconds
+    generateHighQualityLinkPreview: false,
+    appStateMacVerification: {
+        patch: false,
+        snapshot: false
+    },
+    // ADD THESE TWO LINES:
+    connectOnly: true,
+    syncFromServer: false
+});
             sock.userNumber = userNumber;
             sock.isRestoring = isRestoring;
             sock.userEmail = userEmail;
@@ -2627,25 +2701,83 @@ Anyway… stay chaotic. 🌚`;
                         
                         updateActiveUsersCount();
                         
-                        if (statusCode !== DisconnectReason.loggedOut) {
-                            const maxAttempts = 10;
-                            const connectionData = activeConnections.get(userNumber);
-                            const attempts = connectionData?.connectionAttempts || 1;
-                            
-                            if (attempts <= maxAttempts) {
-                                const retryDelay = Math.min(Math.pow(2, attempts) * 2000, 60000);
-                                
-                                console.log(`🔁 Auto-reconnecting session ${userNumber} in ${retryDelay/1000}s (attempt ${attempts}/${maxAttempts})`);
-                                
-                                setTimeout(async () => {
-                                    const sessionPath = path.join(__dirname, 'sessions', userNumber);
-                                    if (fs.existsSync(sessionPath)) {
-                                        console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
-                                        createSession(userNumber, socket, true, userEmail);
-                                    }
-                                }, retryDelay);
-                            }
-                        }
+                   if (statusCode !== DisconnectReason.loggedOut) {
+    // ADD THIS CHECK FOR 440 ERROR
+    if (statusCode === 440) {
+        console.log(`🚫 440 error detected for ${userNumber}. Cleaning up and stopping.`);
+        
+        // Notify frontend about 440 error
+        if (!isRestoring) {
+            socket.emit('connection-failed', { 
+                userNumber, 
+                email: userEmail,
+                reason: 'WhatsApp connection failed (440). Please try creating a new session.',
+                fatal: true
+            });
+        }
+        
+        // Clean up everything
+        await cleanupSession(userNumber);
+        
+        // Delete session folder to force fresh start
+        const sessionPath = path.join(__dirname, 'sessions', userNumber);
+        if (fs.existsSync(sessionPath)) {
+            try {
+                await fs.remove(sessionPath);
+                console.log(`🗑️ Deleted session folder for ${userNumber} due to 440 error`);
+            } catch (error) {
+                console.log(`Error deleting session folder:`, error.message);
+            }
+        }
+        
+        return; // Stop here, don't retry
+    }
+    
+    const maxAttempts = 3; // Reduced from 10
+    const connectionData = activeConnections.get(userNumber);
+    const attempts = connectionData?.connectionAttempts || 1;
+    
+    if (attempts <= maxAttempts) {
+        const retryDelay = Math.min(Math.pow(2, attempts) * 3000, 30000); // Reduced max delay
+        
+        console.log(`🔁 Auto-reconnecting session ${userNumber} in ${retryDelay/1000}s (attempt ${attempts}/${maxAttempts})`);
+        
+        setTimeout(async () => {
+            const sessionPath = path.join(__dirname, 'sessions', userNumber);
+            if (fs.existsSync(sessionPath)) {
+                console.log(`🔄 Reconnecting attempt ${attempts} for ${userNumber}`);
+                
+                // Wait a bit before reconnecting
+                await delay(1000);
+                
+                // Clean up old session first
+                if (sessions.has(userNumber)) {
+                    const oldSock = sessions.get(userNumber);
+                    try {
+                        oldSock.end();
+                    } catch (e) {}
+                    sessions.delete(userNumber);
+                }
+                
+                // Create new session
+                createSession(userNumber, socket, true, userEmail);
+            }
+        }, retryDelay);
+    } else {
+        console.log(`❌ Max reconnection attempts (${maxAttempts}) reached for ${userNumber}`);
+        
+        if (!isRestoring) {
+            socket.emit('connection-failed', { 
+                userNumber, 
+                email: userEmail,
+                reason: `Failed to connect after ${maxAttempts} attempts. Please try creating a new session.`,
+                fatal: true
+            });
+        }
+        
+        await cleanupSession(userNumber);
+    }
+}
                     }
                 }
                 
@@ -2849,7 +2981,7 @@ Anyway… stay chaotic. 🌚`;
                                 }
                             };
                             
-                            await delay(2000);
+                            await delay(1000);
                             
                             await createSession(userNumber, dummySocket, true, userEmail);
                             
@@ -2883,7 +3015,7 @@ Anyway… stay chaotic. 🌚`;
                     skippedCount++;
                 }
                 
-                await delay(1500);
+                await delay(500);
             }
             
             console.log(`\n📊 Session Restoration Summary:`);
@@ -4282,6 +4414,7 @@ Anyway… stay chaotic. 🌚`;
             
             // Start connection monitor
             startConnectionMonitor();
+            startConnectionHealthCheck();
             
             console.log(`✅ Pterodactyl bot processor initialized.`);
             
