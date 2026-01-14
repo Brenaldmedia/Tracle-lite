@@ -4,6 +4,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs-extra');
 const http = require('http');
+const nodemailer = require('nodemailer');
 const socketIO = require('socket.io');
 const cors = require('cors');
 const axios = require('axios'); // Added for API communication
@@ -289,19 +290,47 @@ app.use('/api', async (req, res, next) => {
     next();
 });
 
-// =============== SERVE STATIC FILES (FRONTEND) ===============
-// Serve frontend files from public folder
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Route all non-API requests to index.html (for SPA)
-app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
-        return next();
-    }
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // =============== EXPRESS APP SETUP ===============
+// =============== SERVE STATIC FILES (FRONTEND) ===============
+console.log('📁 Setting up static file serving...');
+const publicPath = path.join(__dirname, 'public');
+
+// Check if public folder exists
+if (fs.existsSync(publicPath)) {
+    console.log(`✅ Public folder found at: ${publicPath}`);
+    console.log('📁 Public folder contents:', fs.readdirSync(publicPath));
+    
+    // Serve static files from public folder with proper caching
+    app.use(express.static(publicPath, {
+        maxAge: '1d',
+        etag: true,
+        lastModified: true,
+        setHeaders: (res, path) => {
+            // Cache static files for 1 day
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+    }));
+    
+    // Route all non-API requests to index.html (for SPA)
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
+            return next();
+        }
+        
+        // Check if it's a file request
+        const filePath = path.join(publicPath, req.path);
+        if (fs.existsSync(filePath) && !req.path.endsWith('/')) {
+            return next(); // Let express.static handle it
+        }
+        
+        // Otherwise serve index.html for SPA routing
+        res.sendFile(path.join(publicPath, 'index.html'));
+    });
+    
+    console.log('✅ Static file serving configured');
+} else {
+    console.error('❌ ERROR: Public folder not found at:', publicPath);
+}
 app.use(express.json());
 // =============== HEROKU KEEP-ALIVE MODE ===============
 if (IS_HEROKU && !IS_PTERODACTYL) {
@@ -325,9 +354,14 @@ if (IS_HEROKU && !IS_PTERODACTYL) {
         });
     });
     
-    // Serve only static files on Heroku
-    app.use(express.static(path.join(__dirname, 'public')));
-    
+      // Serve only static files on Heroku
+    const herokuPublicPath = path.join(__dirname, 'public');
+    if (fs.existsSync(herokuPublicPath)) {
+        app.use(express.static(herokuPublicPath));
+        console.log(`✅ Heroku serving static files from: ${herokuPublicPath}`);
+    } else {
+        console.error('❌ Heroku: Public folder not found:', herokuPublicPath);
+    }
     // All other routes go to Pterodactyl info
     app.get('*', (req, res) => {
         if (req.path.startsWith('/api/')) {
@@ -337,7 +371,7 @@ if (IS_HEROKU && !IS_PTERODACTYL) {
                 message: 'API calls should go to Pterodactyl directly'
             });
         }
-        res.sendFile(path.join(__dirname, '../public', 'index.html'));
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
     
     // Skip all bot logic on Heroku
@@ -4232,7 +4266,14 @@ Anyway… stay chaotic. 🌚`;
             console.log(`☁️ CLOUD BACKUP: ENABLED - Sessions backed up to Supabase`);
             console.log(`🔄 SESSION REFRESH: ENABLED - Every 23 hours`);
             console.log(`🎉 TOKEN-FREE SYSTEM: ENABLED`);
-
+                    // Verify index.html exists
+        const indexPath = path.join(__dirname, 'public', 'index.html');
+        if (fs.existsSync(indexPath)) {
+            console.log(`✅ index.html found at: ${indexPath}`);
+        } else {
+            console.error(`❌ CRITICAL: index.html not found at: ${indexPath}`);
+            console.log('📁 Public folder contents:', fs.existsSync(path.join(__dirname, 'public')) ? fs.readdirSync(path.join(__dirname, 'public')) : 'Folder does not exist');
+        }
             // Restore existing sessions
             await restoreExistingSessions();
             

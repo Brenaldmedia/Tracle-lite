@@ -31,6 +31,16 @@ if (IS_HEROKU) {
     BACKEND_URL = `http://localhost:2038`;
     WEB_SOCKET_URL = `ws://localhost:2038`;
     console.log('🌐 Local development detected');
+} else if (IS_HEROKU) {
+    // Heroku deployment - frontend and backend on same origin
+    BACKEND_URL = window.location.origin;
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    console.log('🌐 Heroku deployment - single origin mode');
+} else if (IS_PTERODACTYL) {
+    // Pterodactyl deployment - frontend and backend on same origin
+    BACKEND_URL = window.location.origin;
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    console.log('🌐 Pterodactyl deployment - single origin mode');
 } else {
     // Fallback - use current origin
     BACKEND_URL = window.location.origin;
