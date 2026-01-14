@@ -1,293 +1,290 @@
-const axios = require("axios")
-const crypto = require("crypto")
-const yts = require("yt-search")
-const fs = require("fs")
-const path = require("path")
-const { exec } = require("child_process")
-const util = require("util")
-const execPromise = util.promisify(exec)
-
-const savetube = {
-  api: {
-    base: "https://media.savetube.me/api",
-    cdn: "/random-cdn",
-    info: "/v2/info",
-    download: "/download",
-  },
-  headers: {
-    accept: "*/*",
-    "content-type": "application/json",
-    origin: "https://yt.savetube.me",
-    referer: "https://yt.savetube.me/",
-    "user-agent": "Postify/1.0.0",
-  },
-  formats: ["144", "240", "360", "480", "720", "1080", "mp3"],
-  crypto: {
-    hexToBuffer: (hexString) => {
-      const matches = hexString.match(/.{1,2}/g)
-      return Buffer.from(matches.join(""), "hex")
-    },
-    decrypt: async (enc) => {
-      try {
-        const secretKey = "C5D58EF67A7584E4A29F6C35BBC4EB12"
-        const data = Buffer.from(enc, "base64")
-        const iv = data.slice(0, 16)
-        const content = data.slice(16)
-        const key = savetube.crypto.hexToBuffer(secretKey)
-        const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv)
-        let decrypted = decipher.update(content)
-        decrypted = Buffer.concat([decrypted, decipher.final()])
-        return JSON.parse(decrypted.toString())
-      } catch (error) {
-        throw new Error(error)
-      }
-    },
-  },
-  youtube: (url) => {
-    if (!url) return null
-    const a = [
-      /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
-      /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-      /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
-      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
-      /youtu\.be\/([a-zA-Z0-9_-]{11})/,
-    ]
-    for (const b of a) {
-      if (b.test(url)) return url.match(b)[1]
-    }
-    return null
-  },
-  request: async (endpoint, data = {}, method = "post") => {
-    try {
-      const { data: response } = await axios({
-        method,
-        url: `${endpoint.startsWith("http") ? "" : savetube.api.base}${endpoint}`,
-        data: method === "post" ? data : undefined,
-        params: method === "get" ? data : undefined,
-        headers: savetube.headers,
-      })
-      return {
-        status: true,
-        code: 200,
-        data: response,
-      }
-    } catch (error) {
-      throw new Error(error)
-    }
-  },
-  getCDN: async () => {
-    const response = await savetube.request(savetube.api.cdn, {}, "get")
-    if (!response.status) throw new Error(response)
-    return {
-      status: true,
-      code: 200,
-      data: response.data.cdn,
-    }
-  },
-  download: async (link, format) => {
-    if (!link) {
-      return {
-        status: false,
-        code: 400,
-        error: "No link provided. Please provide a valid YouTube link.",
-      }
-    }
-    if (!format || !savetube.formats.includes(format)) {
-      return {
-        status: false,
-        code: 400,
-        error: "Invalid format. Please choose one of the available formats: 144, 240, 360, 480, 720, 1080, mp3.",
-        available_fmt: savetube.formats,
-      }
-    }
-    const id = savetube.youtube(link)
-    if (!id) throw new Error("Invalid YouTube link.")
-    try {
-      const cdnx = await savetube.getCDN()
-      if (!cdnx.status) return cdnx
-      const cdn = cdnx.data
-      const result = await savetube.request(`https://${cdn}${savetube.api.info}`, {
-        url: `https://www.youtube.com/watch?v=${id}`,
-      })
-      if (!result.status) return result
-      const decrypted = await savetube.crypto.decrypt(result.data.data)
-      var dl
-      try {
-        dl = await savetube.request(`https://${cdn}${savetube.api.download}`, {
-          id: id,
-          downloadType: format === "mp3" ? "audio" : "video",
-          quality: format === "mp3" ? "128" : format,
-          key: decrypted.key,
-        })
-      } catch (error) {
-        throw new Error("Failed to get download link. Please try again later.")
-      }
-      return {
-        status: true,
-        code: 200,
-        result: {
-          title: decrypted.title || "Unknown Title",
-          type: format === "mp3" ? "audio" : "video",
-          format: format,
-          thumbnail: decrypted.thumbnail || `https://i.ytimg.com/vi/${id}/0.jpg`,
-          download: dl.data.data.downloadUrl,
-          id: id,
-          key: decrypted.key,
-          duration: decrypted.duration,
-          quality: format === "mp3" ? "128" : format,
-          downloaded: dl.data.data.downloaded,
-        },
-      }
-    } catch (error) {
-      throw new Error("An error occurred while processing your request. Please try again later.")
-    }
-  },
-}
+const axios = require("axios");
+const yts = require("yt-search");
 
 module.exports = {
-    pattern: "song",
-    desc: "Download music from YouTube",
-    category: "download",
-    react: "🎵",
-    filename: __filename,
-    use: ".song [song_name or youtube_url]",
+  pattern: "song",
+  aliases: ["play", "ytmp3", "music"],
+  category: "download",
+  desc: "Download music from YouTube",
+  react: "🎵",
+  filename: __filename,
+  use: ".song [song_name or youtube_url]",
 
-    execute: async (conn, message, m, { from, q, args }) => {
-        try {
-            const searchQuery = q || args.join(' ') || '';
-            
-            if (!searchQuery) {
-                return await conn.sendMessage(from, { 
-                    text: "❌ What song do you want to download?\n\nExample: .song asake\nExample: .song https://youtube.com/watch?v=xxx"
-                });
+  execute: async (conn, message, m, { from, q, args }) => {
+    try {
+      const searchQuery = q || args.join(' ') || '';
+      
+      if (!searchQuery) {
+        return await conn.sendMessage(from, { 
+          text: "🎵 *YouTube Music Downloader*\n\nUsage: .song [song name or YouTube link]\n\nExamples:\n• .song calm down\n• .song https://youtu.be/...\n• .song https://www.youtube.com/watch?v=...",
+          contextInfo: {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+              newsletterJid: "120363401559573199@newsletter",
+              newsletterName: "BrenaldMedia",
+              serverMessageId: -1,
             }
+          }
+        }, { quoted: message });
+      }
 
-            // Determine if input is a YouTube link or search query
-            let videoUrl = ""
-            if (searchQuery.startsWith("http://") || searchQuery.startsWith("https://")) {
-                videoUrl = searchQuery
-            } else {
-                // Search YouTube for the video
-                const { videos } = await yts(searchQuery)
-                if (!videos || videos.length === 0) {
-                    return await conn.sendMessage(from, { 
-                        text: "❌ No songs found for: " + searchQuery 
-                    });
-                }
-                videoUrl = videos[0].url
-            }
-
-            let result
-            const apiMethods = [
-                async () => await savetube.download(videoUrl, "mp3"),
-                async () => {
-                    const response = await axios.get(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${videoUrl}`, {
-                        timeout: 15000,
-                    })
-                    if (response.data && response.data.status && response.data.download) {
-                        return {
-                            status: true,
-                            result: {
-                                title: response.data.title || "Unknown Title",
-                                download: response.data.download,
-                                thumbnail: response.data.thumbnail || `https://i.ytimg.com/vi/${videoUrl.split("v=")[1]}/0.jpg`,
-                            },
-                        }
-                    }
-                    throw new Error("API response invalid")
-                },
-                async () => {
-                    const response = await axios.get(`https://api.giftedtech.co.ke/api/download/ytmp3?apikey=gifted&url=${videoUrl}`, { timeout: 15000 })
-                    if (response.data && response.data.result && response.data.result.url) {
-                        return {
-                            status: true,
-                            result: {
-                                title: response.data.result.title || "Unknown Title",
-                                download: response.data.result.url,
-                                thumbnail: response.data.result.thumbnail || `https://i.ytimg.com/vi/${videoUrl.split("v=")[1]}/0.jpg`,
-                            },
-                        }
-                    }
-                    throw new Error("API response invalid")
-                },
-            ]
-
-            let apiWorked = false
-            for (const method of apiMethods) {
-                try {
-                    result = await method()
-                    if (result && result.status && result.result && result.result.download) {
-                        apiWorked = true
-                        break
-                    }
-                } catch (err) {
-                    console.log("API method failed, trying next...")
-                    continue
-                }
-            }
-
-            if (!apiWorked || !result || !result.status || !result.result || !result.result.download) {
-                return await conn.sendMessage(from, {
-                    text: "❌ Failed to get a valid download link from all APIs. Please try again later.",
-                });
-            }
-
-            // Send thumbnail and title first
-            let sentMsg
-            try {
-                sentMsg = await conn.sendMessage(
-                    from,
-                    {
-                        image: { url: result.result.thumbnail },
-                        caption: `🎵 *${result.result.title}*\n\n🔍 _Downloading song..._\n\n> © TRACLE - LITE 💜`,
-                    },
-                    { quoted: message },
-                )
-            } catch (e) {
-                // If thumbnail fails, fallback to just sending the audio
-                sentMsg = message
-            }
-
-            // Download the MP3 file
-            const tempDir = path.join(__dirname, "../../temp")
-            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
-            const tempFile = path.join(tempDir, `${Date.now()}.mp3`)
-            const response = await axios({ url: result.result.download, method: "GET", responseType: "stream" })
-            if (response.status !== 200) {
-                return await conn.sendMessage(from, { 
-                    text: "❌ Failed to download the song file from the server." 
-                });
-            }
-            const writer = fs.createWriteStream(tempFile)
-            response.data.pipe(writer)
-            await new Promise((resolve, reject) => {
-                writer.on("finish", resolve)
-                writer.on("error", reject)
-            })
-
-            // Send the MP3 file
-            await conn.sendMessage(
-                from,
-                {
-                    audio: fs.readFileSync(tempFile),
-                    mimetype: "audio/mpeg",
-                    fileName: `${result.result.title.replace(/[^\w\s]/g, '')}.mp3`,
-                    ptt: false,
-                },
-                { quoted: message },
-            )
-
-            // Clean up temp file
-            setTimeout(() => {
-                try {
-                    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile)
-                } catch {}
-            }, 5000)
-        } catch (error) {
-            console.error('Song download error:', error);
-            await conn.sendMessage(from, { 
-                text: "❌ Download failed. Please try again later." 
-            });
+      await conn.sendMessage(from, { react: { text: "🎵", key: m.key } });
+      await conn.sendMessage(from, { 
+        text: `🔍 Searching: *${searchQuery}*...`,
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+          }
         }
+      }, { quoted: message });
+
+      let videoUrl;
+      let videoTitle;
+      let videoThumbnail;
+      let videoId;
+
+      // Check if input is a YouTube URL
+      if (searchQuery.match(/(youtube\.com|youtu\.be)/i)) {
+        videoUrl = searchQuery;
+        videoId = searchQuery.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i)?.[1];
+        if (!videoId) {
+          return await conn.sendMessage(from, { 
+            text: "❌ Invalid YouTube URL. Please provide a valid YouTube link.",
+            contextInfo: {
+              forwardingScore: 999,
+              isForwarded: true,
+              forwardedNewsletterMessageInfo: {
+                newsletterJid: "120363401559573199@newsletter",
+                newsletterName: "BrenaldMedia",
+                serverMessageId: -1,
+              }
+            }
+          }, { quoted: message });
+        }
+        
+        // Get video info from YouTube
+        try {
+          const searchResult = await yts({ videoId });
+          if (searchResult) {
+            videoTitle = searchResult.title;
+            videoThumbnail = searchResult.thumbnail;
+          } else {
+            videoTitle = "YouTube Audio";
+            videoThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          }
+        } catch (e) {
+          videoTitle = "YouTube Audio";
+          videoThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        }
+      } else {
+        // Search YouTube for query
+        try {
+          const searchResponse = await yts(searchQuery);
+          const videos = searchResponse.videos;
+          
+          if (!Array.isArray(videos) || videos.length === 0) {
+            return await conn.sendMessage(from, { 
+              text: `❌ No songs found for: *${searchQuery}*`,
+              contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                  newsletterJid: "120363401559573199@newsletter",
+                  newsletterName: "BrenaldMedia",
+                  serverMessageId: -1,
+                }
+              }
+            }, { quoted: message });
+          }
+
+          const firstVideo = videos[0];
+          videoUrl = firstVideo.url;
+          videoTitle = firstVideo.title;
+          videoThumbnail = firstVideo.thumbnail;
+          videoId = firstVideo.videoId;
+        } catch (error) {
+          console.error("YouTube search error:", error);
+          return await conn.sendMessage(from, { 
+            text: "❌ Search failed. Please try again.",
+            contextInfo: {
+              forwardingScore: 999,
+              isForwarded: true,
+              forwardedNewsletterMessageInfo: {
+                newsletterJid: "120363401559573199@newsletter",
+                newsletterName: "BrenaldMedia",
+                serverMessageId: -1,
+              }
+            }
+          }, { quoted: message });
+        }
+      }
+
+      // Send loading message with thumbnail
+      await conn.sendMessage(from, {
+        image: { url: videoThumbnail },
+        caption: `🎵 *${videoTitle}*\n\n⬇️ Downloading audio...\n\nPlease wait...`,
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+          },
+          externalAdReply: {
+            title: "🎵 YouTube Music Download",
+            body: "Powered by BrenaldMedia",
+            thumbnailUrl: videoThumbnail,
+            sourceUrl: videoUrl,
+            mediaType: 1
+          }
+        }
+      }, { quoted: message });
+
+      // Try multiple API endpoints
+      const apiEndpoints = [
+        `https://apiskeith.vercel.app/download/audio?url=${encodeURIComponent(videoUrl)}`,
+        `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`,
+        `https://api.giftedtech.co.ke/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`,
+        `https://yt-api-six.vercel.app/audio?url=${encodeURIComponent(videoUrl)}`,
+        `https://api.download-lagu-mp3.com/@api/button/mp3/${videoId}`,
+      ];
+
+      let downloadUrl = null;
+      let apiError = null;
+
+      for (const endpoint of apiEndpoints) {
+        try {
+          console.log(`Trying API: ${endpoint}`);
+          const response = await axios.get(endpoint, { timeout: 10000 });
+          
+          // Different API response formats
+          if (endpoint.includes("apiskeith")) {
+            if (response.data?.result) {
+              downloadUrl = response.data.result;
+              break;
+            }
+          } else if (endpoint.includes("ryzendesu")) {
+            if (response.data?.status && response.data?.download) {
+              downloadUrl = response.data.download;
+              break;
+            }
+          } else if (endpoint.includes("giftedtech")) {
+            if (response.data?.result?.url) {
+              downloadUrl = response.data.result.url;
+              break;
+            }
+          } else if (endpoint.includes("yt-api-six")) {
+            if (response.data?.url) {
+              downloadUrl = response.data.url;
+              break;
+            }
+          } else if (endpoint.includes("download-lagu-mp3")) {
+            // Parse HTML response for this API
+            const html = response.data;
+            const match = html.match(/href="([^"]+\.mp3[^"]*)"/i);
+            if (match && match[1]) {
+              downloadUrl = match[1];
+              break;
+            }
+          }
+        } catch (error) {
+          apiError = error.message;
+          console.log(`API failed: ${endpoint} - ${error.message}`);
+          continue;
+        }
+      }
+
+      if (!downloadUrl) {
+        return await conn.sendMessage(from, { 
+          text: "❌ All download APIs failed. Please try again later.",
+          contextInfo: {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+              newsletterJid: "120363401559573199@newsletter",
+              newsletterName: "BrenaldMedia",
+              serverMessageId: -1,
+            }
+          }
+        }, { quoted: message });
+      }
+
+      const fileName = `${videoTitle.replace(/[^\w\s.-]/gi, '')}.mp3`.substring(0, 100);
+
+      // Send as audio message
+      await conn.sendMessage(from, {
+        audio: { url: downloadUrl },
+        mimetype: "audio/mpeg",
+        fileName: fileName,
+        ptt: false,
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+          },
+          externalAdReply: {
+            title: `🎵 ${videoTitle.substring(0, 60)}${videoTitle.length > 60 ? '...' : ''}`,
+            body: 'YouTube Audio - Powered by BrenaldMedia',
+            thumbnailUrl: videoThumbnail,
+            sourceUrl: videoUrl,
+            mediaType: 1
+          }
+        }
+      }, { quoted: message });
+
+      // Optional: Send as document (uncomment if needed)
+      /*
+      await conn.sendMessage(from, {
+        document: { url: downloadUrl },
+        mimetype: "audio/mpeg",
+        fileName: fileName,
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+          },
+          externalAdReply: {
+            title: `📁 ${videoTitle.substring(0, 60)}${videoTitle.length > 60 ? '...' : ''}`,
+            body: 'Document Version - Powered by BrenaldMedia',
+            thumbnailUrl: videoThumbnail,
+            sourceUrl: videoUrl,
+            mediaType: 1
+          }
+        }
+      }, { quoted: message });
+      */
+
+      console.log(`✅ Song downloaded: ${videoTitle}`);
+
+    } catch (error) {
+      console.error("❌ Song command error:", error.message);
+      
+      await conn.sendMessage(from, { 
+        text: error.code === "ECONNABORTED" || error.code === "ETIMEDOUT" ? 
+          "❌ Request timeout. Please try again." : 
+          "❌ Download error. Please try another song.",
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1,
+          }
+        }
+      }, { quoted: message });
     }
+  }
 };

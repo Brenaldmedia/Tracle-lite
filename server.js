@@ -1,7 +1,136 @@
-// SERVER.JS - UPDATED VERSION
+// =============== ENVIRONMENT CONFIGURATION ===============
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
+const fs = require('fs-extra');
+const http = require('http');
+const socketIO = require('socket.io');
+const cors = require('cors');
 const nodemailer = require('nodemailer');
+
+const app = express();
+
+// =============== DYNAMIC PORT CONFIGURATION ===============
+const IS_HEROKU = process.env.NODE_ENV === 'production' || process.env.HEROKU;
+const IS_PTERODACTYL = process.env.PTERODACTYL === 'true' || 
+                       process.cwd().includes('pterodactyl') || 
+                       fs.existsSync('/home/container');
+
+// Configure ports based on environment
+let BACKEND_PORT, FRONTEND_PORT;
+
+if (IS_HEROKU) {
+    BACKEND_PORT = process.env.PORT || 3000; // Heroku assigns port dynamically
+    FRONTEND_PORT = BACKEND_PORT; // Same port for Heroku
+    console.log('🚀 Running on Heroku');
+} else if (IS_PTERODACTYL) {
+    BACKEND_PORT = process.env.PORT || 2038; // Pterodactyl default
+    FRONTEND_PORT = BACKEND_PORT; // Same port for Pterodactyl
+    console.log('🚀 Running on Pterodactyl Panel');
+} else {
+    BACKEND_PORT = process.env.PORT || 2038; // Local development
+    FRONTEND_PORT = BACKEND_PORT; // Same port
+    console.log('🚀 Running locally');
+}
+
+// =============== CORS CONFIGURATION ===============
+const allowedOrigins = [
+    // Allow requests from same origin (for single deployment)
+    `http://localhost:${FRONTEND_PORT}`,
+    `http://127.0.0.1:${FRONTEND_PORT}`,
+    
+    // Add your actual domains
+    'https://tracle-57a788202c97.herokuapp.com',
+    'https://node.burzor.prexzyvilla.site',
+    
+    // Allow no origin (like mobile apps)
+    null
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.log('CORS blocked origin:', origin);
+            // In development, allow all
+            if (process.env.NODE_ENV === 'development') {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+// =============== SERVE STATIC FILES (FRONTEND) ===============
+// Serve frontend files from public folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Route all non-API requests to index.html (for SPA)
+app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
+        return next();
+    }
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+// =============== EXPRESS APP SETUP ===============
+app.use(express.json());
+
+// Your existing API routes continue here...
+// [Keep all your existing API routes as they are]
+
+// =============== CREATE HTTP SERVER ===============
+const server = http.createServer(app);
+
+// =============== SOCKET.IO CONFIGURATION ===============
+const io = socketIO(server, {
+    cors: {
+        origin: function (origin, callback) {
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+        credentials: true,
+        methods: ['GET', 'POST']
+    },
+    transports: ['websocket', 'polling']
+});
+
+// Your existing socket.io setup continues here...
+// [Keep all your existing socket.io code]
+
+// =============== START SERVER ===============
+server.listen(BACKEND_PORT, () => {
+    console.log(`
+    ============================================
+    🚀 TRACLE-LITE V2 - SINGLE DEPLOYMENT
+    ============================================
+    📍 Environment: ${IS_HEROKU ? 'Heroku' : IS_PTERODACTYL ? 'Pterodactyl' : 'Local'}
+    🔗 Backend URL: http://localhost:${BACKEND_PORT}
+    🖥️  Frontend URL: http://localhost:${FRONTEND_PORT}
+    📁 Public folder: ${path.join(__dirname, '../public')}
+    ============================================
+    ✅ Server running on port ${BACKEND_PORT}
+    ✅ Frontend served from /public folder
+    ✅ Single deployment ready!
+    ============================================
+    `);
+});
+
+// =============== YOUR EXISTING CODE CONTINUES ===============
 
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { 
@@ -16,14 +145,7 @@ const {
     isJidGroup
 } = require('@whiskeysockets/baileys');
 const warnedUsers = new Map();
-const path = require('path');
-const fs = require('fs-extra');
-const http = require('http');
-const socketIO = require('socket.io');
 const pino = require('pino');
-
-// Add CORS middleware
-const cors = require('cors');
 
 // Import command handler from commands.js
 const commandHandler = require('./commands');
@@ -52,21 +174,80 @@ const sendMessageWithContext = commandHandler.sendMessageWithContext || async fu
     }, options.quoted ? { quoted: options.quoted } : {});
 };
 
-const app = express();
 
-// Configure CORS
-app.use(cors({
-    origin: ['http://localhost:3000', 'https://tracle-lite-9jrf.vercel.app/'], // Update with your Vercel URL
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
-}));
+// =============== FRONTEND CONNECTION ENDPOINTS ===============
+app.get('/api/frontend-status', (req, res) => {
+    const origin = req.headers.origin;
+    res.json({
+        status: 'online',
+        backend: 'node.burzor.prexzyvilla.site:2038',
+        frontend: origin || 'unknown',
+        cors: allowedOrigins.includes(origin),
+        socketio: true,
+        timestamp: new Date().toISOString()
+    });
+});
 
-// Handle preflight requests
-app.options('*', cors());
+app.get('/api/get-socket-config', (req, res) => {
+    res.json({
+        webSocketURL: 'wss://node.burzor.prexzyvilla.site:2038',
+        apiBase: 'https://node.burzor.prexzyvilla.site:2038',
+        transports: ['websocket', 'polling'],
+        pingInterval: 25000,
+        pingTimeout: 60000
+    });
+});
 
-const server = http.createServer(app);
-const io = socketIO(server);
+// Test endpoint specifically for Vercel
+app.get('/api/vercel-ping', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Backend is responding to Vercel frontend',
+        frontendOrigin: req.headers.origin,
+        backend: 'node.burzor.prexzyvilla.site:2038',
+        time: new Date().toISOString()
+    });
+});
+
+// Direct connection test endpoint
+app.get('/api/connect-test', (req, res) => {
+    res.json({
+        connected: true,
+        server: 'Tracle-Lite Backend',
+        port: BACKEND_PORT,
+        socketIO: true,
+        cors: 'configured',
+        origins: allowedOrigins,
+        timestamp: Date.now()
+    });
+});
+
+
+// Add test connection endpoint
+app.get('/api/test-connection', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Backend server is running!',
+        timestamp: new Date().toISOString(),
+        frontend: req.headers.origin || 'Unknown origin',
+        cors: 'CORS configured for Vercel deployment'
+    });
+});
+// =============== HEROKU TEST ENDPOINT ===============
+app.get('/api/heroku-test', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Backend is accessible from Heroku Frontend',
+        frontendOrigin: req.headers.origin,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        serverTime: new Date().toLocaleString(),
+        corsAllowedOrigins: allowedOrigins,
+        herokuApp: 'tracle-57a788202c97.herokuapp.com',
+        version: '2.0.0',
+        botName: BOT_NAME
+    });
+});
 const backupManager = require('./backup');
 const tokenManager = require('./token');
 const adminManager = require('./admin');
@@ -129,7 +310,7 @@ const DEFAULT_USER_SETTINGS = {
     groupCloseTime: null
 };
 
-// Configure email transporter
+// Configure email transporter with timeout
 const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: process.env.EMAIL_PORT || 587,
@@ -140,7 +321,12 @@ const transporter = nodemailer.createTransport({
     },
     tls: {
         rejectUnauthorized: false
-    }
+    },
+    // ADD THESE TIMEOUT SETTINGS
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    secureConnection: false // Try non-secure first
 });
 
 // Test email configuration on startup
@@ -462,7 +648,8 @@ function isBotOwner(conn, message, sessionId) {
             
             return true;
         }
-        
+        // Make isBotOwner available globally for commands
+global.isBotOwner = isBotOwner;
         // Method 2: Check if sender is the session owner
         if (senderNumber && sessionNumber) {
             // Check if sender number matches session number
@@ -2454,11 +2641,15 @@ io.on('connection', (socket) => {
         console.log('🌐 Frontend disconnected:', socket.id);
     });
 });
-
-// =============== EXPRESS APP SETUP ===============
-
-app.use(express.json());
-app.use(express.static('public'));
+// Handle socket connection errors
+io.engine.on("connection_error", (err) => {
+    console.log('🔌 Socket.IO connection error:', {
+        code: err.code,
+        message: err.message,
+        req: err.req.headers.origin,
+        context: err.context
+    });
+});
 
 // Setup admin routes
 adminManager.setupRoutes(app);
@@ -3480,14 +3671,23 @@ app.get('/api/status', (req, res) => {
 
 // Get server health
 app.get('/api/health', (req, res) => {
+    const connectedSessions = Array.from(activeConnections.values())
+        .filter(data => data.isConnected).length;
+    
     res.json({
         status: 'healthy',
-        message: 'Tracle-Lite Pro Backend is running',
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
+        service: 'Tracle-Lite V2 Backend',
+        version: '2.0.0',
+        botName: BOT_NAME,
+        ownerName: OWNER_NAME,
+        activeSessions: activeConnections.size,
+        connectedSessions: connectedSessions,
+        frontend: req.headers.origin || 'unknown',
+        backend: `node.burzor.prexzyvilla.site:${BACKEND_PORT}`,
+        timestamp: new Date().toISOString(),
+        supports: ['Heroku Frontend', 'WebSocket', 'Token-Free System']
     });
 });
-
 // User registration (FREE version)
 app.post('/api/register', async (req, res) => {
     try {
@@ -3714,84 +3914,85 @@ app.delete('/api/user/session', async (req, res) => {
 
 // =============== START SERVER ===============
 
-const PORT = process.env.PORT || 3000;
-
 const startServer = async () => {
     try {
-        server.listen(PORT, async () => {
-            console.log(`\n🚀 ${BOT_NAME} running on port ${PORT}`);
-            console.log(`🤖 Bot: ${BOT_NAME}`);
-            console.log(`👑 Owner: ${OWNER_NAME}`);
-            
-            // Make activeConnections available globally for commands.js
-            global.activeConnections = activeConnections;
-            
-            // Load commands
-            commandHandler.loadCommands();
-            console.log(`📦 Commands loaded: ${commandHandler.commands.size}`);
-            
-            // Debug: List all commands
-            console.log('\n📋 LOADED COMMANDS:');
-            console.log('━━━━━━━━━━━━━━━━━━━━━━');
-            
-            const commandList = Array.from(commandHandler.commands.entries());
-            if (commandList.length === 0) {
-                console.log('❌ No commands loaded!');
-                console.log('Check if:');
-                console.log('1. commands/ folder exists');
-                console.log('2. command files are valid JavaScript');
-                console.log('3. command files export execute() function');
-            } else {
-                commandList.forEach(([name, command], index) => {
-                    console.log(`${index + 1}. ${name} - ${command.description || 'No description'}`);
+        // The server is already listening from the top section
+        console.log(`\n🚀 ${BOT_NAME}  running on port ${BACKEND_PORT}`);
+        console.log(`🤖 Bot: ${BOT_NAME}`);
+        console.log(`👑 Owner: ${OWNER_NAME}`);
+        console.log(`🏠 Backend: https://node.burzor.prexzyvilla.site:${BACKEND_PORT}`);
+        console.log(`🌐 Heroku Frontend: https://tracle-57a788202c97.herokuapp.com`);
+        
+        // Make activeConnections available globally for commands.js
+        global.activeConnections = activeConnections;
+        // Make activeConnections available globally for commands.js
+        global.activeConnections = activeConnections;
+        
+        // Load commands
+        commandHandler.loadCommands();
+        console.log(`📦 Commands loaded: ${commandHandler.commands.size}`);
+        
+        // Debug: List all commands
+        console.log('\n📋 LOADED COMMANDS:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━');
+        
+        const commandList = Array.from(commandHandler.commands.entries());
+        if (commandList.length === 0) {
+            console.log('❌ No commands loaded!');
+            console.log('Check if:');
+            console.log('1. commands/ folder exists');
+            console.log('2. command files are valid JavaScript');
+            console.log('3. command files export execute() function');
+        } else {
+            commandList.forEach(([name, command], index) => {
+                console.log(`${index + 1}. ${name} - ${command.description || 'No description'}`);
                     if (command.ownerOnly) {
-                        console.log(`   └── Owner only command`);
-                    }
-                });
-                console.log(`━━━━━━━━━━━━━━━━━━━━━━`);
-                console.log(`Total: ${commandList.length} commands`);
-            }
-            
-            console.log(`🌐 Frontend: http://localhost:${PORT}`);
-            console.log(`💾 Session persistence: ENABLED`);
-            console.log(`🔒 Default Bot Mode: ${DEFAULT_USER_SETTINGS.botMode}`);
-            console.log(`📱 Session restoration: ENABLED`);
-            console.log(`📢 AUTO SUBSCRIPTION: ENABLED (Channels & Group)`);
-            console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
-            console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
-            console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
-            console.log(`🔧 COMMAND SYSTEM: FIXED - Now works with full context info`);
-            console.log(`📋 MENU COMMAND: FIXED - Shows all commands from /commands folder`);
-            console.log(`🎯 CONTEXT INFO: Added to ALL command executions with your preferred style`);
-            console.log(`✅ sendMessageWithContext function is added to all inbuilt commands`);
-            console.log(`✅ When in private mode, only the session owner can use commands`);
-            console.log(`✅ Commands not found are silently ignored (no response)`);
-            console.log(`👥 GROUP JOIN: FIXED - Multiple methods implemented`);
-            console.log(`🔒 OWNER COMMANDS: FIXED - Only session owner can use`);
-            console.log(`💾 BACKUP SYSTEM: ENABLED - Sessions auto-backed up to Supabase`);
-            console.log(`☁️ CLOUD RESTORE: ENABLED - Sessions restored from Supabase on startup`);
-            console.log(`🔄 SESSION REFRESH SYSTEM: ENABLED - Every 23 hours`);
-            console.log(`🎉 TOKEN-FREE SYSTEM: ENABLED - Users only need email and WhatsApp number`);
-            console.log(`🔗 ANTILINK SYSTEM: ENHANCED - Now works in DMs and groups with JID or link support`);
-            console.log(`🚫 ANTIBADWORD SYSTEM: ENHANCED - Now works in DMs and groups with JID or link support`);
+                    console.log(`   └── Owner only command`);
+                }
+            });
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log(`Total: ${commandList.length} commands`);
+        }
+        
+        console.log(`🌐 Frontend: http://localhost:${BACKEND_PORT}`);
+        console.log(`💾 Session persistence: ENABLED`);
+        console.log(`🔒 Default Bot Mode: ${DEFAULT_USER_SETTINGS.botMode}`);
+        console.log(`📱 Session restoration: ENABLED`);
+        console.log(`📢 AUTO SUBSCRIPTION: ENABLED (Channels & Group)`);
+        console.log(`🔗 Auto-join group: ${GROUP_INVITE_LINK}`);
+        console.log(`🗑️ ANTI-DELETE: ENABLED (Default: ${DEFAULT_USER_SETTINGS.antiDelete === "true" ? "ON" : "OFF"})`);
+        console.log(`👨‍💼 ADMIN SYSTEM: ENABLED (admin.js)`);
+        console.log(`🔧 COMMAND SYSTEM: FIXED - Now works with full context info`);
+        console.log(`📋 MENU COMMAND: FIXED - Shows all commands from /commands folder`);
+        console.log(`🎯 CONTEXT INFO: Added to ALL command executions with your preferred style`);
+        console.log(`✅ sendMessageWithContext function is added to all inbuilt commands`);
+        console.log(`✅ When in private mode, only the session owner can use commands`);
+        console.log(`✅ Commands not found are silently ignored (no response)`);
+        console.log(`👥 GROUP JOIN: FIXED - Multiple methods implemented`);
+        console.log(`🔒 OWNER COMMANDS: FIXED - Only session owner can use`);
+        console.log(`💾 BACKUP SYSTEM: ENABLED - Sessions auto-backed up to Supabase`);
+        console.log(`☁️ CLOUD RESTORE: ENABLED - Sessions restored from Supabase on startup`);
+        console.log(`🔄 SESSION REFRESH SYSTEM: ENABLED - Every 23 hours`);
+        console.log(`🎉 TOKEN-FREE SYSTEM: ENABLED - Users only need email and WhatsApp number`);
+        console.log(`🔗 ANTILINK SYSTEM: ENHANCED - Now works in DMs and groups with JID or link support`);
+        console.log(`🚫 ANTIBADWORD SYSTEM: ENHANCED - Now works in DMs and groups with JID or link support`);
 
-            // Restore existing sessions
-            await restoreExistingSessions();
-            
-            // Initial active users count update
-            updateActiveUsersCount();
-            
-            // Start connection monitor
-            startConnectionMonitor();
-            
-            console.log(`✅ All systems initialized.`);
-        });
+        // Restore existing sessions
+        await restoreExistingSessions();
+        
+        // Initial active users count update
+        updateActiveUsersCount();
+        
+        // Start connection monitor
+        startConnectionMonitor();
+        
+        console.log(`✅ All systems initialized.`);
         
         server.on('error', (err) => {
             if (err.code === 'EADDRINUSE') {
-                console.error(`❌ Port ${PORT} is already in use. Trying port ${parseInt(PORT) + 1}...`);
-                server.listen(parseInt(PORT) + 1, () => {
-                    console.log(`✅ Server started on port ${parseInt(PORT) + 1}`);
+                console.error(`❌ Port ${BACKEND_PORT} is already in use. Trying port ${parseInt(BACKEND_PORT) + 1}...`);
+                server.listen(parseInt(BACKEND_PORT) + 1, () => {
+                    console.log(`✅ Server started on port ${parseInt(BACKEND_PORT) + 1}`);
                 });
             } else {
                 console.error('❌ Server error:', err);

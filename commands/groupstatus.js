@@ -11,8 +11,12 @@ module.exports = {
     filename: __filename,
     use: "<text> or <reply to media>",
     
-    execute: async (conn, message, m, { from, reply, q, isGroup, isAdmins, isCreator, sessionId }) => {
+    execute: async (conn, message, m, context) => {
         try {
+            const { from, reply, q, isGroup, isAdmins, isCreator, sessionId } = context;
+            
+            console.log(`🔍 groupstatus command called in session ${sessionId}`);
+            
             // ✅ Check if it's a group
             if (!isGroup) {
                 return reply("❌ *This command can only be used in groups!*");
@@ -25,37 +29,42 @@ module.exports = {
 
             const quotedMessage = m.quoted;
             
-            // ✅ Show help if no content provided
+            // ✅ Check if there's any content (quoted message or text)
             if (!quotedMessage && !q) {
+                console.log(`⚠️ No content provided for groupstatus command`);
                 return reply(getHelpText());
             }
 
             let payload = null;
-            
-            // ✅ Extract text from command if provided
             let commandText = q || "";
             
-            // ✅ Handle quoted message (video, image, audio, or text)
+            console.log(`📋 Processing groupstatus: hasQuoted=${!!quotedMessage}, hasText=${!!commandText}`);
+            
+            // ✅ Handle quoted message
             if (quotedMessage) {
-                payload = await buildPayloadFromQuoted(conn, quotedMessage, sessionId);
-                
-                // ✅ Add caption from command text if provided
-                if (commandText && payload) {
-                    if (payload.video) {
-                        payload.caption = commandText;
-                    } else if (payload.image) {
-                        payload.caption = commandText;
-                    } else if (payload.audio) {
-                        // For audio, we'll add text separately
+                try {
+                    payload = await buildPayloadFromQuoted(conn, quotedMessage, sessionId);
+                    console.log(`✅ Payload built from quoted message, type: ${payload?.text ? 'text' : payload?.image ? 'image' : payload?.video ? 'video' : payload?.audio ? 'audio' : 'unknown'}`);
+                    
+                    // ✅ Add caption from command text if provided
+                    if (commandText && payload) {
+                        if (payload.video || payload.image) {
+                            payload.caption = commandText;
+                            console.log(`✅ Added caption to payload: "${commandText}"`);
+                        }
                     }
+                } catch (quotedError) {
+                    console.error("Error building payload from quoted message:", quotedError);
                 }
             } 
             // ✅ Handle plain text command
             else if (commandText) {
                 payload = { text: commandText };
+                console.log(`✅ Created text payload: "${commandText.substring(0, 50)}${commandText.length > 50 ? '...' : ''}"`);
             }
 
             if (!payload) {
+                console.log(`❌ No payload created for groupstatus`);
                 return reply(getHelpText());
             }
 
@@ -73,6 +82,7 @@ module.exports = {
                 }
                 
                 await reply(successMsg);
+                console.log(`✅ Group status sent successfully: ${mediaType}`);
                 
                 // React with success
                 await conn.sendMessage(from, {
@@ -91,11 +101,16 @@ module.exports = {
 
         } catch (error) {
             console.error('Error in group status command:', error);
-            await reply(`❌ *Error:* ${error.message}`);
+            
+            try {
+                if (context && context.reply) {
+                    await context.reply(`❌ *Error:* ${error.message}`);
+                }
+            } catch (e) {}
             
             // React with error
             try {
-                await conn.sendMessage(from, {
+                await conn.sendMessage(context.from, {
                     react: { text: "❌", key: message.key }
                 });
             } catch (e) {}
@@ -105,7 +120,6 @@ module.exports = {
 
 /* ------------------ Helper Functions ------------------ */
 
-// 📌 Help text
 function getHelpText() {
     return `📢 *GROUP STATUS COMMAND*\n\n` +
            `*Usage:*\n` +
@@ -118,11 +132,12 @@ function getHelpText() {
            `⚠️ *Note:* Only group admins can use this command.`;
 }
 
-// 📌 Build payload from quoted message
 async function buildPayloadFromQuoted(conn, quotedMessage, sessionId) {
     try {
-        // ✅ Handle video message
+        console.log(`🔧 Building payload from quoted message, checking type...`);
+        
         if (quotedMessage.videoMessage) {
+            console.log(`📹 Processing video message`);
             const buffer = await downloadToBuffer(conn, quotedMessage.videoMessage, 'video', sessionId);
             return { 
                 video: buffer, 
@@ -131,8 +146,8 @@ async function buildPayloadFromQuoted(conn, quotedMessage, sessionId) {
                 mimetype: quotedMessage.videoMessage.mimetype || 'video/mp4'
             };
         }
-        // ✅ Handle image message
         else if (quotedMessage.imageMessage) {
+            console.log(`🖼️ Processing image message`);
             const buffer = await downloadToBuffer(conn, quotedMessage.imageMessage, 'image', sessionId);
             return { 
                 image: buffer, 
@@ -140,12 +155,12 @@ async function buildPayloadFromQuoted(conn, quotedMessage, sessionId) {
                 mimetype: quotedMessage.imageMessage.mimetype || 'image/jpeg'
             };
         }
-        // ✅ Handle audio message
         else if (quotedMessage.audioMessage) {
+            console.log(`🎵 Processing audio message`);
             const buffer = await downloadToBuffer(conn, quotedMessage.audioMessage, 'audio', sessionId);
             
-            // Check if it's voice note (ptt) or regular audio
             if (quotedMessage.audioMessage.ptt) {
+                console.log(`🎤 Converting to voice note`);
                 const audioVn = await toVN(buffer);
                 return { 
                     audio: audioVn, 
@@ -160,10 +175,12 @@ async function buildPayloadFromQuoted(conn, quotedMessage, sessionId) {
                 };
             }
         }
-        // ✅ Handle text message
         else if (quotedMessage.conversation || quotedMessage.extendedTextMessage?.text) {
+            console.log(`📝 Processing text message`);
             const textContent = quotedMessage.conversation || quotedMessage.extendedTextMessage?.text || '';
             return { text: textContent };
+        } else {
+            console.log(`⚠️ Unknown quoted message type:`, Object.keys(quotedMessage));
         }
         
         return null;
@@ -174,7 +191,6 @@ async function buildPayloadFromQuoted(conn, quotedMessage, sessionId) {
     }
 }
 
-// 📌 Detect media type
 function detectMediaType(quotedMessage, payload = null) {
     if (!quotedMessage) return 'Text';
     if (quotedMessage.videoMessage) return 'Video';
@@ -183,14 +199,15 @@ function detectMediaType(quotedMessage, payload = null) {
     return 'Text';
 }
 
-// 📌 Download message content to buffer
 async function downloadToBuffer(conn, message, type, sessionId) {
     try {
+        console.log(`⬇️ Downloading ${type} for session ${sessionId}`);
         const stream = await downloadContentFromMessage(message, type);
         let buffer = Buffer.from([]);
         for await (const chunk of stream) {
             buffer = Buffer.concat([buffer, chunk]);
         }
+        console.log(`✅ Downloaded ${type}, size: ${buffer.length} bytes`);
         return buffer;
     } catch (error) {
         console.error(`Download error for session ${sessionId}:`, error);
@@ -198,9 +215,9 @@ async function downloadToBuffer(conn, message, type, sessionId) {
     }
 }
 
-// 📌 Send group status
 async function sendGroupStatus(conn, jid, content) {
     try {
+        console.log(`📤 Sending group status to ${jid}`);
         const inside = await generateWAMessageContent(content, { upload: conn.waUploadToServer });
         const messageSecret = crypto.randomBytes(32);
 
@@ -210,6 +227,7 @@ async function sendGroupStatus(conn, jid, content) {
         }, {});
 
         await conn.relayMessage(jid, m.message, { messageId: m.key.id });
+        console.log(`✅ Group status relayed successfully`);
         return m;
     } catch (error) {
         console.error("Send group status error:", error);
@@ -217,7 +235,6 @@ async function sendGroupStatus(conn, jid, content) {
     }
 }
 
-// 📌 Convert audio to voice note
 async function toVN(inputBuffer) {
     return new Promise((resolve, reject) => {
         const inStream = new PassThrough();

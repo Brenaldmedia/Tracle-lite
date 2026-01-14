@@ -3,19 +3,82 @@ const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
 // Main module export
 module.exports = {
     pattern: "vv2",
-    desc: "Owner only: Open view-once media and send to DM ",
+    desc: "Owner only: Open view-once media and send to DM",
     category: "owner",
     react: "🕵️",
     filename: __filename,
     use: "<reply to a view-once media>",
     ownerOnly: true, // This makes it owner-only
 
-    execute: async (conn, message, m, { from, reply, sender, sessionId }) => {
+    execute: async (conn, message, m, { from, reply, sender, sessionId, isBotOwner, context }) => {
         try {
-            // Check if user is owner
-            const isOwner = global.isBotOwner(conn, message, sessionId);
+            console.log(`🔍 vv2 command called by ${sender} in session ${sessionId}`);
             
-            if (!isOwner) {
+            // Check if user is owner using context's isBotOwner or imported function
+            let ownerCheck = false;
+            
+            if (context && typeof context.isBotOwner === 'function') {
+                // Use context's isBotOwner function
+                ownerCheck = context.isBotOwner();
+                console.log(`📞 Using context.isBotOwner(): ${ownerCheck}`);
+            } else if (typeof isBotOwner === 'function') {
+                // Use passed isBotOwner function
+                ownerCheck = isBotOwner(conn, message, sessionId);
+                console.log(`📞 Using passed isBotOwner(): ${ownerCheck}`);
+            } else {
+                // Fallback to manual check
+                console.log(`⚠️ isBotOwner function not available, using manual check`);
+                
+                // Extract session number
+                const sessionNumber = sessionId.replace(/\D/g, '');
+                console.log(`  • Session Number: ${sessionNumber}`);
+                
+                // Get sender JID and number
+                const senderJid = message.key?.participant || message.key?.remoteJid;
+                let senderNumber = '';
+                if (senderJid) {
+                    if (senderJid.includes('@lid')) {
+                        senderNumber = senderJid.split('@')[0];
+                    } else if (senderJid.includes('@s.whatsapp.net')) {
+                        senderNumber = senderJid.split('@')[0];
+                    } else if (senderJid.includes(':')) {
+                        senderNumber = senderJid.split(':')[0];
+                    } else {
+                        senderNumber = senderJid;
+                    }
+                    senderNumber = senderNumber.replace(/\D/g, '');
+                }
+                console.log(`  • Sender Number: ${senderNumber}`);
+                
+                // Method 1: Check if message is from bot itself
+                if (message.key && message.key.fromMe === true) {
+                    ownerCheck = true;
+                    console.log(`✅ OWNER CONFIRMED: Message is from bot itself`);
+                }
+                
+                // Method 2: Check if sender is the session owner
+                if (!ownerCheck && senderNumber && sessionNumber && senderNumber === sessionNumber) {
+                    ownerCheck = true;
+                    console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} is session owner ${sessionNumber}`);
+                }
+                
+                // Method 3: Check global owner numbers from .env
+                if (!ownerCheck && senderNumber) {
+                    const ownerNumbers = process.env.OWNER_NUMBERS ? 
+                        process.env.OWNER_NUMBERS.split(',').map(num => num.replace(/\D/g, '')) : 
+                        [];
+                    
+                    for (const ownerNum of ownerNumbers) {
+                        if (senderNumber.includes(ownerNum) || ownerNum.includes(senderNumber)) {
+                            ownerCheck = true;
+                            console.log(`✅ OWNER CONFIRMED: Sender ${senderNumber} matches owner number ${ownerNum}`);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!ownerCheck) {
                 console.log(`❌ Non-owner attempted to use vv2: ${sender}`);
                 // React with X emoji
                 await conn.sendMessage(from, { 
@@ -26,6 +89,8 @@ module.exports = {
                 }).catch(() => {});
                 return; // Silently exit
             }
+
+            console.log(`✅ Owner verified, proceeding with vv2 command...`);
 
             let quotedNode = null;
 
