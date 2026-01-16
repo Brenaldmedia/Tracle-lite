@@ -1,3 +1,4 @@
+// commands/antilink.js
 const { 
     getAntilink, 
     setAntilink, 

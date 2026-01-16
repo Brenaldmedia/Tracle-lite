@@ -1,3 +1,4 @@
+// commands/antibadword.js
 const { 
     handleAntiBadwordCommand, 
     handleBadwordDetection,
