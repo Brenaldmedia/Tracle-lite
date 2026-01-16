@@ -1,7 +1,7 @@
 // ===== CONNECTION CONFIGURATION FOR SINGLE DEPLOYMENT =====
 console.log('🚀 Tracle-Lite V2 Frontend Loading...');
 
-// Detect environment - SIMPLIFIED
+// Detect environment - FIXED
 const IS_HEROKU = window.location.hostname.includes('herokuapp.com');
 const IS_PTERODACTYL = window.location.hostname.includes('prexzyvilla.site') || 
                        window.location.hostname.includes('burzor');
@@ -13,39 +13,29 @@ const CURRENT_HOST = window.location.hostname;
 const CURRENT_PORT = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
 const PROTOCOL = window.location.protocol;
 
-// Auto-detect configuration
+// Auto-detect configuration - FIXED FOR PTERODACTYL
 let BACKEND_URL, WEB_SOCKET_URL, API_BASE_URL;
 
 if (IS_HEROKU) {
-    // Heroku - same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Heroku deployment detected');
+    // Heroku - same origin (frontend only)
+    BACKEND_URL = `https://node.burzor.prexzyvilla.site:2024`; // ← CHANGED: Direct to Pterodactyl
+    WEB_SOCKET_URL = `wss://node.burzor.prexzyvilla.site:2024`; // ← CHANGED: Direct to Pterodactyl
+    console.log('🌐 Heroku deployment detected - Proxy to Pterodactyl');
 } else if (IS_PTERODACTYL) {
-    // Pterodactyl - same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    // Pterodactyl - using port 2024
+    BACKEND_URL = `${PROTOCOL}//${CURRENT_HOST}:2024`;
+    WEB_SOCKET_URL = `${PROTOCOL === 'https:' ? 'wss:' : 'ws:'}//${CURRENT_HOST}:2024`;
     console.log('🌐 Pterodactyl deployment detected');
 } else if (IS_LOCAL) {
     // Local development
     BACKEND_URL = `http://localhost:2024`;
     WEB_SOCKET_URL = `ws://localhost:2024`;
     console.log('🌐 Local development detected');
-} else if (IS_HEROKU) {
-    // Heroku deployment - frontend and backend on same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Heroku deployment - single origin mode');
-} else if (IS_PTERODACTYL) {
-    // Pterodactyl deployment - frontend and backend on same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Pterodactyl deployment - single origin mode');
 } else {
-    // Fallback - use current origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Unknown environment, using current origin');
+    // Fallback - use current origin with port 2024
+    BACKEND_URL = `${PROTOCOL}//${CURRENT_HOST}:2024`;
+    WEB_SOCKET_URL = `${PROTOCOL === 'https:' ? 'wss:' : 'ws:'}//${CURRENT_HOST}:2024`;
+    console.log('🌐 Unknown environment, using default with port 2024');
 }
 
 // Always use backend URL for API
@@ -853,7 +843,7 @@ function initSocket() {
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000,
-        secure: IS_HEROKU, // Use secure connection for Heroku
+        secure: WEB_SOCKET_URL.startsWith('wss://'), // Secure for HTTPS
         rejectUnauthorized: false // Allow self-signed certificates
     });
     
@@ -864,9 +854,9 @@ function initSocket() {
     
     socket.on('connect_error', (error) => {
         console.error('❌ Socket.IO connection error:', error);
+        console.error('⚠️ Attempted to connect to:', WEB_SOCKET_URL);
         showToast('Connection failed: ' + error.message, 'error');
     });
-    
     socket.on('active-users-update', (data) => {
         if (elements.activeUsersCount) {
             elements.activeUsersCount.textContent = data.count;
