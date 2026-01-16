@@ -14,7 +14,7 @@ module.exports = {
         try {
             const userNumber = from.split('@')[0];
             const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
-            const APP_URL = process.env.APP_URL || "https://tracle-57a788202c97.herokuapp.com/";
+            const APP_URL = process.env.APP_URL || "https://tracle-lite-29aa81b80ab2.herokuapp.com/";
             const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/zlu6dx.jpg";
             
             // Check if user already has a session - FIXED: Get activeConnections from server properly
@@ -118,7 +118,7 @@ module.exports = {
                 "📱 *Quick Access Link:*\n\n" +
                 "🔗 " + APP_URL + "\n\n" +
                 "💡 *Tip:* You can also visit this link:\n" +
-                "👉 https://tracle-57a788202c97.herokuapp.com/\n\n" +
+                "👉 https://tracle-lite-29aa81b80ab2.herokuapp.com/\n\n" +
                 "🎯 Once connected, use `.menu` to see all commands!";
             
             await conn.sendMessage(from, {
@@ -128,7 +128,7 @@ module.exports = {
         } catch (error) {
             console.error('Error in pair command:', error);
             
-            const APP_URL = process.env.APP_URL || "https://tracle-57a788202c97.herokuapp.com/";
+            const APP_URL = process.env.APP_URL || "https://tracle-lite-29aa81b80ab2.herokuapp.com/";
             const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
             
             const errorText = 
