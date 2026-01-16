@@ -28,8 +28,8 @@ if (IS_HEROKU) {
     console.log('🌐 Pterodactyl deployment detected');
 } else if (IS_LOCAL) {
     // Local development
-    BACKEND_URL = `http://localhost:2038`;
-    WEB_SOCKET_URL = `ws://localhost:2038`;
+    BACKEND_URL = `http://localhost:2024`;
+    WEB_SOCKET_URL = `ws://localhost:2024`;
     console.log('🌐 Local development detected');
 } else if (IS_HEROKU) {
     // Heroku deployment - frontend and backend on same origin

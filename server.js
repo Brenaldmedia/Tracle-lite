@@ -25,11 +25,11 @@ if (IS_HEROKU) {
     FRONTEND_PORT = BACKEND_PORT; // Same port for Heroku
     console.log('🚀 Running on Heroku (PROXY MODE)');
 } else if (IS_PTERODACTYL) {
-    BACKEND_PORT = process.env.PORT || 2038; // Pterodactyl default
+    BACKEND_PORT = process.env.PORT || 2024; // Pterodactyl default
     FRONTEND_PORT = BACKEND_PORT; // Same port for Pterodactyl
     console.log('🚀 Running on Pterodactyl Panel (BOT PROCESSOR)');
 } else {
-    BACKEND_PORT = process.env.PORT || 2038; // Local development
+    BACKEND_PORT = process.env.PORT || 2024; // Local development
     FRONTEND_PORT = BACKEND_PORT; // Same port
     console.log('🚀 Running locally');
 }
@@ -53,7 +53,7 @@ const allowedOrigins = [
     `http://127.0.0.1:${FRONTEND_PORT}`,
     
     // Add your actual domains
-    'https://tracle-57a788202c97.herokuapp.com',
+    'https://tracle-lite-29aa81b80ab2.herokuapp.com/',
     'https://node.burzor.prexzyvilla.site',
     'https://burzor.prexzyvilla.site',
     
@@ -254,8 +254,8 @@ if (IS_HEROKU) {
     app.get('/api/get-socket-config', (req, res) => {
         if (SHOULD_PROXY_TO_PTERODACTYL) {
             res.json({
-                webSocketURL: 'wss://node.burzor.prexzyvilla.site:2038',
-                apiBase: 'https://node.burzor.prexzyvilla.site:2038',
+                webSocketURL: 'wss://node.burzor.prexzyvilla.site:2024',
+                apiBase: 'https://node.burzor.prexzyvilla.site:2024',
                 transports: ['websocket', 'polling'],
                 pingInterval: 25000,
                 pingTimeout: 60000,
@@ -264,8 +264,8 @@ if (IS_HEROKU) {
             });
         } else {
             res.json({
-                webSocketURL: `wss://tracle-57a788202c97.herokuapp.com`,
-                apiBase: `https://tracle-57a788202c97.herokuapp.com`,
+                webSocketURL: `wss://tracle-lite-29aa81b80ab2.herokuapp.com`,
+                apiBase: `https://tracle-lite-29aa81b80ab2.herokuapp.com/`,
                 transports: ['websocket', 'polling'],
                 pingInterval: 25000,
                 pingTimeout: 60000,
@@ -342,7 +342,7 @@ if (IS_HEROKU && !IS_PTERODACTYL) {
             status: 'awake',
             service: 'Heroku Keep-Alive Service',
             message: 'Bot runs on Pterodactyl Panel',
-            pterodactyl: 'https://burzor.prexzyvilla.site:2038',
+            pterodactyl: 'https://burzor.prexzyvilla.site:2024',
             timestamp: new Date().toISOString()
         });
     });
@@ -367,7 +367,7 @@ if (IS_HEROKU && !IS_PTERODACTYL) {
         if (req.path.startsWith('/api/')) {
             return res.json({
                 redirect: 'Pterodactyl',
-                url: 'https://burzor.prexzyvilla.site:2038' + req.path,
+                url: 'https://burzor.prexzyvilla.site:2024' + req.path,
                 message: 'API calls should go to Pterodactyl directly'
             });
         }
@@ -384,7 +384,7 @@ if (IS_HEROKU && !IS_PTERODACTYL) {
         📍 Mode: Keep-Alive Only
         🔗 Port: ${BACKEND_PORT}
         🎯 Bot Processor: Pterodactyl Panel
-        🔗 Pterodactyl URL: https://burzor.prexzyvilla.site:2038
+        🔗 Pterodactyl URL: https://burzor.prexzyvilla.site:2024
         ============================================
         ✅ Heroku will stay awake
         ✅ Bot runs on Pterodactyl
@@ -430,7 +430,7 @@ if (IS_HEROKU && SHOULD_PROXY_TO_PTERODACTYL) {
     
     const connectToPterodactylSocket = () => {
         try {
-            const pterodactylSocketURL = `wss://node.burzor.prexzyvilla.site:2038`;
+            const pterodactylSocketURL = `wss://node.burzor.prexzyvilla.site:2024`;
             console.log(`🔗 Connecting to Pterodactyl Socket.IO: ${pterodactylSocketURL}`);
             
             // Note: This would require additional setup on Pterodactyl side
@@ -519,7 +519,7 @@ if (IS_PTERODACTYL_PRIMARY) {
         const origin = req.headers.origin;
         res.json({
             status: 'online',
-            backend: 'node.burzor.prexzyvilla.site:2038',
+            backend: 'node.burzor.prexzyvilla.site:2024',
             frontend: origin || 'unknown',
             cors: allowedOrigins.includes(origin),
             socketio: true,
@@ -533,7 +533,7 @@ if (IS_PTERODACTYL_PRIMARY) {
             success: true,
             message: 'Pterodactyl bot processor is responding',
             frontendOrigin: req.headers.origin,
-            backend: 'node.burzor.prexzyvilla.site:2038',
+            backend: 'node.burzor.prexzyvilla.site:2024',
             time: new Date().toISOString(),
             processor: 'pterodactyl'
         });
