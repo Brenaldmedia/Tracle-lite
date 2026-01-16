@@ -334,8 +334,7 @@ if (fs.existsSync(publicPath)) {
 app.use(express.json());
 // =============== HEROKU KEEP-ALIVE MODE ===============
 if (IS_HEROKU && !IS_PTERODACTYL) {
-    console.log('🔄 Heroku running in KEEP-ALIVE ONLY mode');
-    
+    console.log('🤖 Heroku running FULL bot mode');
     // Simple health endpoint to keep Heroku awake
     app.get('/api/health', (req, res) => {
         res.json({

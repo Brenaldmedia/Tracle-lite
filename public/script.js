@@ -17,11 +17,13 @@ const PROTOCOL = window.location.protocol;
 let BACKEND_URL, WEB_SOCKET_URL, API_BASE_URL;
 
 if (IS_HEROKU) {
-    // Heroku - same origin (frontend only)
-    BACKEND_URL = `https://node.burzor.prexzyvilla.site:2024`; // ← CHANGED: Direct to Pterodactyl
-    WEB_SOCKET_URL = `wss://node.burzor.prexzyvilla.site:2024`; // ← CHANGED: Direct to Pterodactyl
-    console.log('🌐 Heroku deployment detected - Proxy to Pterodactyl');
-} else if (IS_PTERODACTYL) {
+    // Heroku - same origin
+    BACKEND_URL = window.location.origin;  // Keep as herokuapp.com
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws'); // Keep as herokuapp.com
+    console.log('🌐 Heroku deployment detected - Running full bot mode');
+}
+
+ else if (IS_PTERODACTYL) {
     // Pterodactyl - using port 2024
     BACKEND_URL = `${PROTOCOL}//${CURRENT_HOST}:2024`;
     WEB_SOCKET_URL = `${PROTOCOL === 'https:' ? 'wss:' : 'ws:'}//${CURRENT_HOST}:2024`;
