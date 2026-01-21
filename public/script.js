@@ -1,8 +1,10 @@
-// ===== CONNECTION CONFIGURATION FOR HEROKU DEPLOYMENT =====
+// ===== CONNECTION CONFIGURATION FOR SINGLE DEPLOYMENT =====
 console.log('🚀 Tracle-Lite V2 Frontend Loading...');
 
-// Detect environment - HEROKU ONLY
-const IS_HEROKU = true; // Force Heroku mode
+// Detect environment - SIMPLIFIED
+const IS_HEROKU = window.location.hostname.includes('herokuapp.com');
+const IS_PTERODACTYL = window.location.hostname.includes('prexzyvilla.site') || 
+                       window.location.hostname.includes('burzor');
 const IS_LOCAL = window.location.hostname === 'localhost' || 
                  window.location.hostname === '127.0.0.1';
 
@@ -11,19 +13,34 @@ const CURRENT_HOST = window.location.hostname;
 const CURRENT_PORT = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
 const PROTOCOL = window.location.protocol;
 
-// Auto-detect configuration - HEROKU ONLY
+// Auto-detect configuration
 let BACKEND_URL, WEB_SOCKET_URL, API_BASE_URL;
 
 if (IS_HEROKU) {
     // Heroku - same origin
     BACKEND_URL = window.location.origin;
     WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Heroku deployment detected - Running full bot mode');
+    console.log('🌐 Heroku deployment detected');
+} else if (IS_PTERODACTYL) {
+    // Pterodactyl - same origin
+    BACKEND_URL = window.location.origin;
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    console.log('🌐 Pterodactyl deployment detected');
 } else if (IS_LOCAL) {
     // Local development
-    BACKEND_URL = `http://localhost:${CURRENT_PORT}`;
-    WEB_SOCKET_URL = `ws://localhost:${CURRENT_PORT}`;
+    BACKEND_URL = `http://localhost:2024`;
+    WEB_SOCKET_URL = `ws://localhost:2024`;
     console.log('🌐 Local development detected');
+} else if (IS_HEROKU) {
+    // Heroku deployment - frontend and backend on same origin
+    BACKEND_URL = window.location.origin;
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    console.log('🌐 Heroku deployment - single origin mode');
+} else if (IS_PTERODACTYL) {
+    // Pterodactyl deployment - frontend and backend on same origin
+    BACKEND_URL = window.location.origin;
+    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
+    console.log('🌐 Pterodactyl deployment - single origin mode');
 } else {
     // Fallback - use current origin
     BACKEND_URL = window.location.origin;
@@ -53,7 +70,6 @@ let socket = null;
 let countdownInterval;
 let currentUserNumber = null;
 let currentUserEmail = null;
-
 // ===== DOM ELEMENTS =====
 const elements = {
     navOverlay: document.getElementById('navOverlay'),
@@ -93,55 +109,72 @@ const elements = {
 };
 
 // ===== INITIAL CONNECTION TEST =====
+// ===== INITIAL CONNECTION TEST =====
 async function testBackendConnection() {
-    try {
-        console.log('🔗 Testing backend connection from Heroku frontend...');
+  try {
+    console.log('🔗 Testing backend connection from Heroku frontend...');
+    
+    const endpoints = [
+      '/api/health',
+      '/api/status',
+      '/api/heroku-test',  // Changed from vercel-test to heroku-test
+      '/api/test-connection'
+    ];
+    
+    let success = false;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': window.location.origin
+          },
+          mode: 'cors' // Explicitly enable CORS
+        });
         
-        const endpoints = [
-            '/api/health',
-            '/api/status',
-            '/api/heroku-test',
-            '/api/test-connection'
-        ];
-        
-        let success = false;
-        
-        for (const endpoint of endpoints) {
-            try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Origin': window.location.origin
-                    },
-                    mode: 'cors'
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log(`✅ Backend connected via ${endpoint}:`, data);
-                    
-                    showToast('✅ Connected to Tracle-Lite V2 Backend', 'success');
-                    success = true;
-                    break;
-                }
-            } catch (error) {
-                console.log(`❌ ${endpoint} failed:`, error.message);
-            }
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Backend connected via ${endpoint}:`, data);
+          
+          // Show custom message for Heroku
+          if (IS_HEROKU) {
+            showToast('✅ Connected to Tracle-Lite V2 Backend', 'success');
+          } else {
+            showToast('✅ Connected to backend server', 'success');
+          }
+          
+          success = true;
+          break;
         }
-        
-        if (!success) {
-            showToast('⚠️ Cannot connect to backend. Please check if backend is running.', 'warning');
-        }
-        
-        return success;
-        
-    } catch (error) {
-        console.error('❌ Connection test failed:', error);
-        showToast('❌ Tracle-Lite V2 Backend is offline', 'error');
-        return false;
+      } catch (error) {
+        console.log(`❌ ${endpoint} failed:`, error.message);
+      }
     }
+    
+    if (!success) {
+      if (IS_HEROKU) {
+        showToast('⚠️ Cannot connect to backend. Please check if backend is running.', 'warning');
+      } else {
+        showToast('⚠️ Backend connection issues detected', 'warning');
+      }
+    }
+    
+    return success;
+    
+  } catch (error) {
+    console.error('❌ Connection test failed:', error);
+    
+    if (IS_HEROKU) {
+      showToast('❌ Tracle-Lite V2 Backend is offline', 'error');
+    } else {
+      showToast('❌ Cannot connect to backend', 'error');
+    }
+    
+    return false;
+  }
 }
 
 // ===== ENHANCED ERROR HANDLING =====
@@ -255,7 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize everything else
     initNavigation();
     initSocket();
-    setupSocketReconnection();
+    setupSocketReconnection(); // Add this line
     initEventListeners();
     checkSavedEmail();
     checkThemePreference();
@@ -358,6 +391,7 @@ function validateCountry(country) {
 // ===== ENHANCED ADMIN APPLICATION FUNCTIONS =====
 function initAdminApplication() {
     if (elements.adminReason) {
+        // Set initial state
         updateWordCount();
         
         elements.adminReason.addEventListener('input', function() {
@@ -365,9 +399,11 @@ function initAdminApplication() {
         });
         
         elements.adminReason.addEventListener('paste', function(e) {
+            // Allow paste to happen first
             setTimeout(() => {
                 updateWordCount();
                 
+                // If after paste we exceed 100 words, truncate
                 const text = this.value.trim();
                 const words = text.split(/\s+/).filter(word => word.length > 0);
                 
@@ -376,10 +412,26 @@ function initAdminApplication() {
                     this.value = limitedText;
                     
                     showToast('⚠️ Pasted text was truncated to 100 words maximum', 'warning');
+                    
+                    // Update count again after truncation
                     updateWordCount();
                 }
             }, 0);
         });
+        
+        // Add validation before form submission (optional)
+        if (elements.adminForm) {
+            elements.adminForm.addEventListener('submit', function(e) {
+                const text = elements.adminReason.value.trim();
+                const words = text.split(/\s+/).filter(word => word.length > 0);
+                
+                if (words.length > 100) {
+                    e.preventDefault();
+                    showToast('⚠️ Please reduce your text to 100 words or less', 'warning');
+                    elements.adminReason.focus();
+                }
+            });
+        }
     }
     
     function updateWordCount() {
@@ -387,6 +439,7 @@ function initAdminApplication() {
         const words = text.split(/\s+/).filter(word => word.length > 0);
         const wordCount = words.length;
         
+        // Update character count display
         if (elements.charCount) {
             elements.charCount.textContent = `${wordCount} / 100 words`;
             
@@ -401,12 +454,16 @@ function initAdminApplication() {
                 elements.charCount.style.color = 'var(--text-secondary)';
             }
             
+            // Only prevent typing if we're at or over 100 words
             if (wordCount >= 100) {
+                // Truncate if somehow we have more than 100 words
                 if (words.length > 100) {
                     const limitedText = words.slice(0, 100).join(' ');
                     elements.adminReason.value = limitedText;
                     
+                    // Update count again after truncation
                     setTimeout(() => updateWordCount(), 0);
+                    
                     showToast('⚠️ Maximum 100 words reached', 'warning');
                 }
             }
@@ -428,7 +485,7 @@ async function submitAdminApplication() {
         return;
     }
 
-    // Word count validation
+    // Word count validation (DO NOT TOUCH THIS PART - keeping as is)
     const words = reason.split(/\s+/).filter(word => word.length > 0);
     
     if (words.length > 100) {
@@ -487,8 +544,9 @@ async function submitAdminApplication() {
                 elements.charCount.style.color = 'var(--accent-success)';
             }
 
-            // Show success message
+            // Show success message directly in the section (like token request does)
             showAdminApplicationSuccess(email, name);
+            
             showToast('✅ Application submitted successfully!', 'success');
         } else {
             showModal('Submission Failed', response.message || 'Failed to submit application. Please try again.', 'OK');
@@ -705,6 +763,10 @@ function initNavigation() {
                 return;
             }
             
+            if (item.getAttribute('onclick') && item.getAttribute('onclick').includes('admin.html')) {
+                return;
+            }
+            
             elements.navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
             
@@ -791,8 +853,8 @@ function initSocket() {
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000,
-        secure: WEB_SOCKET_URL.startsWith('wss://'),
-        rejectUnauthorized: false
+        secure: IS_HEROKU, // Use secure connection for Heroku
+        rejectUnauthorized: false // Allow self-signed certificates
     });
     
     socket.on('connect', () => {
@@ -802,7 +864,6 @@ function initSocket() {
     
     socket.on('connect_error', (error) => {
         console.error('❌ Socket.IO connection error:', error);
-        console.error('⚠️ Attempted to connect to:', WEB_SOCKET_URL);
         showToast('Connection failed: ' + error.message, 'error');
     });
     
@@ -877,7 +938,6 @@ function initSocket() {
         }
     });
 }
-
 // ===== SOCKET RECONNECTION =====
 function setupSocketReconnection() {
     let reconnectAttempts = 0;
@@ -913,10 +973,13 @@ function setupSocketReconnection() {
         console.log('🔌 Disconnected from server:', reason);
         
         if (reason === 'io server disconnect') {
+            // The server has forcefully disconnected the socket
             setTimeout(attemptReconnect, 1000);
         } else if (reason === 'io client disconnect') {
+            // User-initiated disconnection
             showToast('Disconnected from server', 'warning');
         } else {
+            // Network error - try to reconnect
             setTimeout(attemptReconnect, 2000);
         }
     });
@@ -991,7 +1054,7 @@ async function validateEmailForUser(email) {
     } catch (error) {
         console.error('❌ Email validation error:', error);
         return { 
-            valid: true,
+            valid: true, // Always valid for free version
             message: 'Email is valid' 
         };
     }
@@ -1690,6 +1753,7 @@ window.closeModal = closeModal;
 window.showModal = showModal;
 window.checkAdminAccess = checkAdminAccess;
 window.submitAdminApplication = submitAdminApplication;
+window.closeAdminApplicationModal = closeAdminApplicationModal;
 
 // Initialize
-console.log('🚀 Tracle-Lite Pro Frontend Loaded - Heroku Deployment');
+console.log('🚀 Tracle-Lite Pro Frontend Loaded - Token-Free Version');

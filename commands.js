@@ -84,12 +84,23 @@ class CommandHandler {
                 console.log('⚠️ Creategc command not available');
             }
 
+            // Load pair command
+            try {
+                const pair = require('./commands/pair');
+                tempCommands.set(pair.name, pair);
+                console.log(`✅ Loaded command: ${pair.name} (from pair.js)`);
+                if (pair.ownerOnly) {
+                    console.log(`   └── Owner only command`);
+                }
+            } catch (error) {
+                console.log('⚠️ Pair command not available');
+            }
            
             // Load other commands from files
             commandFiles.forEach(file => {
                 try {
-                    // Skip if it's the same as antibadword, anticall, creategc
-                    const skipFiles = ['antibadword.js', 'anticall.js', 'creategc.js'];
+                    // Skip if it's the same as antibadword, anticall, creategc, pair
+                    const skipFiles = ['antibadword.js', 'anticall.js', 'creategc.js', 'pair.js'];
                     if (skipFiles.includes(file)) return;
                     
                     // Clear require cache to allow hot reload

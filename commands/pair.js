@@ -1,156 +1,78 @@
-// FILE: commands/pair.js - FIXED VERSION
-const fs = require('fs');
-const path = require('path');
-
+// commands/pair.js - DIRECT APPROACH
 module.exports = {
-    pattern: "pair",
-    alias: ["link", "connect", "session", "web"],
-    desc: "Get the web link to connect your WhatsApp to bot",
-    react: "🔗",
-    category: "utility",
-    filename: __filename,
-
-    execute: async (conn, mek, m, { from, args, q, reply, sessionId }) => {
+    name: 'pair',
+    category: 'WhatsApp',
+    description: 'Generate pairing code (may log out current session)',
+    ownerOnly: true,
+    
+    async execute(conn, message, m, context) {
         try {
-            const userNumber = from.split('@')[0];
-            const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
-            const APP_URL = process.env.APP_URL || "https://tracle-lite-df165c9bf5d7.herokuapp.com/";
-            const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/zlu6dx.jpg";
+            const { args, reply } = context;
             
-            // Check if user already has a session - FIXED: Get activeConnections from server properly
-            const mainSessionPath = path.join(__dirname, '../sessions', userNumber);
-            let isAlreadyConnected = false;
+            if (args.length === 0) {
+                return reply('🔐 Usage: .pair [number]\nExample: .pair 2348150221529');
+            }
+            
+            const phoneNumber = args.join('').replace(/\D/g, '');
+            
+            if (phoneNumber.length < 8) {
+                return reply('❌ Invalid number');
+            }
+            
+            // Mask number
+            const maskNum = (num) => {
+                if (num.length <= 6) return num;
+                return num.substring(0, 3) + 'xxx' + num.substring(num.length - 3);
+            };
+            
+            const masked = maskNum(phoneNumber);
+            
+            // Check if already connected
+            const activeConnections = global.activeConnections || new Map();
+            let isConnected = false;
+            
+            for (const [sessionNum, connectionData] of activeConnections.entries()) {
+                if (!connectionData.conn || !connectionData.conn.user) continue;
+                
+                const jid = connectionData.conn.user.id;
+                let num = jid.split('@')[0].split(':')[0].replace(/\D/g, '');
+                
+                if (num === phoneNumber) {
+                    isConnected = true;
+                    break;
+                }
+            }
+            
+            if (isConnected) {
+                return reply(`❌ ${masked} - Already connected`);
+            }
+            
+            // WARNING: This may log out current session
+            await reply(`⚠️ *WARNING:* Generating pairing code may log out this bot session!\n\nGenerating code for ${masked}...`);
             
             try {
-                // Try to get activeConnections from server module
-                const serverModule = require('../server');
-                if (serverModule && typeof serverModule === 'object') {
-                    // Check if activeConnections exists as an export or in the module
-                    const activeConnections = serverModule.activeConnections || 
-                                               (serverModule.default && serverModule.default.activeConnections);
-                    if (activeConnections && typeof activeConnections.has === 'function') {
-                        isAlreadyConnected = activeConnections.has(userNumber);
-                    }
-                }
-            } catch (error) {
-                console.log('⚠️ Could not check active connections:', error.message);
-                // Continue without checking active connections
-            }
-            
-            // Also check if session folder exists
-            const sessionExists = fs.existsSync(mainSessionPath);
-            
-            if (isAlreadyConnected || sessionExists) {
-                const statusText = 
-                    "┌ ❏ *⌜ ALREADY CONNECTED ⌟* ❏\n│\n" +
-                    "├◆ ✅ Your WhatsApp is already connected\n" +
-                    "├◆ 📱 Session: Active\n" +
-                    "├◆ 🔗 Number: " + userNumber + "\n│\n" +
-                    "├◆ 💡 Use .unpair to disconnect\n" +
-                    "├◆ 🔗 Web Panel: " + APP_URL + "\n│\n" +
-                    "└ ❏\n> 🎭 " + BOT_NAME + " 🎭";
+                // Try to generate pairing code
+                const pairingCode = await conn.requestPairingCode(phoneNumber);
                 
-                return await conn.sendMessage(from, {
-                    text: statusText,
-                    contextInfo: {
-                        forwardingScore: 999,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: "120363401559573199@newsletter",
-                            newsletterName: "BrenaldMedia",
-                            serverMessageId: -1
-                        },
-                        externalAdReply: {
-                            title: "✅ Already Connected",
-                            body: "Active Session",
-                            thumbnailUrl: MENU_IMAGE_URL,
-                            sourceUrl: APP_URL,
-                            mediaType: 1,
-                            renderLargerThumbnail: false
-                        }
-                    }
-                }, { quoted: mek });
-            }
-            
-            // Show the web pairing instructions
-            const pairText = 
-                "┌ ❏ *⌜ CONNECT YOUR WHATSAPP ⌟* ❏\n│\n" +
-                "├◆ 🌐 *WEB CONNECTION*\n│\n" +
-                "├◆ 🔗 Visit this link:\n" +
-                "├◆   " + APP_URL + "\n│\n" +
-                "├◆ 📱 *Steps to Connect:*\n" +
-                "├◆   1. Open the link above\n" +
-                "├◆   2. Enter your WhatsApp number\n" +
-                "├◆   3. Request pairing code\n" +
-                "├◆   4. Start using the bot!\n│\n" +
-                "├◆ ⚡ *Features After Connecting:*\n" +
-                "├◆   • Auto view status\n" +
-                "├◆   • All owner only available\n" +
-                "├◆   • Opens view-once\n" +
-                "├◆   • Anti-delete\n│\n" +
-                "├◆ 💡 *Need Help?*\n" +
-                "├◆   Contact: brenaldmedia@gmail.com\n│\n" +
-                "└ ❏\n> 🎭 " + BOT_NAME + " 🎭";
-            
-            await conn.sendMessage(from, {
-                text: pairText,
-                contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: "120363401559573199@newsletter",
-                        newsletterName: "BrenaldMedia",
-                        serverMessageId: -1
-                    },
-                    externalAdReply: {
-                        title: "🔗 Connect via Web",
-                        body: "Click to open Tracle-Lite",
-                        thumbnailUrl: MENU_IMAGE_URL,
-                        sourceUrl: APP_URL,
-                        mediaType: 1,
-                        renderLargerThumbnail: true
-                    }
+                if (pairingCode) {
+                    await reply(`✅ *SUCCESS!*\n\n📱 Number: ${masked}\n🔢 Code: *${pairingCode}*\n\n⚠️ *This bot session may log out now!*\n\nEnter code in WhatsApp → Settings → Linked Devices`);
+                } else {
+                    await reply(`❌ Failed to generate code for ${masked}`);
                 }
-            }, { quoted: mek });
-            
-            // Also send the link as a clickable button/link
-            const linkMessage = 
-                "📱 *Quick Access Link:*\n\n" +
-                "🔗 " + APP_URL + "\n\n" +
-                "💡 *Tip:* You can also visit this link:\n" +
-                "👉 https://tracle-lite-df165c9bf5d7.herokuapp.com/\n\n" +
-                "🎯 Once connected, use `.menu` to see all commands!";
-            
-            await conn.sendMessage(from, {
-                text: linkMessage
-            });
+                
+            } catch (error) {
+                console.error('Pairing error:', error);
+                
+                if (error.message.includes('logged out') || error.message.includes('401')) {
+                    await reply(`⚠️ *SESSION LOGGED OUT*\n\nPairing code generation logged out this session.\n\nCode was generated but bot needs to reconnect.\n\n📱 Number: ${masked}\n🔢 Check logs for generated code`);
+                } else {
+                    await reply(`❌ Error: ${error.message}`);
+                }
+            }
             
         } catch (error) {
-            console.error('Error in pair command:', error);
-            
-            const APP_URL = process.env.APP_URL || "https://tracle-lite-df165c9bf5d7.herokuapp.com/";
-            const BOT_NAME = process.env.BOT_NAME || "TRACLE - LITE";
-            
-            const errorText = 
-                "┌ ❏ *⌜ CONNECTION ERROR ⌟* ❏\n│\n" +
-                "├◆ ❌ Unable to process request\n" +
-                "├◆ 💥 Error: " + error.message + "\n│\n" +
-                "├◆ 💡 Direct Link:\n" +
-                "├◆   " + APP_URL + "\n│\n" +
-                "└ ❏\n> 🎭 " + BOT_NAME + " 🎭";
-            
-            await conn.sendMessage(from, {
-                text: errorText,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "❌ Connection Error",
-                        body: "Visit link manually",
-                        thumbnailUrl: "https://files.catbox.moe/zlu6dx.jpg",
-                        sourceUrl: APP_URL,
-                        mediaType: 1
-                    }
-                }
-            }, { quoted: mek });
+            console.error('Pair command error:', error);
+            await context.reply('❌ Failed to generate pairing code');
         }
     }
 };
