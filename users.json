@@ -880,17 +880,18 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_8xkRAbHeEUV",
+    "token": null,
     "tokenGenerated": "2025-12-23T14:25:56.750Z",
     "createdAt": "2025-12-23T14:21:01.300Z",
-    "lastUpdated": "2025-12-23T14:25:58.074Z",
+    "lastUpdated": "2026-01-23T06:59:31.733Z",
     "tokenBalance": 1,
     "freeTokensGranted": 1,
     "amountPaid": 0,
     "freeToken": true,
-    "lastTokenActivity": "2025-12-23T14:25:56.750Z"
+    "lastTokenActivity": "2025-12-23T14:25:56.750Z",
+    "tokenExpired": "2026-01-23T06:59:31.733Z"
   },
   "sobguiduval@gmail.com": {
     "email": "sobguiduval@gmail.com",

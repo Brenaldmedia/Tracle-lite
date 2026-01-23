@@ -1,62 +1,33 @@
-// ===== CONNECTION CONFIGURATION FOR SINGLE DEPLOYMENT =====
+// ===== CONNECTION CONFIGURATION FOR UNIVERSAL DEPLOYMENT =====
 console.log('🚀 Tracle-Lite V2 Frontend Loading...');
 
-// Detect environment - SIMPLIFIED
+// Simple environment detection
 const IS_HEROKU = window.location.hostname.includes('herokuapp.com');
-const IS_PTERODACTYL = window.location.hostname.includes('prexzyvilla.site') || 
-                       window.location.hostname.includes('burzor');
 const IS_LOCAL = window.location.hostname === 'localhost' || 
                  window.location.hostname === '127.0.0.1';
 
-// Single deployment - backend and frontend on same server/port
-const CURRENT_HOST = window.location.hostname;
-const CURRENT_PORT = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
-const PROTOCOL = window.location.protocol;
+// Auto-detect everything from current location
+const CURRENT_ORIGIN = window.location.origin;
+const CURRENT_HOSTNAME = window.location.hostname;
+const CURRENT_PROTOCOL = window.location.protocol;
 
-// Auto-detect configuration
+// Universal configuration - works anywhere
 let BACKEND_URL, WEB_SOCKET_URL, API_BASE_URL;
 
-if (IS_HEROKU) {
-    // Heroku - same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Heroku deployment detected');
-} else if (IS_PTERODACTYL) {
-    // Pterodactyl - same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Pterodactyl deployment detected');
-} else if (IS_LOCAL) {
-    // Local development
-    BACKEND_URL = `http://localhost:2024`;
-    WEB_SOCKET_URL = `ws://localhost:2024`;
-    console.log('🌐 Local development detected');
-} else if (IS_HEROKU) {
-    // Heroku deployment - frontend and backend on same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Heroku deployment - single origin mode');
-} else if (IS_PTERODACTYL) {
-    // Pterodactyl deployment - frontend and backend on same origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Pterodactyl deployment - single origin mode');
-} else {
-    // Fallback - use current origin
-    BACKEND_URL = window.location.origin;
-    WEB_SOCKET_URL = window.location.origin.replace('http', 'ws');
-    console.log('🌐 Unknown environment, using current origin');
-}
-
-// Always use backend URL for API
+// Always use current origin - works on Heroku, Render, Railway, etc.
+BACKEND_URL = CURRENT_ORIGIN;
+WEB_SOCKET_URL = CURRENT_PROTOCOL === 'https:' 
+    ? `wss://${CURRENT_HOSTNAME}` 
+    : `ws://${CURRENT_HOSTNAME}`;
 API_BASE_URL = BACKEND_URL;
 
+console.log('🌍 Universal deployment detected');
 console.log('🔗 Backend URL:', BACKEND_URL);
 console.log('🔌 WebSocket URL:', WEB_SOCKET_URL);
 console.log('📡 API Base URL:', API_BASE_URL);
-console.log('📍 Current Origin:', window.location.origin);
+console.log('📍 Current Origin:', CURRENT_ORIGIN);
 
-// Keep only ONE copy of these functions:
+// Simple API functions
 function getApiBase() {
     return API_BASE_URL;
 }
@@ -70,6 +41,7 @@ let socket = null;
 let countdownInterval;
 let currentUserNumber = null;
 let currentUserEmail = null;
+
 // ===== DOM ELEMENTS =====
 const elements = {
     navOverlay: document.getElementById('navOverlay'),
@@ -109,7 +81,6 @@ const elements = {
 };
 
 // ===== INITIAL CONNECTION TEST =====
-// ===== INITIAL CONNECTION TEST =====
 async function testBackendConnection() {
   try {
     console.log('🔗 Testing backend connection from Heroku frontend...');
@@ -117,7 +88,7 @@ async function testBackendConnection() {
     const endpoints = [
       '/api/health',
       '/api/status',
-      '/api/heroku-test',  // Changed from vercel-test to heroku-test
+      '/api/heroku-test',
       '/api/test-connection'
     ];
     
@@ -132,19 +103,14 @@ async function testBackendConnection() {
             'Accept': 'application/json',
             'Origin': window.location.origin
           },
-          mode: 'cors' // Explicitly enable CORS
+          mode: 'cors'
         });
         
         if (response.ok) {
           const data = await response.json();
           console.log(`✅ Backend connected via ${endpoint}:`, data);
           
-          // Show custom message for Heroku
-          if (IS_HEROKU) {
-            showToast('✅ Connected to Tracle-Lite V2 Backend', 'success');
-          } else {
-            showToast('✅ Connected to backend server', 'success');
-          }
+          showToast('✅ Connected to Tracle-Lite V2 Backend', 'success');
           
           success = true;
           break;
@@ -155,11 +121,7 @@ async function testBackendConnection() {
     }
     
     if (!success) {
-      if (IS_HEROKU) {
-        showToast('⚠️ Cannot connect to backend. Please check if backend is running.', 'warning');
-      } else {
-        showToast('⚠️ Backend connection issues detected', 'warning');
-      }
+      showToast('⚠️ Cannot connect to backend. Please check if backend is running.', 'warning');
     }
     
     return success;
@@ -167,11 +129,7 @@ async function testBackendConnection() {
   } catch (error) {
     console.error('❌ Connection test failed:', error);
     
-    if (IS_HEROKU) {
-      showToast('❌ Tracle-Lite V2 Backend is offline', 'error');
-    } else {
-      showToast('❌ Cannot connect to backend', 'error');
-    }
+    showToast('❌ Tracle-Lite V2 Backend is offline', 'error');
     
     return false;
   }
@@ -288,7 +246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize everything else
     initNavigation();
     initSocket();
-    setupSocketReconnection(); // Add this line
+    setupSocketReconnection();
     initEventListeners();
     checkSavedEmail();
     checkThemePreference();
@@ -485,7 +443,7 @@ async function submitAdminApplication() {
         return;
     }
 
-    // Word count validation (DO NOT TOUCH THIS PART - keeping as is)
+    // Word count validation
     const words = reason.split(/\s+/).filter(word => word.length > 0);
     
     if (words.length > 100) {
@@ -544,7 +502,7 @@ async function submitAdminApplication() {
                 elements.charCount.style.color = 'var(--accent-success)';
             }
 
-            // Show success message directly in the section (like token request does)
+            // Show success message directly in the section
             showAdminApplicationSuccess(email, name);
             
             showToast('✅ Application submitted successfully!', 'success');
@@ -839,6 +797,14 @@ function showSection(section) {
 // ===== SOCKET FUNCTIONS =====
 function initSocket() {
     console.log('🔗 Initializing socket connection to:', WEB_SOCKET_URL);
+    console.log('🔄 Attempting to connect with:', {
+        url: WEB_SOCKET_URL,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        origin: window.location.origin,
+        isHeroku: IS_HEROKU,
+        isLocal: IS_LOCAL
+    });
     
     // Clear any existing socket connection
     if (socket && socket.connected) {
@@ -847,14 +813,16 @@ function initSocket() {
     
     // Create new socket connection with proper configuration
     socket = io(WEB_SOCKET_URL, {
+        path: '/socket.io/',
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000,
-        secure: IS_HEROKU, // Use secure connection for Heroku
-        rejectUnauthorized: false // Allow self-signed certificates
+        secure: window.location.protocol === 'https:',
+        rejectUnauthorized: false,
+        withCredentials: true
     });
     
     socket.on('connect', () => {
@@ -864,6 +832,11 @@ function initSocket() {
     
     socket.on('connect_error', (error) => {
         console.error('❌ Socket.IO connection error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            description: error.description,
+            context: error.context
+        });
         showToast('Connection failed: ' + error.message, 'error');
     });
     
@@ -938,6 +911,7 @@ function initSocket() {
         }
     });
 }
+
 // ===== SOCKET RECONNECTION =====
 function setupSocketReconnection() {
     let reconnectAttempts = 0;
@@ -1756,4 +1730,4 @@ window.submitAdminApplication = submitAdminApplication;
 window.closeAdminApplicationModal = closeAdminApplicationModal;
 
 // Initialize
-console.log('🚀 Tracle-Lite Pro Frontend Loaded - Token-Free Version');
+console.log('🚀 Tracle-Lite Pro Frontend Loaded - Heroku Edition');

@@ -4,6 +4,18 @@
       "email": "brenaldmedia@gmail.com",
       "ip": "::1",
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+      "timestamp": "2026-01-22T20:01:22.820Z",
+      "location": {
+        "country": "Local",
+        "region": "Local Network",
+        "city": "Local",
+        "isp": "Local Network"
+      }
+    },
+    {
+      "email": "brenaldmedia@gmail.com",
+      "ip": "::1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
       "timestamp": "2026-01-14T00:50:32.093Z",
       "location": {
         "country": "Local",
