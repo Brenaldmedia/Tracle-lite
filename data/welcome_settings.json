@@ -1,0 +1,14 @@
+{
+  "120363401557210652@g.us": {
+    "welcome": true,
+    "welcomeMessage": "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
+    "includeDescription": true,
+    "fetchProfilePic": true
+  },
+  "120363423778157947@g.us": {
+    "welcome": true,
+    "welcomeMessage": "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
+    "includeDescription": true,
+    "fetchProfilePic": true
+  }
+}

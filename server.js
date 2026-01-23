@@ -127,17 +127,25 @@ const server = http.createServer(app);
 // =============== SOCKET.IO CONFIGURATION ===============
 const io = socketIO(server, {
     cors: {
-        origin: function (origin, callback) {
-            if (!origin || origin.includes('localhost') || origin.includes('herokuapp.com')) {
-                callback(null, true);
-            } else {
-                callback(new Error('Not allowed by CORS'));
-            }
-        },
+        origin: "*", // Allow all origins for now
         credentials: true,
         methods: ['GET', 'POST']
     },
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'], // Ensure polling is available
+    allowEIO3: true, // Allow Engine.IO v3
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    cookie: false,
+    maxHttpBufferSize: 1e8 // 100MB
+});
+
+// Handle Socket.IO connection errors
+io.engine.on("connection_error", (err) => {
+    console.log('🔌 Socket.IO connection error:', {
+        code: err.code,
+        message: err.message,
+        req: err.req?.headers?.origin || 'unknown'
+    });
 });
 
 // =============== START SERVER ===============
@@ -157,6 +165,15 @@ server.listen(BACKEND_PORT, () => {
     ✅ Ready for Heroku, Render, or any deployment!
     ============================================
     `);
+    
+    // WebSocket debug information
+    console.log(`\n🔌 WebSocket Debug Information:`);
+    console.log(`   • WebSocket URL: ${IS_HEROKU ? `wss://${HEROKU_APP_NAME}.herokuapp.com` : `ws://localhost:${BACKEND_PORT}`}`);
+    console.log(`   • Polling URL: ${IS_HEROKU ? `https://${HEROKU_APP_NAME}.herokuapp.com/socket.io/` : `http://localhost:${BACKEND_PORT}/socket.io/`}`);
+    console.log(`   • Health Check: ${IS_HEROKU ? `https://${HEROKU_APP_NAME}.herokuapp.com/api/health` : `http://localhost:${BACKEND_PORT}/api/health`}`);
+    console.log(`   • WS Test: ${IS_HEROKU ? `https://${HEROKU_APP_NAME}.herokuapp.com/api/ws-test` : `http://localhost:${BACKEND_PORT}/api/ws-test`}`);
+    console.log(`\n📡 Socket.IO Transport: ['websocket', 'polling']`);
+    console.log(`🌐 CORS: Enabled (origin: "*")`);
 });
 
 // =============== BOT LOGIC (SAME AS BEFORE) ===============
@@ -181,9 +198,9 @@ const pino = require('pino');
 // Import command handler from commands.js
 const commandHandler = require('./commands');
 const { Antilink, getAntilink } = require('./lib/index');
-// Import antibadword module
 const antibadwordModule = require('./lib/antibadword');
-// Import anticall command
+const welcomeModule = require('./commands/welcome');
+const goodbyeModule = require('./commands/goodbye');
 const anticallModule = require('./commands/anticall');
 
 const sendMessageWithContext = commandHandler.sendMessageWithContext || async function(conn, jid, text, options = {}) {
@@ -207,7 +224,23 @@ const sendMessageWithContext = commandHandler.sendMessageWithContext || async fu
     }, options.quoted ? { quoted: options.quoted } : {});
 };
 
+// =============== WEBSOCKET TEST ENDPOINT ===============
+app.get('/api/ws-test', (req, res) => {
+    const connectedSockets = io.engine?.clientsCount || 0;
+    
+    res.json({
+        success: true,
+        message: 'WebSocket server is running',
+        socketIO: true,
+        connectedClients: connectedSockets,
+        serverTime: new Date().toISOString(),
+        url: IS_HEROKU ? `wss://${HEROKU_APP_NAME}.herokuapp.com` : `ws://localhost:${BACKEND_PORT}`,
+        pollingUrl: IS_HEROKU ? `https://${HEROKU_APP_NAME}.herokuapp.com/socket.io/` : `http://localhost:${BACKEND_PORT}/socket.io/`,
+        supports: ['websocket', 'polling']
+    });
+});
 // =============== UNIVERSAL API ENDPOINTS ===============
+
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'healthy',
@@ -310,6 +343,8 @@ const DEFAULT_USER_SETTINGS = {
     botImage: MENU_IMAGE_URL,
     ownerName: OWNER_NAME,
     botName: BOT_NAME,
+     welcomeEnabled: "false",
+    goodbyeEnabled: "false",
     groupOpenTime: null,
     groupCloseTime: null
 };
@@ -2227,7 +2262,32 @@ Type ${userPrefixes.get(userNumber) || PREFIX}menu to see available commands.`;
                         console.error(`❌ Error processing message for ${userNumber}:`, error);
                     }
                 });
-                
+// Handle group participants update for welcome/goodbye
+sock.ev.on('group-participants.update', async (update) => {
+    try {
+        const sessionId = sock.userNumber || 'unknown';
+        const { id, participants, action } = update;
+        
+        console.log(`🔔 Group participants update for session ${sessionId}:`);
+        console.log(`   Group: ${id}`);
+        console.log(`   Action: ${action}`);
+        console.log(`   Participants:`, participants);
+        console.log(`   Participant type:`, typeof participants[0]);
+        console.log(`   Participant value:`, participants[0]);
+        
+        // Handle welcome messages for new members
+        if (action === 'add') {
+            await welcomeModule.handleWelcomeParticipantsUpdate(sock, update, sessionId);
+        }
+        
+        // Handle goodbye messages for leaving members
+        if (action === 'remove' || action === 'leave') {
+            await goodbyeModule.handleGoodbyeParticipantsUpdate(sock, update, sessionId);
+        }
+    } catch (error) {
+        console.error('Error handling group participants update:', error);
+    }
+});       
                 sock.ev.on('messages.update', async (updates) => {
                     try {
                         for (const update of updates) {
@@ -2684,6 +2744,7 @@ async function restoreExistingSessions() {
 
 io.on('connection', (socket) => {
     console.log('🌐 Frontend connected:', socket.id);
+    console.log('📡 Transport:', socket.conn.transport.name);
     
     const connectedSessions = Array.from(activeConnections.values())
         .filter(data => data.isConnected).length;
@@ -2692,6 +2753,20 @@ io.on('connection', (socket) => {
         count: activeConnections.size,
         connected: connectedSessions,
         sessions: Array.from(activeConnections.keys())
+    });
+    
+    // Send connection confirmation
+    socket.emit('connection-established', {
+        socketId: socket.id,
+        message: 'WebSocket connection successful',
+        serverTime: new Date().toISOString()
+    });
+    
+    // Set up ping-pong to keep connection alive
+    socket.on('ping', (cb) => {
+        if (typeof cb === 'function') {
+            cb({ pong: Date.now() });
+        }
     });
     
     socket.on('create-session', async (data) => {
@@ -2731,10 +2806,11 @@ io.on('connection', (socket) => {
         socket.emit('session-cleaned', { userNumber });
     });
     
-    socket.on('disconnect', () => {
-        console.log('🌐 Frontend disconnected:', socket.id);
+    socket.on('disconnect', (reason) => {
+        console.log('🌐 Frontend disconnected:', socket.id, 'Reason:', reason);
     });
 });
+
 
 // Handle socket connection errors
 io.engine.on("connection_error", (err) => {

@@ -236,12 +236,50 @@ function hidePairingSectionLoader() {
     elements.pairingSection.classList.remove('loading');
 }
 
+// ===== WEB SOCKET TEST FUNCTION =====
+async function testWebSocketConnection() {
+    try {
+        console.log('🔌 Testing WebSocket connection...');
+        
+        // Test the WebSocket endpoint first
+        const wsTestUrl = `${API_BASE_URL}/api/ws-test`;
+        const response = await fetch(wsTestUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            mode: 'cors'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ WebSocket server is running:', data);
+            
+            if (data.socketIO) {
+                showToast('✅ WebSocket server is ready', 'success');
+                return true;
+            }
+        }
+        
+        console.log('⚠️ WebSocket test failed');
+        return false;
+        
+    } catch (error) {
+        console.error('❌ WebSocket test error:', error);
+        showToast('⚠️ WebSocket server may be offline', 'warning');
+        return false;
+    }
+}
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Tracle-Lite Frontend Loading...');
     
     // Test backend connection first
     await testBackendConnection();
+    
+    // Test WebSocket connection specifically
+    await testWebSocketConnection();
     
     // Initialize everything else
     initNavigation();
@@ -796,9 +834,12 @@ function showSection(section) {
 
 // ===== SOCKET FUNCTIONS =====
 function initSocket() {
-    console.log('🔗 Initializing socket connection to:', WEB_SOCKET_URL);
-    console.log('🔄 Attempting to connect with:', {
-        url: WEB_SOCKET_URL,
+    console.log('🔗 Initializing socket connection...');
+    
+    // Use CURRENT_ORIGIN instead of WEB_SOCKET_URL
+    const socketUrl = CURRENT_ORIGIN;
+    console.log('🔄 Connecting to:', {
+        url: socketUrl,
         protocol: window.location.protocol,
         hostname: window.location.hostname,
         origin: window.location.origin,
@@ -811,23 +852,35 @@ function initSocket() {
         socket.disconnect();
     }
     
-    // Create new socket connection with proper configuration
-    socket = io(WEB_SOCKET_URL, {
+    // SIMPLIFIED: Connect using current origin
+    socket = io(socketUrl, {
         path: '/socket.io/',
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'], // Polling first for reliability
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 20000,
+        timeout: 30000,
         secure: window.location.protocol === 'https:',
         rejectUnauthorized: false,
-        withCredentials: true
+        withCredentials: true,
+        // Add these for better compatibility
+        forceNew: true,
+        rememberUpgrade: true,
+        autoConnect: true
     });
-    
+
     socket.on('connect', () => {
         console.log('✅ Connected to server with ID:', socket.id);
+        console.log('📡 Transport:', socket.io?.engine?.transport?.name);
         showToast('✅ Connected to server', 'success');
+    });
+    
+    // Add this NEW event handler
+    socket.on('connection-established', (data) => {
+        console.log('✅ Server confirmed connection:', data);
+        console.log('📡 Active transport:', socket.io?.engine?.transport?.name);
+        showToast('✅ WebSocket connection established successfully', 'success');
     });
     
     socket.on('connect_error', (error) => {
@@ -835,11 +888,38 @@ function initSocket() {
         console.error('Error details:', {
             message: error.message,
             description: error.description,
-            context: error.context
+            context: error.context,
+            type: error.type,
+            transport: socket.io?.engine?.transport?.name
         });
-        showToast('Connection failed: ' + error.message, 'error');
+        
+        // More specific error messages
+        let errorMessage = 'Connection failed: ';
+        
+        if (error.message.includes('xhr poll error')) {
+            errorMessage += 'Polling failed. Trying WebSocket...';
+        } else if (error.message.includes('websocket error')) {
+            errorMessage += 'WebSocket failed. Falling back to polling...';
+        } else if (error.message.includes('timeout')) {
+            errorMessage += 'Connection timeout. Server may be offline.';
+        } else if (error.message.includes('Not allowed by CORS')) {
+            errorMessage += 'CORS error. Please check server configuration.';
+        } else {
+            errorMessage += error.message;
+        }
+        
+        showToast(errorMessage, 'error');
+        
+        // Try to force reconnection with different transport
+        setTimeout(() => {
+            if (!socket.connected) {
+                console.log('🔄 Attempting to reconnect with forced polling...');
+                socket.io.opts.transports = ['polling'];
+                socket.connect();
+            }
+        }, 3000);
     });
-    
+
     socket.on('active-users-update', (data) => {
         if (elements.activeUsersCount) {
             elements.activeUsersCount.textContent = data.count;
