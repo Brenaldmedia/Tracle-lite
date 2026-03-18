@@ -13,13 +13,13 @@
       "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36"
     ],
     "location": "Unknown, Unknown",
-    "status": "expired",
-    "paid": true,
+    "status": "pending",
+    "paid": false,
     "token": null,
     "tokenGenerated": "2025-12-06T20:50:15.439Z",
     "paymentUpdated": "2025-12-06T20:50:15.437Z",
     "lastTokenActivity": "2026-01-01T02:31:07.864Z",
-    "lastUpdated": "2026-01-14T09:43:30.695Z",
+    "lastUpdated": "2026-03-06T19:47:16.271Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
@@ -27,7 +27,16 @@
     "maxSessions": 2,
     "grantType": "paid",
     "grantUpdated": "2025-12-26T14:43:55.252Z",
-    "tokenExpired": "2026-01-14T09:43:30.695Z"
+    "tokenExpired": "2026-01-14T09:43:30.695Z",
+    "revenueAdjustments": [
+      {
+        "previousAmount": 0,
+        "newAmount": 0,
+        "note": "Manual adjustment",
+        "date": "2026-03-06T19:47:16.271Z",
+        "previousPaid": true
+      }
+    ]
   },
   "danieladeyi001@gmail.com": {
     "email": "danieladeyi001@gmail.com",
@@ -43,16 +52,17 @@
       "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36"
     ],
     "location": "Unknown, Unknown",
-    "status": "pending",
+    "status": "terminated",
     "paid": false,
     "token": null,
     "tokenGenerated": null,
     "createdAt": "2025-12-07T05:14:55.668Z",
-    "lastUpdated": "2025-12-07T09:01:23.195Z",
+    "lastUpdated": "2026-03-06T19:47:50.525Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
-    "freeToken": false
+    "freeToken": false,
+    "tokenTerminated": "2026-03-06T19:47:50.525Z"
   },
   "ogobuegwuf@gmail.com": {
     "email": "ogobuegwuf@gmail.com",
@@ -735,19 +745,20 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": true,
-    "token": "Tracle_WmDlRf2kyES",
+    "token": null,
     "tokenGenerated": "2025-12-24T23:45:20.336Z",
     "createdAt": "2025-12-22T22:25:51.758Z",
-    "lastUpdated": "2025-12-26T17:28:52.514Z",
+    "lastUpdated": "2026-03-06T19:37:21.216Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 1000,
     "freeToken": false,
     "paymentUpdated": "2025-12-24T23:45:20.866Z",
     "paymentDate": "2025-12-24T23:44:43.711Z",
-    "lastTokenActivity": "2025-12-26T17:28:52.514Z"
+    "lastTokenActivity": "2025-12-26T17:28:52.514Z",
+    "tokenExpired": "2026-03-06T19:37:21.216Z"
   },
   "maco13118@gmail.com": {
     "email": "maco13118@gmail.com",
@@ -913,17 +924,18 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_Vx7P7kIoRkL",
+    "token": null,
     "tokenGenerated": "2025-12-24T21:51:02.955Z",
     "createdAt": "2025-12-24T21:36:48.656Z",
-    "lastUpdated": "2025-12-26T18:37:37.146Z",
+    "lastUpdated": "2026-03-06T19:37:21.216Z",
     "tokenBalance": 1,
     "freeTokensGranted": 1,
     "amountPaid": 0,
     "freeToken": true,
-    "lastTokenActivity": "2025-12-26T18:37:37.146Z"
+    "lastTokenActivity": "2025-12-26T18:37:37.146Z",
+    "tokenExpired": "2026-03-06T19:37:21.216Z"
   },
   "williamsjesutofunmibamidele@gmail.com": {
     "email": "williamsjesutofunmibamidele@gmail.com",
@@ -1082,12 +1094,12 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_gWHGDIAmHNS",
+    "token": null,
     "tokenGenerated": "2025-12-26T09:47:53.692Z",
     "createdAt": "2025-12-26T06:18:35.531Z",
-    "lastUpdated": "2025-12-26T09:48:55.695Z",
+    "lastUpdated": "2026-03-06T19:37:21.217Z",
     "tokenBalance": 1,
     "freeTokensGranted": 1,
     "amountPaid": 0,
@@ -1096,7 +1108,8 @@
     "paymentUpdated": "2025-12-26T09:47:55.751Z",
     "maxSessions": 1,
     "grantType": "free",
-    "grantUpdated": "2025-12-26T09:47:58.657Z"
+    "grantUpdated": "2025-12-26T09:47:58.657Z",
+    "tokenExpired": "2026-03-06T19:37:21.217Z"
   },
   "newtonedgetutorial@gmail.com": {
     "email": "newtonedgetutorial@gmail.com",
@@ -1311,12 +1324,12 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "pending",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_lqms8qNlHHm",
+    "token": null,
     "tokenGenerated": "2025-12-26T15:58:37.869Z",
     "createdAt": "2025-12-26T15:56:40.135Z",
-    "lastUpdated": "2025-12-26T16:00:31.701Z",
+    "lastUpdated": "2026-03-06T19:37:21.217Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
@@ -1325,7 +1338,8 @@
     "paymentUpdated": "2025-12-26T15:58:39.719Z",
     "maxSessions": 1,
     "grantType": "free",
-    "grantUpdated": "2025-12-26T15:58:42.687Z"
+    "grantUpdated": "2025-12-26T15:58:42.687Z",
+    "tokenExpired": "2026-03-06T19:37:21.217Z"
   },
   "israelomisakin5@gmail.com": {
     "email": "israelomisakin5@gmail.com",
@@ -1372,12 +1386,12 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "pending",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_dYLw4888bJP",
+    "token": null,
     "tokenGenerated": "2025-12-26T17:34:26.350Z",
     "createdAt": "2025-12-26T17:30:25.036Z",
-    "lastUpdated": "2025-12-26T17:34:29.336Z",
+    "lastUpdated": "2026-03-06T19:37:21.217Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
@@ -1386,7 +1400,8 @@
     "paymentUpdated": "2025-12-26T17:34:28.205Z",
     "maxSessions": 1,
     "grantType": "free",
-    "grantUpdated": "2025-12-26T17:34:31.162Z"
+    "grantUpdated": "2025-12-26T17:34:31.162Z",
+    "tokenExpired": "2026-03-06T19:37:21.217Z"
   },
   "tolulopeakinwale955@gmail.com": {
     "email": "tolulopeakinwale955@gmail.com",
@@ -1551,18 +1566,19 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "pending",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_LKRWxVp5hei",
+    "token": null,
     "tokenGenerated": "2025-12-27T15:53:53.664Z",
     "createdAt": "2025-12-27T15:01:45.465Z",
-    "lastUpdated": "2025-12-27T15:53:56.335Z",
+    "lastUpdated": "2026-03-06T19:37:21.220Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
     "freeToken": true,
     "lastTokenActivity": "2025-12-27T15:53:53.664Z",
-    "paymentUpdated": "2025-12-27T15:53:56.335Z"
+    "paymentUpdated": "2025-12-27T15:53:56.335Z",
+    "tokenExpired": "2026-03-06T19:37:21.220Z"
   },
   "onukemwashington902@gmail.com": {
     "email": "onukemwashington902@gmail.com",
@@ -1582,17 +1598,18 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_CCh1NmplzXO",
+    "token": null,
     "tokenGenerated": "2025-12-31T22:28:47.415Z",
     "createdAt": "2025-12-31T16:18:49.867Z",
-    "lastUpdated": "2025-12-31T22:36:08.356Z",
+    "lastUpdated": "2026-03-06T19:37:21.223Z",
     "tokenBalance": 1,
     "freeTokensGranted": 1,
     "amountPaid": 0,
     "freeToken": true,
-    "lastTokenActivity": "2025-12-31T22:36:08.356Z"
+    "lastTokenActivity": "2025-12-31T22:36:08.356Z",
+    "tokenExpired": "2026-03-06T19:37:21.223Z"
   },
   "lbayohmohamed76@gmail.com": {
     "email": "lbayohmohamed76@gmail.com",
@@ -1669,17 +1686,18 @@
     "city": "Unknown",
     "region": "Unknown",
     "timezone": "Unknown",
-    "status": "approved",
+    "status": "expired",
     "paid": false,
-    "token": "Tracle_T0kJ5mszFb3",
+    "token": null,
     "tokenGenerated": "2025-12-31T19:19:09.849Z",
     "createdAt": "2025-12-31T19:18:45.179Z",
-    "lastUpdated": "2025-12-31T19:19:11.578Z",
+    "lastUpdated": "2026-03-06T19:37:21.222Z",
     "tokenBalance": 0,
     "freeTokensGranted": 0,
     "amountPaid": 0,
     "freeToken": true,
-    "lastTokenActivity": "2025-12-31T19:19:09.849Z"
+    "lastTokenActivity": "2025-12-31T19:19:09.849Z",
+    "tokenExpired": "2026-03-06T19:37:21.222Z"
   },
   "ivanebitu76@gmail.com": {
     "email": "ivanebitu76@gmail.com",
