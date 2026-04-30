@@ -3,6 +3,32 @@
     {
       "email": "brenaldmedia@gmail.com",
       "ip": "::1",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+      "timestamp": "2026-04-15T18:51:06.558Z",
+      "location": {
+        "country": "Local",
+        "region": "Local Network",
+        "city": "Local",
+        "isp": "Local Network"
+      }
+    },
+    {
+      "email": "brenaldmedia@gmail.com",
+      "ip": "105.113.72.223",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "timestamp": "2026-03-29T14:41:46.558Z",
+      "location": {
+        "country": "Nigeria",
+        "region": "Lagos",
+        "city": "Lagos",
+        "isp": "Airtel Rwanda Ltd",
+        "lat": 6.4474,
+        "lon": 3.3903
+      }
+    },
+    {
+      "email": "brenaldmedia@gmail.com",
+      "ip": "::1",
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
       "timestamp": "2026-03-06T13:27:21.228Z",
       "location": {

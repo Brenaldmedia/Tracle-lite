@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracle-Lite Pro - Advanced WhatsApp Bot</title>
+    <title>Tracle-Lite - Advanced WhatsApp Bot</title>
     <link rel="icon" type="image/x-icon" href="/images/favicon.jpg">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
@@ -11,7 +11,6 @@
 </head>
 <body class="dark-theme">
 
-    <!-- Custom Modal -->
     <div class="custom-modal hidden" id="customModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -28,7 +27,39 @@
         </div>
     </div>
 
-    <!-- Admin Application Modal -->
+    <div class="custom-modal hidden" id="pairingCodeModal">
+        <div class="modal-content pairing-modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-qrcode"></i> Pairing Code</h3>
+                <button class="modal-close" onclick="closePairingModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <div class="pairing-code-large" id="pairingCodeDisplay">
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Generating code...</span>
+                    </div>
+                </div>
+                <div class="pairing-instructions-modal">
+                    <p><i class="fas fa-mobile-alt"></i> Open WhatsApp → Settings → Linked Devices → Link a Device</p>
+                    <p><i class="fas fa-keyboard"></i> Enter the 8-digit code above</p>
+                    <p class="timer-text"><i class="fas fa-hourglass-half"></i> Code expires in: <strong id="modalCountdown">2:00</strong></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn secondary" onclick="closePairingModal()">
+                    <i class="fas fa-times"></i> Close
+                </button>
+                <button class="modal-btn primary" id="modalCopyCodeBtn" onclick="copyPairingCode()">
+                    <i class="fas fa-copy"></i> Copy Code
+                </button>
+                <button class="modal-btn primary" onclick="generateNewCode()" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    <i class="fas fa-sync-alt"></i> New Code
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="custom-modal hidden" id="adminApplicationModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -58,7 +89,6 @@
         </div>
     </div>
 
-    <!-- Navigation Overlay -->
     <nav class="nav-overlay" id="navOverlay">
         <div class="nav-header">
             <div class="nav-brand">
@@ -101,7 +131,6 @@
                 <span>My Sessions</span>
             </div>
 
-            <!-- Admin Application Menu Item -->
             <div class="nav-item" data-section="adminApplication">
                 <i class="fas fa-user-shield"></i>
                 <span>Become Admin</span>
@@ -112,7 +141,6 @@
                 <span>Admin Login</span>
             </div>
 
-            <!-- FIXED: Changed from onclick to data-section -->
             <div class="nav-item" data-section="theme">
                 <i class="fas fa-moon"></i>
                 <span>Toggle Theme</span>
@@ -128,7 +156,6 @@
         </div>
     </nav>
 
-    <!-- Main Content -->
     <main class="main-content">
         <header class="main-header">
             <button class="menu-toggle" id="menuToggle">
@@ -136,7 +163,7 @@
             </button>
             <div class="header-title">
                 <h1>Dashboard</h1>
-                <p>Welcome to Tracle-Lite Pro</p>
+                <p>Welcome to Tracle-Lite</p>
             </div>
             <div class="header-stats">
                 <div class="stat-card">
@@ -150,13 +177,10 @@
         </header>
 
         <div class="content-wrapper">
-            <!-- HOME SECTION -->
             <section class="content-section active" id="homeSection">
-
-                <!-- Welcome box -->
                 <div class="welcome-card gradient-card">
                     <div class="welcome-text">
-                        <h2><i class="fas fa-rocket"></i> Welcome to Tracle-Lite Pro</h2>
+                        <h2><i class="fas fa-rocket"></i> Welcome to Tracle-Lite</h2>
                         <p>Advanced WhatsApp automation with premium features.</p>
                         <p class="highlight">Now FREE - No token required! Just register with your email.</p>
                     </div>
@@ -173,7 +197,6 @@
                     </div>
                 </div>
 
-                <!-- THE ONLY GET CODE SECTION (NO QUIZ) -->
                 <div class="get-bot-code-section" id="codeSection">
                     <h4><i class="fas fa-code"></i> Get Pairing Code</h4>
                     <p>Enter your email and WhatsApp number to get the bot pairing code</p>
@@ -197,28 +220,6 @@
                     <div id="emailValidationResult" class="validation-result"></div>
                 </div>
 
-                <!-- Pairing section -->
-                <div class="pairing-section hidden" id="pairingSection">
-                    <div class="pairing-card">
-                        <div class="pairing-header">
-                            <h4><i class="fas fa-code"></i> Pairing Code</h4>
-                            <span class="pairing-timer" id="countdown">120s</span>
-                        </div>
-
-                        <div class="pairing-code-display" id="codeDisplay"></div>
-
-                        <div class="pairing-instructions">
-                            <p><i class="fas fa-mobile-alt"></i> Open WhatsApp → Linked Devices → Link a Device</p>
-                            <p><i class="fas fa-keyboard"></i> Enter the code above</p>
-                        </div>
-
-                        <button class="secondary-btn small-btn" onclick="generateNewCode()">
-                            <i class="fas fa-sync-alt"></i> New Code
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Connected Status -->
                 <div class="connected-section hidden" id="statusSection">
                     <div class="success-card">
                         <div class="success-icon"><i class="fas fa-check-circle"></i></div>
@@ -238,11 +239,10 @@
                 </div>
             </section>
 
-            <!-- REGISTER SECTION -->
             <section class="content-section" id="registerSection">
                 <div class="section-header">
                     <h2><i class="fas fa-user-plus"></i> Register Your Account</h2>
-                    <p>Register with your email to use Tracle-Lite Pro for FREE!</p>
+                    <p>Register with your email to use Tracle-Lite for FREE!</p>
                 </div>
 
                 <div class="register-card">
@@ -274,47 +274,156 @@
                 </div>
             </section>
 
-            <!-- FEATURES SECTION -->
             <section class="content-section" id="featuresSection">
                 <div class="section-header">
-                    <h2><i class="fas fa-star"></i> Premium Features</h2>
+                    <h2><i class="fas fa-star"></i> Bot Commands & Features</h2>
+                    <p>After connecting your WhatsApp, use these commands with your bot</p>
                 </div>
 
                 <div class="features-grid">
                     <div class="feature-card">
                         <div class="feature-icon"><i class="fas fa-eye"></i></div>
-                        <h3>Auto View</h3>
-                        <p>Automatically view stories and status updates</p>
+                        <h3>Auto View Status</h3>
+                        <p><code>.autoview on/off</code> - Automatically view stories and status updates</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon"><i class="fas fa-heart"></i></div>
                         <h3>Auto Like</h3>
-                        <p>Automatically like posts and messages</p>
+                        <p><code>.autolike</code> - Automatically like posts and messages</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon"><i class="fas fa-trash-restore"></i></div>
                         <h3>Anti Delete</h3>
-                        <p>Prevent message deletion in chats</p>
+                        <p><code>.antidelete</code> - Prevent message deletion in chats</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-rss"></i></div>
-                        <h3>Auto Subscription</h3>
-                        <p>Automatically subscribe to channels</p>
+                        <div class="feature-icon"><i class="fab fa-tiktok"></i></div>
+                        <h3>Download TikTok Video</h3>
+                        <p><code>.tiktok [url]</code> - Download TikTok video without watermark</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-cloud-upload-alt"></i></div>
-                        <h3>Cloud Backup</h3>
-                        <p>Backup your chats and media to cloud</p>
+                        <div class="feature-icon"><i class="fab fa-instagram"></i></div>
+                        <h3>Download Instagram</h3>
+                        <p><code>.ig [url]</code> - Download Instagram video/reel without watermark</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-code"></i></div>
-                        <h3>Custom Commands</h3>
-                        <p>Create custom commands and automation</p>
+                        <div class="feature-icon"><i class="fab fa-youtube"></i></div>
+                        <h3>Download YouTube</h3>
+                        <p><code>.yt [url]</code> - Download YouTube video as audio or video</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-music"></i></div>
+                        <h3>Play Music</h3>
+                        <p><code>.play [song name]</code> - Play music in WhatsApp groups</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-users-cog"></i></div>
+                        <h3>Group Automation</h3>
+                        <p><code>.open</code> - Open group for messages<br><code>.close</code> - Close group<br><code>.schedule [time]</code> - Schedule open/close</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-tag"></i></div>
+                        <h3>Tag All Members</h3>
+                        <p><code>.tagall</code> - Tag everyone in the group</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-clock"></i></div>
+                        <h3>Schedule Group</h3>
+                        <p><code>.schedule open/close [time]</code> - Set time to open or close group</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-info-circle"></i></div>
+                        <h3>Group Status</h3>
+                        <p><code>.groupstatus [message]</code> - Add/update group status message</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-hand-peace"></i></div>
+                        <h3>Welcome Message</h3>
+                        <p><code>.setwelcome [message]</code> - Set welcome message for new members</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-waveform"></i></div>
+                        <h3>Goodbye Message</h3>
+                        <p><code>.setgoodbye [message]</code> - Set goodbye message for leaving members</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-link"></i></div>
+                        <h3>Shorten URL</h3>
+                        <p><code>.short [url]</code> - Shorten long URLs instantly</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-quote-right"></i></div>
+                        <h3>Random Quotes</h3>
+                        <p><code>.quote</code> - Get random inspirational quotes</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-heartbeat"></i></div>
+                        <h3>Pickup Lines</h3>
+                        <p><code>.pickup</code> - Get random pickup lines</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-moon"></i></div>
+                        <h3>Goodnight Messages</h3>
+                        <p><code>.goodnight</code> - Get goodnight messages to share</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-dice-d6"></i></div>
+                        <h3>Truth or Dare</h3>
+                        <p><code>.truth</code> or <code>.dare</code> - Play truth or dare game</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-futbol"></i></div>
+                        <h3>Live Scores</h3>
+                        <p><code>.score [team/match]</code> - Fetch live football/cricket scores</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
+                        <h3>Score Updates</h3>
+                        <p><code>.livescore</code> - Get real-time score updates</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-robot"></i></div>
+                        <h3>Custom Bot Name</h3>
+                        <p><code>.setname [name]</code> - Change the bot's name to anything you want</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-download"></i></div>
+                        <h3>Save Status</h3>
+                        <p><code>.savestatus</code> - Download/save someone's WhatsApp status</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-user-circle"></i></div>
+                        <h3>Fetch Profile</h3>
+                        <p><code>.profile [number]</code> - Fetch someone's WhatsApp profile info</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-brain"></i></div>
+                        <h3>AI Commands</h3>
+                        <p><code>.ai [question]</code> - Ask AI anything<br><code>.imagine [prompt]</code> - Generate AI images</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-plus-circle"></i></div>
+                        <h3>Create Group</h3>
+                        <p><code>.creategc [name]</code> - Create a new WhatsApp group via bot</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-image"></i></div>
+                        <h3>Generate AI Images</h3>
+                        <p><code>.genimg [description]</code> - Generate images using AI</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-gamepad"></i></div>
+                        <h3>Fun Games</h3>
+                        <p><code>.rps [rock/paper/scissors]</code> - Play Rock Paper Scissors<br><code>.trivia</code> - Play trivia quiz</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-globe"></i></div>
+                        <h3>More Commands</h3>
+                        <p><code>.help</code> - Show all commands<br><code>.ping</code> - Check bot response time<br><code>.info</code> - Bot information</p>
                     </div>
                 </div>
             </section>
 
-            <!-- SESSIONS SECTION -->
             <section class="content-section" id="sessionsSection">
                 <div class="section-header">
                     <h2><i class="fas fa-link"></i> My Sessions</h2>
@@ -333,7 +442,6 @@
                 </div>
             </section>
 
-            <!-- ADMIN APPLICATION SECTION -->
             <section class="content-section" id="adminApplicationSection">
                 <div class="section-header">
                     <h2><i class="fas fa-user-shield"></i> Admin Application Form</h2>
@@ -405,7 +513,6 @@
                     </div>
                 </div>
             </section>
-
         </div>
     </main>
 

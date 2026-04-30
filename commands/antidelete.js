@@ -12,18 +12,19 @@ module.exports = {
         const currentStatus = userSettings.antiDelete || "true";
         const newStatus = args[0]?.toLowerCase();
         
-        if (!newStatus || !['on', 'off', 'true', 'false'].includes(newStatus)) {
+        if (!newStatus || !['on', 'off', 'true', 'false', 'mode'].includes(newStatus)) {
             const statusText = currentStatus === "true" ? '✅ ON' : '❌ OFF';
-            const modeText = userSettings.antiDeleteMode === "dm" ? 'Direct Message' : 'Group';
+            const modeText = userSettings.antiDeleteMode === "dm" ? 'Direct Message' : 'In Chat';
             const text = `🚫 *Anti-Delete Settings*\n\n` +
                         `Status: ${statusText}\n` +
                         `Mode: ${modeText}\n\n` +
-                        `Usage:\n` +
-                        `${userPrefix}antidelete [on/off]\n` +
-                        `${userPrefix}antidelete mode [dm/group]\n\n` +
-                        `Examples:\n` +
-                        `${userPrefix}antidelete off\n` +
-                        `${userPrefix}antidelete mode dm`;
+                        `📝 *Commands:*\n` +
+                        `${userPrefix}antidelete on - Enable\n` +
+                        `${userPrefix}antidelete off - Disable\n` +
+                        `${userPrefix}antidelete mode dm - Send to your DM\n` +
+                        `${userPrefix}antidelete mode group - Send to same chat\n\n` +
+                        `💡 When enabled, bot captures deleted messages with @mentions\n` +
+                        `> 🚫 Powered by Tracle-Lite`;
             
             return await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
                 quoted: message,
@@ -44,7 +45,7 @@ module.exports = {
                 const text = `❌ Invalid mode\n\n` +
                             `Available modes:\n` +
                             `• dm - Send to your DM\n` +
-                            `• group - Send to same group\n\n` +
+                            `• group - Send to same chat\n\n` +
                             `Usage: ${userPrefix}antidelete mode [dm/group]`;
                 
                 return await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
@@ -60,13 +61,12 @@ module.exports = {
                 });
             }
             
-            // Update mode
             context.updateUserSettings({ antiDeleteMode: mode });
             
             const text = `✅ *Anti-Delete Mode Updated*\n\n` +
                         `• Previous: ${currentMode}\n` +
                         `• New: ${mode}\n\n` +
-                        `Deleted messages will be sent to ${mode === 'dm' ? 'your DM' : 'the same group'}.`;
+                        `Deleted messages will be sent to ${mode === 'dm' ? 'your DM' : 'the same chat'} with @mentions.`;
             
             return await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
                 quoted: message,
@@ -99,14 +99,13 @@ module.exports = {
             });
         }
         
-        // Update settings
         context.updateUserSettings({ antiDelete: finalStatus });
         
         const statusText = finalStatus === "true" ? '✅ ON' : '❌ OFF';
         const text = `✅ *Anti-Delete Updated*\n\n` +
                     `• Previous: ${currentStatus === "true" ? 'ON' : 'OFF'}\n` +
                     `• New: ${finalStatus === "true" ? 'ON' : 'OFF'}\n\n` +
-                    `Bot will ${finalStatus === "true" ? 'detect and restore' : 'NOT detect'} deleted messages.`;
+                    `Bot will ${finalStatus === "true" ? 'detect, capture and restore' : 'NOT detect'} deleted messages with @mentions.`;
         
         await context.sendMessageWithContext(sock, message.key.remoteJid, text, {
             quoted: message,

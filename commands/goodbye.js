@@ -33,19 +33,60 @@ function saveGoodbyeSettings(settings) {
     }
 }
 
-// Get group goodbye settings
-function getGroupGoodbyeSettings(groupJid) {
+// Extract invite code from WhatsApp link (without joining)
+function extractInviteCode(linkOrJid) {
+    // If it's already a JID (ends with @g.us)
+    if (linkOrJid && linkOrJid.includes('@g.us')) {
+        return { isJid: true, jid: linkOrJid };
+    }
+    
+    // Try to extract invite code from link
+    if (linkOrJid && linkOrJid.includes('chat.whatsapp.com/')) {
+        let inviteCode = linkOrJid.split('chat.whatsapp.com/').pop();
+        // Remove any extra parameters
+        inviteCode = inviteCode.split('?')[0].split('/')[0];
+        return { isJid: false, inviteCode: inviteCode };
+    }
+    
+    // If it's just the code (alphanumeric)
+    if (linkOrJid && /^[A-Za-z0-9]{22}$/.test(linkOrJid)) {
+        return { isJid: false, inviteCode: linkOrJid };
+    }
+    
+    return null;
+}
+
+// Get group goodbye settings (supports both JID and link)
+async function getGroupGoodbyeSettings(conn, groupJidOrLink) {
+    const extracted = extractInviteCode(groupJidOrLink);
+    if (!extracted) return null;
+    
     const settings = loadGoodbyeSettings();
-    return settings[groupJid] || {
+    const key = extracted.isJid ? extracted.jid : `invite:${extracted.inviteCode}`;
+    
+    return settings[key] || {
         goodbye: false,
-        goodbyeMessage: "Goodbye @{member} 👋"
+        goodbyeMessage: "Goodbye @{member} 👋\n\nWe'll miss you in {group_name}!",
+        inviteCode: extracted.isJid ? null : extracted.inviteCode,
+        groupJid: extracted.isJid ? extracted.jid : null
     };
 }
 
-// Save group goodbye settings
-function saveGroupGoodbyeSettings(groupJid, groupSettings) {
+// Save group goodbye settings (supports both JID and link)
+async function saveGroupGoodbyeSettings(conn, groupJidOrLink, groupSettings) {
+    const extracted = extractInviteCode(groupJidOrLink);
+    if (!extracted) return false;
+    
     const settings = loadGoodbyeSettings();
-    settings[groupJid] = groupSettings;
+    const key = extracted.isJid ? extracted.jid : `invite:${extracted.inviteCode}`;
+    
+    if (!extracted.isJid) {
+        groupSettings.inviteCode = extracted.inviteCode;
+    } else {
+        groupSettings.groupJid = extracted.jid;
+    }
+    
+    settings[key] = groupSettings;
     return saveGoodbyeSettings(settings);
 }
 
@@ -70,13 +111,11 @@ async function getGroupMetadata(conn, groupJid) {
 function processMessageTemplate(template, variables) {
     let message = template;
     
-    // Replace all variables
     for (const [key, value] of Object.entries(variables)) {
         const regex = new RegExp(`\\{${key}\\}`, 'gi');
         message = message.replace(regex, value || '');
     }
     
-    // Replace @{mentions} with proper mentions
     const mentionRegex = /@\{([^}]+)\}/g;
     message = message.replace(mentionRegex, (match, userId) => {
         return `@${userId.split('@')[0]}`;
@@ -84,24 +123,22 @@ function processMessageTemplate(template, variables) {
     
     return message;
 }
+
 // Send goodbye message with context info
 async function sendGoodbyeMessage(conn, groupJid, member, sessionId, userSettings) {
-    const settings = getGroupGoodbyeSettings(groupJid);
+    const settings = await getGroupGoodbyeSettings(conn, groupJid);
     
-    if (!settings.goodbye) return;
+    if (!settings || !settings.goodbye) return;
     
     try {
-        // Extract JID from participant object
         let memberJid = typeof member === 'string' ? member : member.id || member.jid;
         if (!memberJid) {
             console.error('Invalid member object:', member);
             return;
         }
         
-        // Ensure it's a string
         memberJid = String(memberJid);
         
-        // React with 👋 emoji
         await conn.sendMessage(groupJid, {
             react: {
                 text: '👋',
@@ -109,10 +146,8 @@ async function sendGoodbyeMessage(conn, groupJid, member, sessionId, userSetting
             }
         }).catch(() => {});
 
-        // Get group metadata
         const groupMetadata = await getGroupMetadata(conn, groupJid);
         
-        // Prepare variables - safely extract number from JID
         const memberNumber = memberJid.includes('@') ? memberJid.split('@')[0] : memberJid;
         const variables = {
             member: memberNumber,
@@ -120,13 +155,9 @@ async function sendGoodbyeMessage(conn, groupJid, member, sessionId, userSetting
             total_members: (groupMetadata.participants.length - 1).toString()
         };
         
-        // Process message template
         const goodbyeMessage = processMessageTemplate(settings.goodbyeMessage, variables);
-        
-        // Prepare mentions
         const mentions = [memberJid];
         
-        // Context info
         const contextInfo = {
             forwardingScore: 1,
             isForwarded: true,
@@ -137,7 +168,6 @@ async function sendGoodbyeMessage(conn, groupJid, member, sessionId, userSetting
             }
         };
         
-        // Send goodbye message with context info
         await conn.sendMessage(groupJid, {
             text: goodbyeMessage,
             mentions: mentions,
@@ -148,20 +178,18 @@ async function sendGoodbyeMessage(conn, groupJid, member, sessionId, userSetting
         console.error('Error sending goodbye message:', error);
     }
 }
+
 // Handle group participants update for goodbye
 async function handleGoodbyeParticipantsUpdate(conn, update, sessionId) {
     try {
         const { id, participants, action } = update;
         
         console.log(`🔔 Goodbye participants update: ${action} for group ${id}`);
-        console.log('Participants:', participants);
         
-        // Get group settings
-        const settings = getGroupGoodbyeSettings(id);
+        const settings = await getGroupGoodbyeSettings(conn, id);
         
         if (action === 'remove' || action === 'leave') {
-            // Member(s) removed or left
-            if (settings.goodbye) {
+            if (settings && settings.goodbye) {
                 const userSettings = global.getUserSettings ? global.getUserSettings(sessionId) : {};
                 for (const participant of participants) {
                     console.log(`Sending goodbye to:`, participant);
@@ -174,16 +202,17 @@ async function handleGoodbyeParticipantsUpdate(conn, update, sessionId) {
     }
 }
 
-// DM: Enable/disable goodbye for specific group
+// DM: Enable/disable goodbye for specific group (supports JID or link without joining)
 async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, context) {
     const command = args[0]?.toLowerCase();
     
     if (!command) {
         const replyText = `👋 *Goodbye DM Commands:*\n\n` +
-                        `*Enable Goodbye:*\n${userSettings.botPrefix || context.PREFIX}goodbye on [group_jid]\n` +
-                        `*Disable Goodbye:*\n${userSettings.botPrefix || context.PREFIX}goodbye off [group_jid]\n` +
-                        `*Set Message:*\n${userSettings.botPrefix || context.PREFIX}setgoodbye [group_jid] [message]\n\n` +
-                        `*Example:*\n${context.PREFIX}goodbye on 120363420555765995@g.us\n` +
+                        `*Enable Goodbye:*\n${userSettings.botPrefix || context.PREFIX}goodbye on [group_jid_or_link]\n` +
+                        `*Disable Goodbye:*\n${userSettings.botPrefix || context.PREFIX}goodbye off [group_jid_or_link]\n` +
+                        `*Set Message:*\n${userSettings.botPrefix || context.PREFIX}setgoodbye [group_jid_or_link] [message]\n\n` +
+                        `*Examples:*\n${context.PREFIX}goodbye on 120363420555765995@g.us\n` +
+                        `${context.PREFIX}goodbye on https://chat.whatsapp.com/xxxxx\n` +
                         `Variables: @{member}, {group_name}, {total_members}`;
         
         return reply(replyText, {
@@ -206,12 +235,11 @@ async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, c
         });
     }
     
-    const groupJid = args[1];
+    const groupInput = args[1];
     const value = args.slice(2).join(' ');
     
-    // Validate JID format
-    if (!groupJid || !groupJid.includes('@g.us')) {
-        return reply('❌ Please provide a valid group JID (must end with @g.us)', {
+    if (!groupInput) {
+        return reply('❌ Please provide a group JID or invite link', {
             contextInfo: {
                 forwardingScore: 1,
                 isForwarded: true,
@@ -224,13 +252,32 @@ async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, c
         });
     }
     
-    const settings = getGroupGoodbyeSettings(groupJid);
+    const extracted = extractInviteCode(groupInput);
+    if (!extracted) {
+        return reply('❌ Invalid group JID or invite link. Please provide a valid group ID (ending with @g.us) or WhatsApp invite link.', {
+            contextInfo: {
+                forwardingScore: 1,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: "120363401559573199@newsletter",
+                    newsletterName: "BrenaldMedia",
+                    serverMessageId: -1,
+                }
+            }
+        });
+    }
+    
+    const displayName = extracted.isJid ? extracted.jid : `Invite: ${extracted.inviteCode}`;
+    const settings = await getGroupGoodbyeSettings(conn, groupInput) || {
+        goodbye: false,
+        goodbyeMessage: "Goodbye @{member} 👋\n\nWe'll miss you in {group_name}!"
+    };
     
     switch (command) {
         case 'on':
             settings.goodbye = true;
-            saveGroupGoodbyeSettings(groupJid, settings);
-            return reply(`✅ Goodbye messages enabled for group: ${groupJid}`, {
+            await saveGroupGoodbyeSettings(conn, groupInput, settings);
+            return reply(`✅ Goodbye messages enabled for: ${displayName}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -244,8 +291,8 @@ async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, c
             
         case 'off':
             settings.goodbye = false;
-            saveGroupGoodbyeSettings(groupJid, settings);
-            return reply(`✅ Goodbye messages disabled for group: ${groupJid}`, {
+            await saveGroupGoodbyeSettings(conn, groupInput, settings);
+            return reply(`✅ Goodbye messages disabled for: ${displayName}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -272,9 +319,9 @@ async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, c
                 });
             }
             settings.goodbyeMessage = value;
-            settings.goodbye = true; // Auto-enable when setting message
-            saveGroupGoodbyeSettings(groupJid, settings);
-            return reply(`✅ Goodbye message set for group: ${groupJid}\n\nMessage: ${value}`, {
+            settings.goodbye = true;
+            await saveGroupGoodbyeSettings(conn, groupInput, settings);
+            return reply(`✅ Goodbye message set for: ${displayName}\n\nMessage: ${value}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -303,18 +350,14 @@ async function handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, c
 
 // Command execution
 module.exports.execute = async (conn, msg, m, context) => {
-    const { args, from, isGroup, isAdmins, isCreator, reply, sender, groupMetadata, sessionId, userSettings } = context;
+    const { args, from, isGroup, isAdmins, isCreator, reply, sender, sessionId, userSettings } = context;
     
-    // React with 👋 emoji to command
     await m.react('👋').catch(() => {});
     
-    // DM mode command handling
     if (!isGroup) {
         return handleDmGoodbyeCommand(conn, sender, args, reply, userSettings, context);
     }
     
-    // Group command handling
-    // Check if user is admin/owner
     if (isGroup && !isAdmins && !isCreator) {
         return reply('❌ This command can only be used by group admins or owner.', {
             contextInfo: {
@@ -332,14 +375,25 @@ module.exports.execute = async (conn, msg, m, context) => {
     const command = args[0]?.toLowerCase();
     
     if (!command) {
-        // Show current settings
-        const settings = getGroupGoodbyeSettings(from);
+        const settings = await getGroupGoodbyeSettings(conn, from);
+        
+        if (!settings) {
+            return reply('❌ Unable to fetch group settings.', {
+                contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363401559573199@newsletter",
+                        newsletterName: "BrenaldMedia",
+                        serverMessageId: -1,
+                    }
+                }
+            });
+        }
         
         let message = `👋 *Goodbye Settings*\n\n`;
         message += `✅ Goodbye Messages: ${settings.goodbye ? 'ON 🟢' : 'OFF 🔴'}\n\n`;
-        
         message += `📋 *Current Goodbye Message:*\n${settings.goodbyeMessage.substring(0, 100)}${settings.goodbyeMessage.length > 100 ? '...' : ''}\n\n`;
-        
         message += `📝 *Commands:*\n`;
         message += `${userSettings.botPrefix || context.PREFIX}goodbye on/off - Toggle goodbye messages\n`;
         message += `${userSettings.botPrefix || context.PREFIX}setgoodbye [message] - Set goodbye message\n`;
@@ -365,20 +419,18 @@ module.exports.execute = async (conn, msg, m, context) => {
         });
     }
     
-    // Handle subcommands
-    const settings = getGroupGoodbyeSettings(from);
+    const settings = await getGroupGoodbyeSettings(conn, from) || {
+        goodbye: false,
+        goodbyeMessage: "Goodbye @{member} 👋\n\nWe'll miss you in {group_name}!"
+    };
     
     switch (command) {
         case 'on':
         case 'off':
-            // Toggle goodbye messages
             const status = command === 'on';
             settings.goodbye = status;
-            saveGroupGoodbyeSettings(from, settings);
-            
-            // React based on status
+            await saveGroupGoodbyeSettings(conn, from, settings);
             await m.react(status ? '✅' : '❌').catch(() => {});
-            
             return reply(`✅ Goodbye messages ${status ? 'enabled 🟢' : 'disabled 🔴'} for this group.`, {
                 contextInfo: {
                     forwardingScore: 1,
@@ -407,10 +459,8 @@ module.exports.execute = async (conn, msg, m, context) => {
                     }
                 });
             }
-            
             settings.goodbyeMessage = goodbyeMessage;
-            saveGroupGoodbyeSettings(from, settings);
-            
+            await saveGroupGoodbyeSettings(conn, from, settings);
             await m.react('✅').catch(() => {});
             return reply('✅ Goodbye message updated successfully!', {
                 contextInfo: {
@@ -425,7 +475,6 @@ module.exports.execute = async (conn, msg, m, context) => {
             });
             
         case 'goodbyetest':
-            // Test goodbye message
             await m.react('👋').catch(() => {});
             await sendGoodbyeMessage(conn, from, sender, sessionId, userSettings);
             return reply('✅ Test goodbye message sent!', {
@@ -456,13 +505,14 @@ module.exports.execute = async (conn, msg, m, context) => {
     }
 };
 
-// Export additional functions for use in main bot file
+// Export additional functions
 module.exports.handleGoodbyeParticipantsUpdate = handleGoodbyeParticipantsUpdate;
 module.exports.getGroupGoodbyeSettings = getGroupGoodbyeSettings;
 module.exports.saveGroupGoodbyeSettings = saveGroupGoodbyeSettings;
 module.exports.loadGoodbyeSettings = loadGoodbyeSettings;
 module.exports.saveGoodbyeSettings = saveGoodbyeSettings;
 module.exports.sendGoodbyeMessage = sendGoodbyeMessage;
+module.exports.extractInviteCode = extractInviteCode;
 
 // Command info
 module.exports.info = {

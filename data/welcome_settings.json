@@ -10,5 +10,13 @@
     "welcomeMessage": "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
     "includeDescription": true,
     "fetchProfilePic": true
+  },
+  "invite:LcmzjqfXxse47mcqFUZkTd": {
+    "welcome": true,
+    "welcomeMessage": "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
+    "includeDescription": true,
+    "fetchProfilePic": true,
+    "inviteCode": "LcmzjqfXxse47mcqFUZkTd",
+    "groupJid": null
   }
 }

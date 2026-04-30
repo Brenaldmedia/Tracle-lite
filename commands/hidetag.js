@@ -1,11 +1,12 @@
 // === hidetag.js (Owner & Admin version) ===
 module.exports = {
   pattern: "hidetag",
+  alias: ["tagall", "everyone"],
   desc: "Tag all members for any message/media - Owner & Admin only",
   category: "group",
   use: ".hidetag [message] or reply to a message",
   filename: __filename,
-  ownerOnly: false, // Set to false since we're checking manually
+  ownerOnly: false,
 
   execute: async (conn, message, m, { q, reply, from, isGroup, sessionId, isAdmins, isCreator }) => {
     try {
@@ -30,26 +31,34 @@ module.exports = {
       // --- mentions list ---
       const participants = metadata.participants.map(p => p.id);
 
-      if (!q && !m.quoted) return reply("❌ Provide a message or reply to a message.");
+      if (!q && !m.quoted) {
+        return reply(`❌ Provide a message or reply to a message.\n\nExample: .hidetag Click here to join`);
+      }
 
       // React 👀
       await conn.sendMessage(from, { react: { text: "👀", key: message.key } });
 
-      // --- reply case ---
+      // --- Case 1: User replied to a message (forward it without replying to command) ---
       if (m.quoted) {
+        const quotedMsg = m.quoted.message;
+        
         return await conn.sendMessage(
           from,
-          { forward: m.quoted.message, mentions: participants },
-          { quoted: message }
+          { 
+            forward: quotedMsg,
+            mentions: participants
+          }
         );
       }
 
-      // --- text case ---
+      // --- Case 2: User typed a message (send as new message, not reply) ---
       if (q) {
         return await conn.sendMessage(
           from,
-          { text: q, mentions: participants },
-          { quoted: message }
+          { 
+            text: q,
+            mentions: participants
+          }
         );
       }
 

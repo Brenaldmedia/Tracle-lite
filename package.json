@@ -8,8 +8,8 @@
     "dev": "nodemon server.js"
   },
   "engines": {
-  "node": "20.x"
-},
+    "node": "20.x"
+  },
   "keywords": [
     "whatsapp",
     "bot",
@@ -55,7 +55,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
-    
   }
 }
-

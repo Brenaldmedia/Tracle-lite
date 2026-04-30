@@ -981,7 +981,86 @@ body {
 .pairing-code-display .copy-btn {
     margin-top: 10px;
 }
+.pairing-modal {
+    max-width: 500px;
+}
 
+.pairing-code-large {
+    text-align: center;
+    padding: 20px;
+}
+
+.code-large {
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    color: var(--accent-primary);
+    background: var(--bg-tertiary);
+    padding: 30px;
+    border-radius: var(--border-radius);
+    margin-bottom: 20px;
+    border: 2px dashed var(--accent-primary);
+}
+
+.copy-code-btn {
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: var(--border-radius);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.copy-code-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+}
+
+.pairing-instructions-modal {
+    text-align: left;
+    background: var(--bg-tertiary);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    margin-top: 20px;
+}
+
+.pairing-instructions-modal p {
+    margin: 10px 0;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pairing-instructions-modal i {
+    color: var(--accent-primary);
+    width: 24px;
+}
+
+.timer-text {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    color: var(--accent-warning);
+}
+
+.timer-text strong {
+    color: var(--accent-warning);
+    font-size: 18px;
+}
+
+#modalCountdown {
+    font-family: monospace;
+    font-size: 18px;
+}
 .pairing-instructions {
     color: var(--text-muted);
     font-size: 14px;
@@ -2796,4 +2875,69 @@ button:disabled .fa-spinner {
     font-size: 0.1px;
     height: 1px;
     overflow: hidden;
+}
+.feature-card code {
+    background: var(--bg-tertiary);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--accent-primary);
+}
+
+.features-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.feature-card p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 10px;
+}
+
+.feature-card p code {
+    display: inline-block;
+    margin: 2px 0;
+}
+
+.command-badge {
+    display: inline-block;
+    background: var(--accent-primary);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 8px;
+}
+
+@media (max-width: 768px) {
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+    .feature-card p {
+        font-size: 12px;
+    }
+}
+.feature-card code {
+    background: var(--bg-tertiary);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--accent-primary);
+}
+
+.features-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.feature-card p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 10px;
+}
+
+.feature-card p code {
+    display: inline-block;
+    margin: 2px 0;
 }

@@ -33,21 +33,62 @@ function saveWelcomeSettings(settings) {
     }
 }
 
-// Get group welcome settings
-function getGroupWelcomeSettings(groupJid) {
+// Extract invite code from WhatsApp link (without joining)
+function extractInviteCode(linkOrJid) {
+    // If it's already a JID (ends with @g.us)
+    if (linkOrJid && linkOrJid.includes('@g.us')) {
+        return { isJid: true, jid: linkOrJid };
+    }
+    
+    // Try to extract invite code from link
+    if (linkOrJid && linkOrJid.includes('chat.whatsapp.com/')) {
+        let inviteCode = linkOrJid.split('chat.whatsapp.com/').pop();
+        // Remove any extra parameters
+        inviteCode = inviteCode.split('?')[0].split('/')[0];
+        return { isJid: false, inviteCode: inviteCode };
+    }
+    
+    // If it's just the code (alphanumeric)
+    if (linkOrJid && /^[A-Za-z0-9]{22}$/.test(linkOrJid)) {
+        return { isJid: false, inviteCode: linkOrJid };
+    }
+    
+    return null;
+}
+
+// Get group welcome settings (supports both JID and link)
+async function getGroupWelcomeSettings(conn, groupJidOrLink) {
+    const extracted = extractInviteCode(groupJidOrLink);
+    if (!extracted) return null;
+    
     const settings = loadWelcomeSettings();
-    return settings[groupJid] || {
+    const key = extracted.isJid ? extracted.jid : `invite:${extracted.inviteCode}`;
+    
+    return settings[key] || {
         welcome: false,
         welcomeMessage: "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
         includeDescription: true,
-        fetchProfilePic: true
+        fetchProfilePic: true,
+        inviteCode: extracted.isJid ? null : extracted.inviteCode,
+        groupJid: extracted.isJid ? extracted.jid : null
     };
 }
 
-// Save group welcome settings
-function saveGroupWelcomeSettings(groupJid, groupSettings) {
+// Save group welcome settings (supports both JID and link)
+async function saveGroupWelcomeSettings(conn, groupJidOrLink, groupSettings) {
+    const extracted = extractInviteCode(groupJidOrLink);
+    if (!extracted) return false;
+    
     const settings = loadWelcomeSettings();
-    settings[groupJid] = groupSettings;
+    const key = extracted.isJid ? extracted.jid : `invite:${extracted.inviteCode}`;
+    
+    if (!extracted.isJid) {
+        groupSettings.inviteCode = extracted.inviteCode;
+    } else {
+        groupSettings.groupJid = extracted.jid;
+    }
+    
+    settings[key] = groupSettings;
     return saveWelcomeSettings(settings);
 }
 
@@ -106,9 +147,9 @@ function processMessageTemplate(template, variables) {
 
 // Send welcome message with context info
 async function sendWelcomeMessage(conn, groupJid, newMember, sessionId, userSettings) {
-    const settings = getGroupWelcomeSettings(groupJid);
+    const settings = await getGroupWelcomeSettings(conn, groupJid);
     
-    if (!settings.welcome) return;
+    if (!settings || !settings.welcome) return;
     
     try {
         // Extract JID from participant object
@@ -202,11 +243,11 @@ async function handleWelcomeParticipantsUpdate(conn, update, sessionId) {
         console.log('Participants:', participants);
         
         // Get group settings
-        const settings = getGroupWelcomeSettings(id);
+        const settings = await getGroupWelcomeSettings(conn, id);
         
         if (action === 'add') {
             // New member(s) added
-            if (settings.welcome) {
+            if (settings && settings.welcome) {
                 const userSettings = global.getUserSettings ? global.getUserSettings(sessionId) : {};
                 for (const participant of participants) {
                     console.log(`Sending welcome to:`, participant);
@@ -218,16 +259,18 @@ async function handleWelcomeParticipantsUpdate(conn, update, sessionId) {
         console.error('Error handling welcome participants update:', error);
     }
 }
-// DM: Enable/disable welcome for specific group
+
+// DM: Enable/disable welcome for specific group (supports JID or link without joining)
 async function handleDmWelcomeCommand(conn, sender, args, reply, userSettings, context) {
     const command = args[0]?.toLowerCase();
     
     if (!command) {
         const replyText = `📝 *Welcome DM Commands:*\n\n` +
-                        `*Enable Welcome:*\n${userSettings.botPrefix || context.PREFIX}welcome on [group_jid]\n` +
-                        `*Disable Welcome:*\n${userSettings.botPrefix || context.PREFIX}welcome off [group_jid]\n` +
-                        `*Set Message:*\n${userSettings.botPrefix || context.PREFIX}setwelcome [group_jid] [message]\n\n` +
-                        `*Example:*\n${context.PREFIX}welcome on 120363420555765995@g.us\n` +
+                        `*Enable Welcome:*\n${userSettings.botPrefix || context.PREFIX}welcome on [group_jid_or_link]\n` +
+                        `*Disable Welcome:*\n${userSettings.botPrefix || context.PREFIX}welcome off [group_jid_or_link]\n` +
+                        `*Set Message:*\n${userSettings.botPrefix || context.PREFIX}setwelcome [group_jid_or_link] [message]\n\n` +
+                        `*Examples:*\n${context.PREFIX}welcome on 120363420555765995@g.us\n` +
+                        `${context.PREFIX}welcome on https://chat.whatsapp.com/xxxxx\n` +
                         `Variables: @{new_member}, {group_name}, {group_description}, {total_members}, {admin_count}`;
         
         return reply(replyText, {
@@ -250,12 +293,12 @@ async function handleDmWelcomeCommand(conn, sender, args, reply, userSettings, c
         });
     }
     
-    const groupJid = args[1];
+    const groupInput = args[1];
     const value = args.slice(2).join(' ');
     
-    // Validate JID format
-    if (!groupJid || !groupJid.includes('@g.us')) {
-        return reply('❌ Please provide a valid group JID (must end with @g.us)', {
+    // Validate input
+    if (!groupInput) {
+        return reply('❌ Please provide a group JID or invite link', {
             contextInfo: {
                 forwardingScore: 1,
                 isForwarded: true,
@@ -268,13 +311,35 @@ async function handleDmWelcomeCommand(conn, sender, args, reply, userSettings, c
         });
     }
     
-    const settings = getGroupWelcomeSettings(groupJid);
+    // Extract info without joining
+    const extracted = extractInviteCode(groupInput);
+    if (!extracted) {
+        return reply('❌ Invalid group JID or invite link. Please provide a valid group ID (ending with @g.us) or WhatsApp invite link.', {
+            contextInfo: {
+                forwardingScore: 1,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: "120363401559573199@newsletter",
+                    newsletterName: "BrenaldMedia",
+                    serverMessageId: -1,
+                }
+            }
+        });
+    }
+    
+    const displayName = extracted.isJid ? extracted.jid : `Invite: ${extracted.inviteCode}`;
+    const settings = await getGroupWelcomeSettings(conn, groupInput) || {
+        welcome: false,
+        welcomeMessage: "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
+        includeDescription: true,
+        fetchProfilePic: true
+    };
     
     switch (command) {
         case 'on':
             settings.welcome = true;
-            saveGroupWelcomeSettings(groupJid, settings);
-            return reply(`✅ Welcome messages enabled for group: ${groupJid}`, {
+            await saveGroupWelcomeSettings(conn, groupInput, settings);
+            return reply(`✅ Welcome messages enabled for: ${displayName}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -288,8 +353,8 @@ async function handleDmWelcomeCommand(conn, sender, args, reply, userSettings, c
             
         case 'off':
             settings.welcome = false;
-            saveGroupWelcomeSettings(groupJid, settings);
-            return reply(`✅ Welcome messages disabled for group: ${groupJid}`, {
+            await saveGroupWelcomeSettings(conn, groupInput, settings);
+            return reply(`✅ Welcome messages disabled for: ${displayName}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -317,8 +382,8 @@ async function handleDmWelcomeCommand(conn, sender, args, reply, userSettings, c
             }
             settings.welcomeMessage = value;
             settings.welcome = true; // Auto-enable when setting message
-            saveGroupWelcomeSettings(groupJid, settings);
-            return reply(`✅ Welcome message set for group: ${groupJid}\n\nMessage: ${value}`, {
+            await saveGroupWelcomeSettings(conn, groupInput, settings);
+            return reply(`✅ Welcome message set for: ${displayName}\n\nMessage: ${value}`, {
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
@@ -377,7 +442,21 @@ module.exports.execute = async (conn, msg, m, context) => {
     
     if (!command) {
         // Show current settings
-        const settings = getGroupWelcomeSettings(from);
+        const settings = await getGroupWelcomeSettings(conn, from);
+        
+        if (!settings) {
+            return reply('❌ Unable to fetch group settings.', {
+                contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363401559573199@newsletter",
+                        newsletterName: "BrenaldMedia",
+                        serverMessageId: -1,
+                    }
+                }
+            });
+        }
         
         let message = `👋 *Welcome Settings*\n\n`;
         message += `✅ Welcome Messages: ${settings.welcome ? 'ON 🟢' : 'OFF 🔴'}\n`;
@@ -414,19 +493,20 @@ module.exports.execute = async (conn, msg, m, context) => {
     }
     
     // Handle subcommands
-    const settings = getGroupWelcomeSettings(from);
+    const settings = await getGroupWelcomeSettings(conn, from) || {
+        welcome: false,
+        welcomeMessage: "Hello @{new_member} welcome to {group_name}\n\nPlease read the message below:\n{group_description}",
+        includeDescription: true,
+        fetchProfilePic: true
+    };
     
     switch (command) {
         case 'on':
         case 'off':
-            // Toggle welcome messages
             const status = command === 'on';
             settings.welcome = status;
-            saveGroupWelcomeSettings(from, settings);
-            
-            // React based on status
+            await saveGroupWelcomeSettings(conn, from, settings);
             await m.react(status ? '✅' : '❌').catch(() => {});
-            
             return reply(`✅ Welcome messages ${status ? 'enabled 🟢' : 'disabled 🔴'} for this group.`, {
                 contextInfo: {
                     forwardingScore: 1,
@@ -455,10 +535,8 @@ module.exports.execute = async (conn, msg, m, context) => {
                     }
                 });
             }
-            
             settings.welcomeMessage = welcomeMessage;
-            saveGroupWelcomeSettings(from, settings);
-            
+            await saveGroupWelcomeSettings(conn, from, settings);
             await m.react('✅').catch(() => {});
             return reply('✅ Welcome message updated successfully!', {
                 contextInfo: {
@@ -473,7 +551,6 @@ module.exports.execute = async (conn, msg, m, context) => {
             });
             
         case 'welcometest':
-            // Test welcome message
             await m.react('👋').catch(() => {});
             await sendWelcomeMessage(conn, from, sender, sessionId, userSettings);
             return reply('✅ Test welcome message sent!', {
@@ -489,10 +566,8 @@ module.exports.execute = async (conn, msg, m, context) => {
             });
             
         case 'togglepic':
-            // Toggle profile picture
             settings.fetchProfilePic = !settings.fetchProfilePic;
-            saveGroupWelcomeSettings(from, settings);
-            
+            await saveGroupWelcomeSettings(conn, from, settings);
             await m.react(settings.fetchProfilePic ? '🖼️' : '📝').catch(() => {});
             return reply(`✅ Profile picture ${settings.fetchProfilePic ? 'enabled 🖼️' : 'disabled 📝'} for welcome messages.`, {
                 contextInfo: {
@@ -507,10 +582,8 @@ module.exports.execute = async (conn, msg, m, context) => {
             });
             
         case 'toggledesc':
-            // Toggle description inclusion
             settings.includeDescription = !settings.includeDescription;
-            saveGroupWelcomeSettings(from, settings);
-            
+            await saveGroupWelcomeSettings(conn, from, settings);
             await m.react(settings.includeDescription ? '📋' : '📝').catch(() => {});
             return reply(`✅ Group description ${settings.includeDescription ? 'included 📋' : 'excluded 📝'} in welcome messages.`, {
                 contextInfo: {
@@ -540,13 +613,14 @@ module.exports.execute = async (conn, msg, m, context) => {
     }
 };
 
-// Export additional functions for use in main bot file
+// Export additional functions
 module.exports.handleWelcomeParticipantsUpdate = handleWelcomeParticipantsUpdate;
 module.exports.getGroupWelcomeSettings = getGroupWelcomeSettings;
 module.exports.saveGroupWelcomeSettings = saveGroupWelcomeSettings;
 module.exports.loadWelcomeSettings = loadWelcomeSettings;
 module.exports.saveWelcomeSettings = saveWelcomeSettings;
 module.exports.sendWelcomeMessage = sendWelcomeMessage;
+module.exports.extractInviteCode = extractInviteCode;
 
 // Command info
 module.exports.info = {

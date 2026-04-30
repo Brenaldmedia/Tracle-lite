@@ -1,25 +1,45 @@
 // === encrypt.js ===
-const axios = require("axios");
-
 module.exports = {
   pattern: "encrypt",
-  desc: "Encrypt code 🔐",
+  alias: ["encode"],
+  desc: "Encrypt text or code using Base64",
   category: "tools",
   react: "🔐",
   filename: __filename,
-  use: ".encrypt <code>",
+  use: ".encrypt <text or code>",
 
   execute: async (conn, mek, m, { from, reply, args }) => {
     try {
-      const code = args.join(" ") || 'console.log("Gifted Tech")';
-      const { data } = await axios.get(`https://api.giftedtech.co.ke/api/tools/encrypt?apikey=gifted&code=${encodeURIComponent(code)}`);
-      if (!data.success || !data.result) return reply("⚠️ Couldn’t encrypt code.");
+      const text = args.join(" ");
+      
+      if (!text) {
+        await reply(`🔐 *Encrypt*
 
-      reply("🔐 *Encrypted:*\n" + "```" + data.result + "```");
+Encrypt any text or code using Base64.
+
+📝 *Usage:*
+.encrypt <text or code>
+
+📌 *Examples:*
+.encrypt Hello World
+.encrypt console.log("Hello")
+.encrypt function test() { return true; }
+
+> ⚡ Powered by Tracle-Lite`);
+        return;
+      }
+
+      await conn.sendMessage(from, { react: { text: "🔐", key: mek.key } });
+      
+      // Convert to Base64 (works for any text including code)
+      const encrypted = Buffer.from(text).toString('base64');
+      await reply(encrypted);
+      
+      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
       console.error("[encrypt.js]", e.message);
-      reply("⚠️ Error encrypting code.");
+      await reply(`❌ Error encrypting`);
     }
   },
 };

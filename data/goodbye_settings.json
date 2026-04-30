@@ -6,5 +6,11 @@
   "120363423778157947@g.us": {
     "goodbye": true,
     "goodbyeMessage": "Goodbye @{member} 👋"
+  },
+  "invite:LcmzjqfXxse47mcqFUZkTd": {
+    "goodbye": true,
+    "goodbyeMessage": "Goodbye @{member} 👋\n\nWe'll miss you in {group_name}!",
+    "inviteCode": "LcmzjqfXxse47mcqFUZkTd",
+    "groupJid": null
   }
 }
