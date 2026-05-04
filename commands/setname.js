@@ -2,7 +2,7 @@ module.exports = {
     pattern: "setname",
     name: "setname",
     description: "Set owner name",
-    tags: ["customization"],
+    tags: ["settings"],
     ownerOnly: true,
     
     async execute(conn, message, m, { args, q, reply, from, isGroup, isChannel, groupMetadata, sender, isAdmins, isCreator, sessionId }) {

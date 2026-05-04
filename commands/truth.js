@@ -7,13 +7,12 @@ try {
 
 module.exports = {
   pattern: "truth",
-  desc: "Give a truth question to a user",
+  desc: "Get a random truth question",
   category: "fun",
-  react: "🤔",
+  react: "💀",
   filename: __filename,
 
   execute: async (conn, mek, m, { from, isGroup, reply }) => {
-    // Helper function to send messages with contextInfo
     const sendMessageWithContext = async (text, quoted = mek, mentions = []) => {
       return await conn.sendMessage(from, {
         text: text,
@@ -31,42 +30,24 @@ module.exports = {
     };
 
     try {
-      if (!isGroup) {
-        return await sendMessageWithContext("❌ This command can only be used in groups.");
-      }
-
-      const rawTarget =
-        m.mentionedJid?.[0] ||
-        mek.message?.extendedTextMessage?.contextInfo?.participant;
-
-      if (!rawTarget) {
-        return await sendMessageWithContext("Please mention or reply to a user.\nUsage: `.truth @user`");
-      }
-
-      // React first
       if (module.exports.react) {
         await conn.sendMessage(from, {
           react: { text: module.exports.react, key: mek.key },
         });
       }
 
-      // ✅ New API
-      const apiUrl = "https://apis.davidcyriltech.my.id/truth?apikey";
-      const res = await fetchFn(apiUrl);
-      if (!res.ok) return await sendMessageWithContext("⚠️ Failed to fetch truth from API.");
-      const data = await res.json();
+      const response = await fetchFn("https://apiskeith.top/fun/truth");
+      if (!response.ok) return await sendMessageWithContext("⚠️ Failed to fetch truth question.");
+      const data = await response.json();
 
-      const truthText = data?.question || null;
-      if (!truthText) return await sendMessageWithContext("⚠️ No truth found.");
+      const truthText = data?.result || data?.question || data?.truth || null;
+      if (!truthText) return await sendMessageWithContext("⚠️ No truth question found.");
 
-      const message = `🤔 @${rawTarget.split("@")[0]}, your truth question is:\n\n${truthText}`;
-
-      // Send the truth message with contextInfo
-      await sendMessageWithContext(message, mek, [rawTarget]);
+      await sendMessageWithContext(`💀 *TRUTH*\n━━━━━━━━━━━━━━━━━━━━\n\n${truthText}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Powered by Tracle-Lite`);
 
     } catch (err) {
       console.error("Error in truth.js:", err);
-      await sendMessageWithContext("⚠️ Error fetching truth. Try again later.");
+      await sendMessageWithContext("⚠️ Error fetching truth question. Try again later.");
     }
   },
 };

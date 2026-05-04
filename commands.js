@@ -1,4 +1,4 @@
-// commands.js - FIXED VERSION WITH WORKING MENU AND CONTEXT FUNCTION
+// commands.js - in the root 
 const fs = require('fs-extra');
 const path = require('path');
 
@@ -10,7 +10,7 @@ async function sendMessageWithContext(conn, jid, text, options = {}) {
         forwardedNewsletterMessageInfo: {
             newsletterJid: "120363401559573199@newsletter",
             newsletterName: "BrenaldMedia",
-            serverMessageId: 200,
+            serverMessageId: -1,
         }
     };
     
@@ -38,7 +38,6 @@ class CommandHandler {
             if (!fs.existsSync(commandsPath)) {
                 fs.mkdirSync(commandsPath, { recursive: true });
                 console.log('📁 Created commands folder');
-                // Create a sample command file
                 this.createSampleCommand();
                 return;
             }
@@ -112,7 +111,6 @@ class CommandHandler {
                     // Support multiple patterns - like file_A
                     let commandNames = [];
                     if (commandModule.pattern) {
-                        // Can be string or array
                         commandNames = Array.isArray(commandModule.pattern) ? commandModule.pattern : [commandModule.pattern];
                     } else if (commandModule.name) {
                         commandNames = [commandModule.name];
@@ -125,7 +123,6 @@ class CommandHandler {
                         tempCommands.set(cmdName.toLowerCase(), commandModule);
                         console.log(`✅ Loaded command: ${cmdName} (from ${file})`);
                         
-                        // Log if command has ownerOnly flag
                         if (commandModule.ownerOnly) {
                             console.log(`   └── Owner only command`);
                         }
@@ -138,6 +135,128 @@ class CommandHandler {
 
             this.commands = tempCommands;
             console.log(`📦 Total commands loaded: ${this.commands.size}`);
+            
+            // =============== ADD CATEGORY COMMANDS DYNAMICALLY ===============
+            const categoryGroups = new Map();
+            
+            for (const [cmdName, cmd] of this.commands) {
+                const category = cmd.category || "General";
+                if (!categoryGroups.has(category)) {
+                    categoryGroups.set(category, []);
+                }
+                categoryGroups.get(category).push({
+                    name: cmdName,
+                    aliases: cmd.alias || [],
+                    description: cmd.description || "No description"
+                });
+            }
+            
+            console.log(`📂 Found ${categoryGroups.size} command categories`);
+            
+            function generateCategoryMenu(category) {
+                const commands = categoryGroups.get(category);
+                if (!commands || commands.length === 0) return null;
+                
+                const icons = {
+                    "sports": "⚽", "downloader": "📥", "search": "🔍", "games": "🎮",
+                    "admin": "👑", "owner": "👑", "tools": "🛠️", "fun": "🎉",
+                    "ai": "🤖", "group": "👥", "music": "🎵", "General": "📌"
+                };
+                
+                const icon = icons[category.toLowerCase()] || "📁";
+                let message = `${icon} *${category.toUpperCase()} COMMANDS* ${icon}\n━━━━━━━━━━━━━━━━━\n\n`;
+                
+                commands.forEach(cmd => {
+                    message += `└ *.*${cmd.name}*`;
+                    if (cmd.aliases && cmd.aliases.length > 0) {
+                        message += ` (${cmd.aliases.map(a => `.${a}`).join(", ")})`;
+                    }
+                    message += `\n   └ ${cmd.description}\n\n`;
+                });
+                
+                message += `━━━━━━━━━━━━━━━━━\n⚡ Powered by TRACLE-LITE`;
+                return message;
+            }
+            
+            function generateAllCategoriesMenu() {
+                let message = `📚 *ALL COMMAND CATEGORIES* 📚\n━━━━━━━━━━━━━━━━━\n\n`;
+                
+                for (const [category, commands] of categoryGroups) {
+                    const icons = {
+                        "sports": "⚽", "downloader": "📥", "search": "🔍", "games": "🎮",
+                        "admin": "👑", "owner": "👑", "tools": "🛠️", "fun": "🎉",
+                        "ai": "🤖", "group": "👥", "music": "🎵", "General": "📌"
+                    };
+                    const icon = icons[category.toLowerCase()] || "📁";
+                    message += `${icon} *${category}* - ${commands.length} commands\n`;
+                    message += `   └ Type .${category.toLowerCase()} to see all commands\n\n`;
+                }
+                
+                message += `━━━━━━━━━━━━━━━━━\n💡 *Tip:* Type .[category] to see commands!\n⚡ Powered by TRACLE-LITE`;
+                return message;
+            }
+            
+            // Add category command for each category
+            for (const [category, commands] of categoryGroups) {
+                const categoryName = category.toLowerCase();
+                if (!this.commands.has(categoryName) && categoryName !== "general") {
+                    this.commands.set(categoryName, {
+                        pattern: categoryName,
+                        category: category,
+                        description: `Show all ${category} commands`,
+                        execute: async (conn, mek, m, { reply }) => {
+                            const menu = generateCategoryMenu(category);
+                            if (menu) {
+                                await reply(menu);
+                            } else {
+                                await reply(`❌ No ${category} commands found.\n> ⚡ Powered by TRACLE-LITE`);
+                            }
+                        }
+                    });
+                    console.log(`   ✅ Added .${categoryName} command`);
+                }
+            }
+            
+            // Add .categories command
+            if (!this.commands.has('categories')) {
+                this.commands.set('categories', {
+                    pattern: "categories",
+                    alias: ["cmds", "allcmds"],
+                    category: "tools",
+                    description: "Show all command categories",
+                    execute: async (conn, mek, m, { reply }) => {
+                        const menu = generateAllCategoriesMenu();
+                        await reply(menu);
+                    }
+                });
+                console.log(`   ✅ Added .categories command`);
+            }
+            
+            // Add .all command
+            if (!this.commands.has('all')) {
+                this.commands.set('all', {
+                    pattern: "all",
+                    alias: ["allcommands"],
+                    category: "tools",
+                    description: "Show all available commands",
+                    execute: async (conn, mek, m, { reply, userPrefix }) => {
+                        let message = `📋 *ALL COMMANDS* 📋\n━━━━━━━━━━━━━━━━━\n\n`;
+                        
+                        for (const [category, commands] of categoryGroups) {
+                            message += `🔹 *${category.toUpperCase()}*\n`;
+                            commands.forEach(cmd => {
+                                message += `   └ .${cmd.name}\n`;
+                            });
+                            message += `\n`;
+                        }
+                        
+                        message += `━━━━━━━━━━━━━━━━━━\n💡 Use .[category] for detailed list\n⚡ Powered by TRACLE-LITE`;
+                        await reply(message);
+                    }
+                });
+                console.log(`   ✅ Added .all command`);
+            }
+            // =============== END CATEGORY COMMANDS ===============
 
         } catch (error) {
             console.error('❌ Error loading commands:', error);
@@ -149,18 +268,15 @@ class CommandHandler {
         return this.commands.get(commandName.toLowerCase());
     }
 
-    // Generate menu - FIXED: No longer requires ../server
+    // Generate menu
     generateMenu(userPrefix, sessionId, userSettings, BOT_NAME, OWNER_NAME, commandsMap = null) {
-        // Use provided commandsMap or default to this.commands
         const commandMap = commandsMap || this.commands;
         const commandCount = commandMap.size;
         
-        // Count owner-only commands
         let ownerOnlyCount = 0;
         let publicCount = 0;
         const commandCategories = {};
         
-        // Organize commands by category
         for (const [name, cmd] of commandMap.entries()) {
             if (cmd.ownerOnly) {
                 ownerOnlyCount++;
@@ -168,19 +284,16 @@ class CommandHandler {
                 publicCount++;
             }
             
-            // Get category or default to "General"
             const category = cmd.category || 'General';
             if (!commandCategories[category]) {
                 commandCategories[category] = [];
             }
-            // Store only name (no description)
             commandCategories[category].push({ 
                 name, 
                 ownerOnly: cmd.ownerOnly || false 
             });
         }
         
-        // Sort categories alphabetically
         const sortedCategories = Object.keys(commandCategories).sort();
         
         let menuText = `
@@ -200,7 +313,6 @@ class CommandHandler {
 ───────────────────
 `;
 
-        // Add commands by category - ONLY NAMES
         sortedCategories.forEach(category => {
             const commands = commandCategories[category];
             menuText += `\n🔹 *${category.toUpperCase()}:*\n`;
@@ -211,7 +323,6 @@ class CommandHandler {
             });
         });
 
-        // FIXED: Get active connections from global variable instead of requiring server
         const globalConnections = global.activeConnections || new Map();
         const activeSessionCount = Array.from(globalConnections.values()).filter(c => c.isConnected).length;
         
@@ -272,31 +383,17 @@ Thank you for supporting the development of TRACLE - LITE! 🚀`;
         };
     }
 
-    // Create sample command (if needed)
+    // Create sample command
     createSampleCommand() {
         const sampleCommand = `
-// Sample command using sendMessageWithContext function
-const { sendMessageWithContext } = require('../commands');
-
+// Sample command
 module.exports = {
-    name: 'ping',
+    pattern: 'ping',
     description: 'Check if bot is online',
     category: 'General',
     
-    async execute(sock, message, args, bot) {
-        const text = '🏓 Pong! Bot is online and working!';
-        
-        // Using the custom context function
-        await sendMessageWithContext(sock, message.key.remoteJid, text, {
-            quoted: message,
-            externalAdReply: {
-                title: "Pong!",
-                body: "Bot is online",
-                thumbnailUrl: "https://files.catbox.moe/m3o9wj.jpg",
-                sourceUrl: "https://github.com/Brenaldmedia/Tracle",
-                mediaType: 1
-            }
-        });
+    async execute(conn, mek, m, { reply }) {
+        await reply('🏓 Pong! Bot is online and working!');
     }
 };
 `;

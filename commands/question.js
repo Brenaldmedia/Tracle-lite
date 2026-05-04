@@ -1,72 +1,53 @@
-// === question.js (questions only) ===
-const axios = require("axios");
+let fetchFn;
+try {
+  fetchFn = global.fetch || require("node-fetch");
+} catch {
+  fetchFn = global.fetch;
+}
 
 module.exports = {
-    pattern: "question",
-    alias: ["trivia", "quiz", "q"],
-    desc: "Get a random trivia question",
-    category: "fun",
-    react: "🧠",
-    filename: __filename,
-    use: ".question",
+  pattern: "question",
+  desc: "Get a random question",
+  category: "fun",
+  react: "❓",
+  filename: __filename,
 
-    execute: async (conn, mek, m, { from, reply, sessionId }) => {
-        try {
-            // React 🧠
-            if (module.exports.react) {
-                await conn.sendMessage(from, { react: { text: module.exports.react, key: mek.key } });
-            }
-
-            // Using Keith Question API
-            const apiUrl = `https://apis-keith.vercel.app/fun/question`;
-            
-            console.log(`🧠 Trivia Question API request`);
-
-            const { data } = await axios.get(apiUrl, {
-                timeout: 10000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-
-            // Validate API response
-            if (!data || data.status !== true || !data.result) {
-                return await reply("❌ Failed to get question. Try again!");
-            }
-
-            const questionData = data.result;
-            const category = data.category || "General Knowledge";
-            const difficulty = data.difficulty || "medium";
-            const question = questionData.question || "No question available";
-            const correctAnswer = questionData.correctAnswer || "No correct answer";
-            const incorrectAnswers = questionData.incorrectAnswers || [];
-
-            // Combine and shuffle answers
-            const allAnswers = [correctAnswer, ...incorrectAnswers]
-                .sort(() => Math.random() - 0.5);
-
-            // Simple question format
-            let message = 
-`🧠 *Trivia Question* 🧠
-
-📚 Category: ${category.replace(/&amp;/g, '&')}
-🎯 Difficulty: ${difficulty.toUpperCase()}
-
-❓ ${question.replace(/&amp;/g, '&').replace(/&deg;/g, '°')}
-
-📋 Options:
-${allAnswers.map((answer, index) => 
-    `${String.fromCharCode(65 + index)}. ${answer.replace(/&amp;/g, '&').replace(/&deg;/g, '°')}`
-).join('\n')}
-
-💡 Think you know the answer? Discuss with friends!`;
-
-            // Send the question
-            await reply(message);
-
-        } catch (error) {
-            console.error("[question.js] Error:", error.message);
-            await reply("❌ Failed to get question. Try .question again!");
+  execute: async (conn, mek, m, { from, reply }) => {
+    const sendMessageWithContext = async (text, quoted = mek, mentions = []) => {
+      return await conn.sendMessage(from, {
+        text: text,
+        mentions: mentions,
+        contextInfo: {
+          forwardingScore: 999,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: "120363401559573199@newsletter",
+            newsletterName: "BrenaldMedia",
+            serverMessageId: -1
+          }
         }
+      }, { quoted: quoted });
+    };
+
+    try {
+      if (module.exports.react) {
+        await conn.sendMessage(from, {
+          react: { text: module.exports.react, key: mek.key },
+        });
+      }
+
+      const response = await fetchFn("https://apiskeith.top/fun/question");
+      if (!response.ok) return await sendMessageWithContext("⚠️ Failed to fetch question.");
+      const data = await response.json();
+
+      const questionText = data?.result || data?.question || null;
+      if (!questionText) return await sendMessageWithContext("⚠️ No question found.");
+
+      await sendMessageWithContext(`❓ *RANDOM QUESTION*\n━━━━━━━━━━━━━━━━━━━━\n\n${questionText}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Powered by Tracle-Lite`);
+
+    } catch (err) {
+      console.error("Error in question.js:", err);
+      await sendMessageWithContext("⚠️ Error fetching question. Try again later.");
     }
+  },
 };

@@ -2,122 +2,52 @@ const axios = require("axios");
 
 module.exports = {
     pattern: "ttstalk",
-    desc: "Fetch TikTok user profile + latest video",
-    react: "📱",
-    category: "search",
-    filename: __filename,
-    use: ".ttstalk [username]",
+    alias: ["tiktokstalk", "ttstalker"],
+    category: "stalker",
+    description: "Stalk TikTok profile information",
 
-    execute: async (conn, message, m, { from, q }) => {
-
-        const sendMessageWithContext = async (text, quoted = message) => {
-            return await conn.sendMessage(from, {
-                text,
-                contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: "120363401559573199@newsletter",
-                        newsletterName: "BrenaldMedia",
-                        serverMessageId: -1
-                    }
-                }
-            }, { quoted });
-        };
-
+    execute: async (conn, mek, m, { from, q, reply }) => {
         try {
             if (!q) {
-                return await sendMessageWithContext(
-                    "❎ Please provide a TikTok username.\n\n*Example:* .ttstalk brenaldmedia"
-                );
+                return reply(`📱 *TikTok Stalk*\n\nUsage: .ttstalk [username]\nExample: .ttstalk Brenaldmedia\n\n> Powered by Tracle-Lite`);
             }
 
-            // React 📱
-            await conn.sendMessage(from, {
-                react: { text: module.exports.react, key: message.key }
-            });
+            await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+            await reply(`🔍 Stalking TikTok user *${q}*...`);
 
-            // NEW API
-            const apiUrl = `https://apis.davidcyriltech.my.id/tiktokStalk?q=${encodeURIComponent(q)}`;
-            const { data } = await axios.get(apiUrl);
+            const response = await axios.get(`https://apiskeith.top/stalker/tiktok?user=${encodeURIComponent(q)}`, { timeout: 15000 });
 
-            if (!data || !data.result) {
-                return await sendMessageWithContext("❌ User not found or API returned no data.");
+            if (!response.data?.status) {
+                return reply(`❌ User "${q}" not found.\n\nMake sure the username is correct.\n> Powered by Tracle-Lite`);
             }
 
-            const user = data.result;
-            const latestVideo = user.videos && user.videos.length > 0
-                ? user.videos[0]
-                : null;
+            const user = response.data.result;
+            
+            let message = `📱 *TIKTOK STALK* 📱\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+            message += `👤 *Username:* @${user.uniqueId || user.username || q}\n`;
+            message += `📛 *Nickname:* ${user.nickname || 'N/A'}\n`;
+            message += `📝 *Bio:* ${user.signature || 'No bio'}\n`;
+            message += `👥 *Followers:* ${user.followerCount?.toLocaleString() || 0}\n`;
+            message += `👣 *Following:* ${user.followingCount?.toLocaleString() || 0}\n`;
+            message += `❤️ *Hearts:* ${user.heartCount?.toLocaleString() || 0}\n`;
+            message += `🎬 *Videos:* ${user.videoCount?.toLocaleString() || 0}\n`;
+            message += `🔗 *Profile:* https://tiktok.com/@${user.uniqueId || q}\n`;
+            message += `\n━━━━━━━━━━━━━━━━━━━━\n⚡ Powered by Tracle-Lite`;
 
-            const profileInfo = `╭━━〔 *🎭 TikTok Profile* 〕━━┈⊷
-┃ 👤 *Username*: @${user.username || q}
-┃ 📛 *Nickname*: ${user.nickname || "Unknown"}
-┃ ✅ *Verified*: ${user.verified ? "Yes ✅" : "No ❌"}
-┃ 🔒 *Private*: ${user.private ? "Yes 🔒" : "No 🌍"}
-┃ 📝 *Bio*: ${user.signature || "No bio available."}
-┃
-┃ 📊 *Statistics*:
-┃ 👥 Followers: ${Number(user.followers || 0).toLocaleString()}
-┃ 👤 Following: ${Number(user.following || 0).toLocaleString()}
-┃ ❤️ Likes: ${Number(user.likes || 0).toLocaleString()}
-┃
-┃ 🆔 *ID*: ${user.user_id || "N/A"}
-┃ 🔗 *Profile*: https://www.tiktok.com/@${user.username || q}
-╰━━━━━━━━━━━━━━━━━━┈⊷
-> © Powered by TRACLE - LITE`;
-
-            // 1️⃣ Send profile image
-            if (user.avatar) {
-                await conn.sendMessage(from, {
-                    image: { url: user.avatar },
-                    caption: profileInfo,
-                    contextInfo: {
-                        forwardingScore: 999,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: "120363401559573199@newsletter",
-                            newsletterName: "BrenaldMedia",
-                            serverMessageId: -1
-                        }
-                    }
-                }, { quoted: message });
-            } else {
-                await sendMessageWithContext(profileInfo);
+            await conn.sendMessage(from, { text: message }, { quoted: mek });
+            
+            if (user.avatarThumb) {
+                try {
+                    await conn.sendMessage(from, { image: { url: user.avatarThumb }, caption: `📸 @${user.uniqueId || q}` }, { quoted: mek });
+                } catch (e) {}
             }
-
-            // 2️⃣ Send latest video preview
-            if (latestVideo) {
-                const videoCaption = `╭━━〔 *🎬 Latest TikTok Video* 〕━━┈⊷
-┃ 📝 *Caption*: ${latestVideo.desc || "No caption"}
-┃ ❤️ Likes: ${Number(latestVideo.likes || 0).toLocaleString()}
-┃ 💬 Comments: ${Number(latestVideo.comments || 0).toLocaleString()}
-┃ 🔁 Shares: ${Number(latestVideo.shares || 0).toLocaleString()}
-╰━━━━━━━━━━━━━━━━━━┈⊷`;
-
-                // Prefer thumbnail preview (faster + safer)
-                if (latestVideo.cover) {
-                    await conn.sendMessage(from, {
-                        image: { url: latestVideo.cover },
-                        caption: videoCaption
-                    }, { quoted: message });
-                }
-                // If no cover but video exists, send video
-                else if (latestVideo.play || latestVideo.video) {
-                    await conn.sendMessage(from, {
-                        video: { url: latestVideo.play || latestVideo.video },
-                        caption: videoCaption
-                    }, { quoted: message });
-                }
-            } else {
-                await sendMessageWithContext("ℹ️ No videos found for this user.");
-            }
+            
+            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
         } catch (error) {
-            console.error("❌ Error in ttstalk:", error);
-            await sendMessageWithContext(
-                "⚠️ An error occurred while fetching TikTok data."
-            );
+            console.error("TikTok Stalk error:", error.message);
+            await reply(`❌ Failed: ${error.message.substring(0, 100)}\n> Powered by Tracle-Lite`);
+            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }).catch(() => {});
         }
     }
 };
