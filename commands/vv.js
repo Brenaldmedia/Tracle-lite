@@ -4,7 +4,7 @@ const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
 module.exports = {
   pattern: "vv",
   desc: "Open view-once image, video or audio",
-  category: "utility",
+  category: "viewones",
   react: "🙉",
   filename: __filename,
   use: "<reply to a view-once media>",

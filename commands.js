@@ -45,70 +45,42 @@ class CommandHandler {
             const tempCommands = new Map();
             const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-            console.log(`📂 Found ${commandFiles.length} command files`);
 
-            // Load antibadword command first
+                    // Load antibadword command first (silent)
             try {
                 const antibadword = require('./commands/antibadword');
                 tempCommands.set(antibadword.name, antibadword);
-                console.log(`✅ Loaded command: ${antibadword.name} (from antibadword.js)`);
-                if (antibadword.ownerOnly) {
-                    console.log(`   └── Owner only command`);
-                }
-            } catch (error) {
-                console.log('⚠️ Antibadword command not available');
-            }
+            } catch (error) {}
 
-            // Load anticall command
+            // Load anticall command (silent)
             try {
                 const anticall = require('./commands/anticall');
                 tempCommands.set(anticall.name, anticall);
-                console.log(`✅ Loaded command: ${anticall.name} (from anticall.js)`);
-                if (anticall.ownerOnly) {
-                    console.log(`   └── Owner only command`);
-                }
-            } catch (error) {
-                console.log('⚠️ Anticall command not available');
-            }
+            } catch (error) {}
 
-            // Load creategc command
+            // Load creategc command (silent)
             try {
                 const creategc = require('./commands/creategc');
                 tempCommands.set(creategc.name, creategc);
-                console.log(`✅ Loaded command: ${creategc.name} (from creategc.js)`);
-                if (creategc.ownerOnly) {
-                    console.log(`   └── Owner only command`);
-                }
-            } catch (error) {
-                console.log('⚠️ Creategc command not available');
-            }
+            } catch (error) {}
 
-            // Load pair command
+            // Load pair command (silent)
             try {
                 const pair = require('./commands/pair');
                 tempCommands.set(pair.name, pair);
-                console.log(`✅ Loaded command: ${pair.name} (from pair.js)`);
-                if (pair.ownerOnly) {
-                    console.log(`   └── Owner only command`);
-                }
-            } catch (error) {
-                console.log('⚠️ Pair command not available');
-            }
+            } catch (error) {}
            
-            // Load other commands from files
+            // Load other commands from files (silent)
             commandFiles.forEach(file => {
                 try {
-                    // Skip if it's the same as antibadword, anticall, creategc, pair
                     const skipFiles = ['antibadword.js', 'anticall.js', 'creategc.js', 'pair.js'];
                     if (skipFiles.includes(file)) return;
                     
-                    // Clear require cache to allow hot reload
                     const commandPath = path.join(commandsPath, file);
                     delete require.cache[require.resolve(commandPath)];
                     
                     const commandModule = require(commandPath);
                     
-                    // Support multiple patterns - like file_A
                     let commandNames = [];
                     if (commandModule.pattern) {
                         commandNames = Array.isArray(commandModule.pattern) ? commandModule.pattern : [commandModule.pattern];
@@ -118,23 +90,14 @@ class CommandHandler {
                         commandNames = [file.replace('.js', '')];
                     }
 
-                    // Register each command name
                     commandNames.forEach(cmdName => {
                         tempCommands.set(cmdName.toLowerCase(), commandModule);
-                        console.log(`✅ Loaded command: ${cmdName} (from ${file})`);
-                        
-                        if (commandModule.ownerOnly) {
-                            console.log(`   └── Owner only command`);
-                        }
                     });
 
-                } catch (error) {
-                    console.error(`❌ Error loading command ${file}:`, error);
-                }
+                } catch (error) {}
             });
 
             this.commands = tempCommands;
-            console.log(`📦 Total commands loaded: ${this.commands.size}`);
             
             // =============== ADD CATEGORY COMMANDS DYNAMICALLY ===============
             const categoryGroups = new Map();
@@ -150,8 +113,6 @@ class CommandHandler {
                     description: cmd.description || "No description"
                 });
             }
-            
-            console.log(`📂 Found ${categoryGroups.size} command categories`);
             
             function generateCategoryMenu(category) {
                 const commands = categoryGroups.get(category);
@@ -196,7 +157,7 @@ class CommandHandler {
                 return message;
             }
             
-            // Add category command for each category
+            // Add category command for each category (silent)
             for (const [category, commands] of categoryGroups) {
                 const categoryName = category.toLowerCase();
                 if (!this.commands.has(categoryName) && categoryName !== "general") {
@@ -213,11 +174,10 @@ class CommandHandler {
                             }
                         }
                     });
-                    console.log(`   ✅ Added .${categoryName} command`);
                 }
             }
             
-            // Add .categories command
+            // Add .categories command (silent)
             if (!this.commands.has('categories')) {
                 this.commands.set('categories', {
                     pattern: "categories",
@@ -229,10 +189,9 @@ class CommandHandler {
                         await reply(menu);
                     }
                 });
-                console.log(`   ✅ Added .categories command`);
             }
             
-            // Add .all command
+            // Add .all command (silent)
             if (!this.commands.has('all')) {
                 this.commands.set('all', {
                     pattern: "all",
@@ -254,7 +213,6 @@ class CommandHandler {
                         await reply(message);
                     }
                 });
-                console.log(`   ✅ Added .all command`);
             }
             // =============== END CATEGORY COMMANDS ===============
 

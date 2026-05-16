@@ -1,0 +1,27 @@
+{
+  "1777976230804": [
+    {
+      "id": 1777976230814,
+      "type": "signup_bonus",
+      "amount": 5,
+      "description": "Welcome bonus",
+      "date": "2026-05-05T10:17:10.814Z"
+    },
+    {
+      "id": 1777976399343,
+      "type": "daily_claim",
+      "amount": 5,
+      "description": "Daily coin claim",
+      "date": "2026-05-05T10:19:59.341Z"
+    }
+  ],
+  "1777997711068": [
+    {
+      "id": 1777997852031,
+      "type": "daily_claim",
+      "amount": 5,
+      "description": "Daily coin claim",
+      "date": "2026-05-05T16:17:32.029Z"
+    }
+  ]
+}

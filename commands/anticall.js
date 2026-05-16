@@ -2,7 +2,6 @@
 const fs = require('fs');
 const path = require('path');
 
-// Channel info for your style (using BRENALDMEDIA newsletter)
 const channelInfo = {
     contextInfo: {
         forwardingScore: 1,

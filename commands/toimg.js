@@ -1,6 +1,30 @@
 const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
 const { webpToImage, webpToVideo } = require('../lib/video-utils');
 
+// Helper function to download with timeout and retry
+async function downloadWithTimeout(downloadFn, timeoutMs = 30000, retries = 2) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const result = await Promise.race([
+                downloadFn(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error(`Download timeout after ${timeoutMs}ms`)), timeoutMs)
+                )
+            ]);
+            return result;
+        } catch (err) {
+            lastError = err;
+            console.log(`Download attempt ${attempt}/${retries} failed:`, err.message);
+            if (attempt < retries) {
+                await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+            }
+        }
+    }
+    throw lastError;
+}
+
 module.exports = {
   pattern: "toimg",
   alias: ["toimage", "sticker2img", "s2i"],
@@ -49,26 +73,32 @@ module.exports = {
       const mediaNode = quotedMsg.stickerMessage;
       const isAnimated = mediaNode.isAnimated || false;
       
-      // React
-      if (module.exports.react) {
-        try { 
-          await conn.sendMessage(from, { react: { text: module.exports.react, key: message.key } }); 
-        } catch (e) {}
-      }
+      // Send ⏳ reaction
+      try { 
+        await conn.sendMessage(from, { react: { text: "⏳", key: message.key } }); 
+      } catch (e) {}
 
       await reply(`🖼️ Converting ${isAnimated ? 'animated ' : ''}sticker to image...`);
 
-      // Download sticker
+      // Download sticker with timeout and retry
       let stickerBuffer;
       try {
-        const stream = await downloadContentFromMessage(mediaNode, "sticker");
-        let _buf = Buffer.from([]);
-        for await (const chunk of stream) {
-          _buf = Buffer.concat([_buf, chunk]);
-        }
-        stickerBuffer = _buf;
+        const downloadStream = async () => {
+          const stream = await downloadContentFromMessage(mediaNode, "sticker");
+          let _buf = Buffer.from([]);
+          for await (const chunk of stream) {
+            _buf = Buffer.concat([_buf, chunk]);
+          }
+          return _buf;
+        };
+        
+        stickerBuffer = await downloadWithTimeout(downloadStream, 30000, 3);
         
         if (!stickerBuffer || stickerBuffer.length === 0) {
+          // Send ❌ reaction on failure
+          try { 
+            await conn.sendMessage(from, { react: { text: "❌", key: message.key } }); 
+          } catch (e) {}
           return await reply("❌ Failed to download sticker. Please try again.");
         }
         
@@ -76,7 +106,11 @@ module.exports = {
         
       } catch (e) {
         console.error("Sticker download error:", e);
-        return await reply("❌ Failed to download sticker. Please try again.");
+        // Send ❌ reaction on failure
+        try { 
+          await conn.sendMessage(from, { react: { text: "❌", key: message.key } }); 
+        } catch (err) {}
+        return await reply("❌ Network timeout. Please try again in a few moments.");
       }
 
       let resultBuffer;
@@ -115,6 +149,10 @@ module.exports = {
         
       } catch (e) {
         console.error("Image conversion error:", e);
+        // Send ❌ reaction on failure
+        try { 
+          await conn.sendMessage(from, { react: { text: "❌", key: message.key } }); 
+        } catch (err) {}
         return await reply("❌ Failed to convert sticker to image. Please try again.");
       }
 
@@ -135,6 +173,10 @@ module.exports = {
 
     } catch (err) {
       console.error("Sticker to image conversion error:", err);
+      // Send ❌ reaction on failure
+      try { 
+        await conn.sendMessage(from, { react: { text: "❌", key: message.key } }); 
+      } catch (e) {}
       await reply("❌ Conversion failed. Please try again with a different sticker.");
     }
   }

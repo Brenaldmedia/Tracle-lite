@@ -9,7 +9,7 @@ module.exports = {
     execute: async (conn, mek, m, { from, q, reply }) => {
         try {
             if (!q) {
-                return reply(`🎵 *Music Player*\n\nUsage: .play [song name]\nExample: .play Burna Boy Last Last\n\n> Powered by Tracle-Lite`);
+                return reply(`🎵 *Music Player*\n\nUsage: .play [song name]\nExample: .play Bye slowed \n\n> Powered by Tracle-Lite`);
             }
 
             // React loading
