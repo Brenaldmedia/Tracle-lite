@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://files.catbox.moe/zlu6dx.jpg" width="200" height="200">
+<img src="https://files.catbox.moe/iihw0j.mp4" width="200" height="200">
 
 # 🚀 TRACLE-LITE
 
@@ -14,9 +14,10 @@
 
 <p align="center">
 <img src="https://img.shields.io/badge/Version-2.0-00ff88?style=for-the-badge">
-<img src="https://img.shields.io/badge/Commands-300+-blue?style=for-the-badge">
+<img src="https://img.shields.io/badge/Commands-315+-blue?style=for-the-badge">
 <img src="https://img.shields.io/badge/WhatsApp-Bot-success?style=for-the-badge">
 <img src="https://img.shields.io/badge/Multi--Device-Enabled-purple?style=for-the-badge">
+<img src="https://img.shields.io/badge/Auto--Download-Session-orange?style=for-the-badge">
 </p>
 
 ---
@@ -33,7 +34,7 @@
 <img src="https://img.shields.io/badge/STAR%20REPO-yellow?style=for-the-badge&logo=github">
 </a>
 
-<a href="https://tracle-host.brenaldmedia.com">
+<a href="https://tracle-sessions.onrender.com/">
 <img src="https://img.shields.io/badge/GET%20SESSION-00ff88?style=for-the-badge&logo=whatsapp">
 </a>
 
@@ -45,7 +46,7 @@
 
 ---
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&size=28&pause=1000&color=00FF88&center=true&vCenter=true&width=900&lines=TRACLE-LITE+WHATSAPP+BOT;FAST+⚡+STABLE+🛡️+POWERFUL+🔥;300%2B+COMMANDS;AI+FEATURES+ENABLED;MULTI-DEVICE+SUPPORT;AUTO+VIEW+ONCE+FEATURES;GROUP+MANAGEMENT+TOOLS;MEDIA+DOWNLOADER+SYSTEM;CLOUD+DEPLOYMENT+READY">
+<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&size=28&pause=1000&color=00FF88&center=true&vCenter=true&width=900&lines=TRACLE-LITE+WHATSAPP+BOT;FAST+⚡+STABLE+🛡️+POWERFUL+🔥;315%2B+COMMANDS;AI+FEATURES+ENABLED;MULTI-DEVICE+SUPPORT;AUTO+VIEW+ONCE+FEATURES;GROUP+MANAGEMENT+TOOLS;MEDIA+DOWNLOADER+SYSTEM;CLOUD+DEPLOYMENT+READY;AUTO+SESSION+RESTORE">
 
 ---
 
@@ -57,133 +58,131 @@
 
 # 🌟 OVERVIEW
 
-TRACLE-LITE is a powerful Multi-Device WhatsApp bot designed for:
+**TRACLE-LITE** is a powerful Multi-Device WhatsApp bot designed for:
 
-- ⚡ Lightning Fast Performance
-- 🛡️ Stable Cloud Deployment
-- 🤖 AI Automation
-- 📥 Advanced Downloaders
-- 👥 Group Moderation
-- 🔥 Powerful WhatsApp Features
+| Feature | Description |
+|---------|-------------|
+| ⚡ Lightning Fast | Optimized for instant responses |
+| 🛡️ Stable Cloud | Deploy anywhere with auto-reconnect |
+| 🤖 AI Automation | Smart conversations and auto-replies |
+| 📥 Advanced Downloaders | Support for all major platforms |
+| 👥 Group Moderation | Complete group management tools |
+| 🔥 Powerful Features | Anti-delete, view-once, status tools |
 
-
-The bot is optimized for:
+### Supported Platforms
 
 <div align="center">
 
-<a href="https://render.com">
-<img src="https://img.shields.io/badge/Deploy%20on-Render-000000?style=for-the-badge&logo=render">
-</a>
-
-<a href="https://railway.app">
-<img src="https://img.shields.io/badge/Deploy%20on-Railway-6B3CC9?style=for-the-badge&logo=railway">
-</a>
-
-<a href="https://heroku.com">
-<img src="https://img.shields.io/badge/Deploy%20on-Heroku-7952B3?style=for-the-badge&logo=heroku">
-</a>
-
-<a href="https://koyeb.com">
-<img src="https://img.shields.io/badge/Deploy%20on-Koyeb-121212?style=for-the-badge">
-</a>
-
-<a href="https://replit.com">
-<img src="https://img.shields.io/badge/Deploy%20on-Replit-F26207?style=for-the-badge&logo=replit">
-</a>
-
-<a href="https://github.com/Brenaldmedia/Tracle-Lite">
-<img src="https://img.shields.io/badge/Multi--Session-Supported-00ff88?style=for-the-badge&logo=whatsapp">
-</a>
+| Platform | Deploy Link | Difficulty |
+|----------|-------------|------------|
+| **Render** | [![Deploy](https://img.shields.io/badge/Deploy-Render-000000?style=for-the-badge&logo=render)](https://render.com) | Easy |
+| **Railway** | [![Deploy](https://img.shields.io/badge/Deploy-Railway-6B3CC9?style=for-the-badge&logo=railway)](https://railway.app) | Easy |
+| **Heroku** | [![Deploy](https://img.shields.io/badge/Deploy-Heroku-7952B3?style=for-the-badge&logo=heroku)](https://heroku.com) | Easy |
+| **Koyeb** | [![Deploy](https://img.shields.io/badge/Deploy-Koyeb-121212?style=for-the-badge)](https://koyeb.com) | Easy |
+| **Replit** | [![Deploy](https://img.shields.io/badge/Deploy-Replit-F26207?style=for-the-badge&logo=replit)](https://replit.com) | Easiest |
+| **VPS/PC** | Manual Setup | Medium |
 
 </div>
----
 
+---
 
 <p align="center">
 <img src="https://files.catbox.moe/zlu6dx.jpg" width="90%">
 </p>
 
-
 ---
 
 # ✨ FEATURES
 
-## 🤖 AI FEATURES
+## 🤖 AI & AUTOMATION
 
-- AI Chat System
-- GPT-style Conversations
-- Smart Auto Replies
-- Fast AI Responses
-- Interactive Messaging
+| Feature | Description |
+|---------|-------------|
+| AI Chat System | Smart conversations with GPT-style responses |
+| Auto Responses | Custom trigger-based replies |
+| Smart AI | Fast and accurate AI interactions |
+| Interactive Chat | Natural conversation flow |
 
 ---
 
-## 📥 DOWNLOADER FEATURES
+## 📥 MEDIA DOWNLOADER
 
-Supports downloads from:
-
-- YouTube
-- TikTok
-- Instagram
-- Facebook
-- Pinterest
-- Twitter/X
-- MediaFire
-- APK Sources
-- Audio & Video Downloads
+| Platform | Supported |
+|----------|-----------|
+| YouTube | ✅ Videos & Audio |
+| TikTok | ✅ Videos & MP3 |
+| Instagram | ✅ Reels, Posts, Stories |
+| Facebook | ✅ Videos |
+| Pinterest | ✅ Images |
+| Twitter/X | ✅ Media |
+| MediaFire | ✅ Files |
+| Spotify | ✅ Music |
 
 ---
 
 ## 👥 GROUP MANAGEMENT
 
-- Welcome & Goodbye
-- Anti-Link Protection
-- Anti-Badword
-- Anti-Spam
-- Promote/Demote
-- Auto Moderation
-- Group Tagging
-- Admin Tools
+| Feature | Description |
+|---------|-------------|
+| Welcome/Goodbye | Auto messages for joins/leaves |
+| Anti-Link | Block unwanted links |
+| Anti-Badword | Filter profanity |
+| Anti-Spam | Prevent message spam |
+| Promote/Demote | Group admin management |
+| Auto Moderation | Automatic rule enforcement |
+| Tag All | Mention everyone at once |
+| Admin Tools | Complete admin commands |
 
 ---
 
-## 🔒 PRIVACY FEATURES
+## 🔒 PRIVACY & SECURITY
 
-- Anti-Delete Messages
-- Anti-Edit Messages
-- Auto View Once
-- Secret VV Trigger
-- Owner Security System
+| Feature | Description |
+|---------|-------------|
+| Anti-Delete | Capture deleted messages with sender info |
+| Anti-Link  | Group protctions |
+| Auto View Once | Auto-capture expiring media |
+| Secret VV Trigger | Hidden view-once capture |
+| Owner Security | Protected owner commands |
+| DM Reports | Get reports in private |
 
 ---
 
 ## 📱 STATUS FEATURES
 
-- Auto View Status
-- Auto React to Status
-- Status Downloader
-- Auto Status Reply
+| Feature | Description |
+|---------|-------------|
+| Auto View Status | Automatically view contacts' status |
+| Auto React | React to status updates |
+| Status Downloader | Save status media |
+| Auto Reply | Send automatic status replies |
 
 ---
 
 ## 🎮 FUN & GAMES
 
-- Trivia Games
-- Truth or Dare
-- Guess Games
-- Meme Commands
-- Sticker Generator
-- Entertainment Features
+| Feature | Description |
+|---------|-------------|
+| Truth or Dare | Classic party game |
+| Rock Paper Scissors | Play against bot |
+| Betting Game | Virtual gambling |
+| Trivia | Quiz games |
+| Meme Generator | Create memes |
+| Sticker Creator | Convert images to stickers |
+| Quote Generator | Random quotes |
 
 ---
 
-## ⚙️ MULTI-SESSION SYSTEM
+## ⚙️ SESSION SYSTEM
 
-- Multiple Numbers
-- Stable Reconnect
-- Cloud Session Support
-- Session ID Authentication
-- Fast Pairing System
+| Feature | Description |
+|---------|-------------|
+| Session ID Auth | Secure authentication |
+| Auto Session Restore | Auto-download from cloud |
+| Multi-Number Support | Run multiple bots |
+| Stable Reconnect | Auto-reconnect on disconnect |
+| Fast Pairing | Quick WhatsApp linking |
+| Play Songs | Play your favrite songs  |
 
 ---
 
@@ -194,89 +193,158 @@ Supports downloads from:
 ```bash
 git clone https://github.com/Brenaldmedia/Tracle-Lite.git
 cd Tracle-Lite
+
 2️⃣ INSTALL DEPENDENCIES
+bash
+
 npm install
-3️⃣ CREATE .env
 
-Create:
+3️⃣ CREATE .env FILE
 
-.env
-
-Add:
+Create a .env file with:
+env
 
 SESSION_ID=Tracle_xxxxxxxxxxxx
 PREFIX=.
 BOT_NAME=TRACLE-LITE
 OWNER_NUMBER=234xxxxxxxxxx
-   ```
-4️⃣ START BOT
+
+4️⃣ GET YOUR SESSION ID
+<div align="center"> <a href="https://tracle-sessions.onrender.com/"> <img src="https://img.shields.io/badge/🔐%20GET%20YOUR%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white"> </a> </div>
+
+Steps:
+
+    Click the button above
+
+    Enter your WhatsApp number with country code
+
+    Get the 8-digit pairing code
+
+    Open WhatsApp → Settings → Linked Devices → Link a Device
+
+    Enter the code
+
+    Receive your Tracle_xxxxx session ID
+
+5️⃣ START BOT
+bash
+
 npm start
 
-Development mode:
+Development Mode
+bash
 
 npm run dev
-📱 GET SESSION ID
-<div align="center"> <a href="https://tracle-host.brenaldmedia.com"> <img src="https://img.shields.io/badge/GET%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp"> </a> </div>
-🚀 DEPLOYMENT
-<div align="center"> <a href="https://tracle-host.brenaldmedia.com"> <img src="https://img.shields.io/badge/TRACLE_HOST-Deploy_Now-00ff88?style=for-the-badge&logo=rocket"> </a> <a href="https://render.com"> <img src="https://img.shields.io/badge/RENDER-Deploy-blue?style=for-the-badge"> </a> <a href="https://railway.app"> <img src="https://img.shields.io/badge/RAILWAY-Deploy-purple?style=for-the-badge"> </a> <a href="https://heroku.com"> <img src="https://img.shields.io/badge/HEROKU-Deploy-7952B3?style=for-the-badge"> </a> <a href="https://koyeb.com"> <img src="https://img.shields.io/badge/KOYEB-Deploy-black?style=for-the-badge"> </a> <a href="https://replit.com"> <img src="https://img.shields.io/badge/REPLIT-Deploy-orange?style=for-the-badge"> </a> </div>
+
+
+🚀 DEPLOYMENT OPTIONS
+<div align="center">
+
+<div align="center">
+
+| Platform | Deploy Link |
+|----------|-------------|
+| **TRACLE HOST** | [![Deploy](https://img.shields.io/badge/DEPLOY-00ff88?style=for-the-badge&logo=rocket)](https://tracle-host.brenaldmedia.com) |
+| **Render** | [![Deploy on Render](https://img.shields.io/badge/DEPLOY%20ON-RENDER-blue?style=for-the-badge&logo=render)](https://render.com/deploy) |
+| **Railway** | [![Deploy on Railway](https://img.shields.io/badge/DEPLOY%20ON-RAILWAY-purple?style=for-the-badge&logo=railway)](https://railway.app/template/your-template) |
+| **Heroku** | [![Deploy on Heroku](https://img.shields.io/badge/DEPLOY%20ON-HEROKU-7952B3?style=for-the-badge&logo=heroku)](https://heroku.com/deploy) |
+| **Koyeb** | [![Deploy on Koyeb](https://img.shields.io/badge/DEPLOY%20ON-KOYEB-black?style=for-the-badge)](https://app.koyeb.com/deploy) |
+| **Replit** | [![Deploy on Replit](https://img.shields.io/badge/DEPLOY%20ON-REPLIT-orange?style=for-the-badge&logo=replit)](https://replit.com/github/Brenaldmedia/Tracle-Lite) |
+
+</div>
+
+### Quick Deploy on TRACLE HOST
+
+1. Visit **[tracle-host.brenaldmedia.com](https://tracle-host.brenaldmedia.com)**
+2. Enter your Session ID
+3. Choose your platform
+4. Click Deploy
+5. Bot runs automatically!
+
+### Manual Deployment Steps
+
+#### Render
+```bash
+# 1. Fork the repository
+# 2. Create a new Web Service on Render
+# 3. Connect your GitHub repo
+# 4. Add environment variable: SESSION_ID=your_id
+# 5. Click Deploy
+</div>
+
+Quick Deploy on TRACLE HOST
+
+    Visit tracle-host.brenaldmedia.com
+
+    Enter your Session ID
+
+    Choose your platform
+
+    Click Deploy
+
+    Bot runs automatically!
+
 📌 BASIC COMMANDS
-COMMAND	DESCRIPTION
-.menu	Show all commands
-.ping	Check bot speed
+Command	Description
+.menu	Show all available commands
+.ping	Check bot response time
 .alive	Check bot status
 .ai	Talk with AI
 .yt	Download YouTube videos
 .ig	Download Instagram media
 .tt	Download TikTok videos
-.vv	Open view once
-.sticker	Create stickers
-.tagall	Mention everyone
-.status	Toggle auto status
+.vv	Capture view-once media
+.sticker	Create stickers from images
+.tagall	Mention everyone in group
+.status	Toggle auto status features
+.mode	Switch public/private mode
 ⚙️ CONFIGURATION
-VARIABLE	DESCRIPTION
-SESSION_ID	Your WhatsApp session ID
-PREFIX	Command prefix
-BOT_NAME	Bot display name
-OWNER_NUMBER	Owner WhatsApp number
+Variable	Description	Required
+SESSION_ID	Your WhatsApp session ID	✅ Yes
+PREFIX	Command prefix (default: .)	❌ No
+BOT_NAME	Bot display name	❌ No
+OWNER_NUMBER	Owner WhatsApp number	❌ No
+PORT	Server port (default: 5000)	❌ No
 🛡️ STABILITY FEATURES
-Auto Reconnect
-Persistent Sessions
-Crash Protection
-Fast Startup
-Optimized Performance
-Cloud Deployment Ready
-
+Feature	Description
+Auto Reconnect	Automatically reconnects on disconnect
+Persistent Sessions	Sessions survive restarts
+Crash Protection	Error handling and recovery
+Fast Startup	Optimized boot time
+Cloud Ready	Works on all platforms
+Auto Download	Sessions auto-download from cloud
 📊 BOT STATISTICS
 <div align="center">
-FEATURE	STATUS
-Commands	300+
-Stability	Excellent
-Speed	Ultra Fast
-Multi-Session	Enabled
-AI Support	Enabled
-Cloud Deploy	Supported
+Feature	Status
+Commands	315+
+Stability	⭐ Excellent
+Speed	⚡ Ultra Fast
+AI Support	✅ Enabled
+Cloud Deploy	✅ Supported
+Auto Restore	✅ Enabled
 </div>
 👨‍💻 DEVELOPER
 <div align="center">
 ❤️ BrenaldMedia
-🌐 GitHub
 
-https://github.com/Brenaldmedia
-
+https://img.shields.io/badge/GitHub-Brenaldmedia-181717?style=for-the-badge&logo=github
 🤖 Official Bot
 
 TRACLE-LITE
-
 </div>
 ⭐ SUPPORT THE PROJECT
-<div align="center"> <a href="https://github.com/Brenaldmedia/Tracle-Lite"> <img src="https://img.shields.io/badge/STAR%20REPO-yellow?style=for-the-badge&logo=github"> </a> <a href="https://github.com/Brenaldmedia/Tracle-Lite/fork"> <img src="https://img.shields.io/badge/FORK%20REPO-black?style=for-the-badge&logo=github"> </a> </div>
+<div align="center"><a href="https://github.com/Brenaldmedia/Tracle-Lite"> <img src="https://img.shields.io/badge/🌟%20STAR%20REPO-yellow?style=for-the-badge&logo=github"> </a><a href="https://github.com/Brenaldmedia/Tracle-Lite/fork"> <img src="https://img.shields.io/badge/🍴%20FORK%20REPO-black?style=for-the-badge&logo=github"> </a></div>
 📜 DISCLAIMER
 
-This project is for educational and automation purposes only.
+    ⚠️ Disclaimer
 
-Users are responsible for how they use the bot.
+    This project is for educational and automation purposes only.
+    Users are responsible for how they use the bot.
+    The developer is not responsible for any misuse or violations of WhatsApp's terms.
 
-<div align="center"> <img src="https://capsule-render.vercel.app/api?type=waving&color=00ff88&height=140&section=footer"/>
+<div align="center"><img src="https://capsule-render.vercel.app/api?type=waving&color=00ff88&height=140&section=footer"/>
 ⚡ TRACLE-LITE
-MADE FOR SPEED ⚡ STABILITY 🛡️ POWER 🔥
-</div>
+MADE FOR SPEED ⚡ | STABILITY 🛡️ | POWER 🔥
+
+Made with ❤️ by BrenaldMedia
+</div> ```
