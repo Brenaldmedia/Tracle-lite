@@ -140,7 +140,7 @@
 | Feature | Description |
 |---------|-------------|
 | Anti-Delete | Capture deleted messages with sender info |
-| Anti-Link  | Group protctions |
+| Anti-Link | Group protections |
 | Auto View Once | Auto-capture expiring media |
 | Secret VV Trigger | Hidden view-once capture |
 | Owner Security | Protected owner commands |
@@ -182,7 +182,7 @@
 | Multi-Number Support | Run multiple bots |
 | Stable Reconnect | Auto-reconnect on disconnect |
 | Fast Pairing | Quick WhatsApp linking |
-| Play Songs | Play your favrite songs  |
+| Play Songs | Play your favorite songs |
 
 ---
 
@@ -236,42 +236,16 @@ bash
 
 npm run dev
 
-
 🚀 DEPLOYMENT OPTIONS
 <div align="center">
-
-<div align="center">
-
-| Platform | Deploy Link |
-|----------|-------------|
-| **TRACLE HOST** | [![Deploy](https://img.shields.io/badge/DEPLOY-00ff88?style=for-the-badge&logo=rocket)](https://tracle-host.brenaldmedia.com) |
-| **Render** | [![Deploy on Render](https://img.shields.io/badge/DEPLOY%20ON-RENDER-blue?style=for-the-badge&logo=render)](https://render.com/deploy) |
-| **Railway** | [![Deploy on Railway](https://img.shields.io/badge/DEPLOY%20ON-RAILWAY-purple?style=for-the-badge&logo=railway)](https://railway.app/template/your-template) |
-| **Heroku** | [![Deploy on Heroku](https://img.shields.io/badge/DEPLOY%20ON-HEROKU-7952B3?style=for-the-badge&logo=heroku)](https://heroku.com/deploy) |
-| **Koyeb** | [![Deploy on Koyeb](https://img.shields.io/badge/DEPLOY%20ON-KOYEB-black?style=for-the-badge)](https://app.koyeb.com/deploy) |
-| **Replit** | [![Deploy on Replit](https://img.shields.io/badge/DEPLOY%20ON-REPLIT-orange?style=for-the-badge&logo=replit)](https://replit.com/github/Brenaldmedia/Tracle-Lite) |
-
+Platform	Deploy Link
+TRACLE HOST	https://img.shields.io/badge/DEPLOY-00ff88?style=for-the-badge&logo=rocket
+Render	https://img.shields.io/badge/DEPLOY%2520ON-RENDER-blue?style=for-the-badge&logo=render
+Railway	https://img.shields.io/badge/DEPLOY%2520ON-RAILWAY-purple?style=for-the-badge&logo=railway
+Heroku	https://img.shields.io/badge/DEPLOY%2520ON-HEROKU-7952B3?style=for-the-badge&logo=heroku
+Koyeb	https://img.shields.io/badge/DEPLOY%2520ON-KOYEB-black?style=for-the-badge
+Replit	https://img.shields.io/badge/DEPLOY%2520ON-REPLIT-orange?style=for-the-badge&logo=replit
 </div>
-
-### Quick Deploy on TRACLE HOST
-
-1. Visit **[tracle-host.brenaldmedia.com](https://tracle-host.brenaldmedia.com)**
-2. Enter your Session ID
-3. Choose your platform
-4. Click Deploy
-5. Bot runs automatically!
-
-### Manual Deployment Steps
-
-#### Render
-```bash
-# 1. Fork the repository
-# 2. Create a new Web Service on Render
-# 3. Connect your GitHub repo
-# 4. Add environment variable: SESSION_ID=your_id
-# 5. Click Deploy
-</div>
-
 Quick Deploy on TRACLE HOST
 
     Visit tracle-host.brenaldmedia.com
@@ -283,6 +257,47 @@ Quick Deploy on TRACLE HOST
     Click Deploy
 
     Bot runs automatically!
+
+Get Session ID
+<div align="center"> <a href="https://tracle-sessions.onrender.com/"> <img src="https://img.shields.io/badge/🔐%20GET%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white"> </a> </div>
+Manual Deployment Steps
+Render
+bash
+
+# 1. Fork the repository
+# 2. Create a new Web Service on Render
+# 3. Connect your GitHub repo
+# 4. Add environment variable: SESSION_ID=your_id
+# 5. Click Deploy
+
+Railway
+bash
+
+# 1. Click the Railway deploy button
+# 2. Add SESSION_ID in environment variables
+# 3. Deploy
+
+Heroku
+bash
+
+heroku login
+heroku create your-bot-name
+git push heroku main
+heroku config:set SESSION_ID=your_session_id
+
+Replit
+bash
+
+# 1. Fork the repository on Replit
+# 2. Add SESSION_ID in Secrets
+# 3. Click Run
+
+Koyeb
+bash
+
+# 1. Click the Koyeb deploy button
+# 2. Configure environment variables
+# 3. Deploy
 
 📌 BASIC COMMANDS
 Command	Description
