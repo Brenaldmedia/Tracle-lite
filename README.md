@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://files.catbox.moe/iihw0j.mp4" width="200" height="200">
+<img src="https://files.catbox.moe/zlu6dx.jpg" width="200" height="200">
 
 # 🚀 TRACLE-LITE
 
