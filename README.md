@@ -187,6 +187,7 @@
 
 ---
 
+
 # 🚀 INSTALLATION
 
 ## 1️⃣ CLONE REPOSITORY
@@ -237,41 +238,34 @@ bash
 
 npm run dev
 
-# 🚀 DEPLOYMENT OPTIONS
-
+🚀 DEPLOYMENT OPTIONS
 <div align="center">
-
-| Platform | Deploy Link |
-|----------|-------------|
-| **TRACLE HOST** | [![Deploy on TRACLE HOST](https://img.shields.io/badge/DEPLOY%20ON-TRACLE%20HOST-00ff88?style=for-the-badge&logo=rocket)](https://tracle-host.brenaldmedia.com) |
-| **Render** | [![Deploy on Render](https://img.shields.io/badge/DEPLOY%20ON-RENDER-blue?style=for-the-badge&logo=render)](https://render.com/deploy) |
-| **Railway** | [![Deploy on Railway](https://img.shields.io/badge/DEPLOY%20ON-RAILWAY-purple?style=for-the-badge&logo=railway)](https://railway.app/template/your-template) |
-| **Heroku** | [![Deploy on Heroku](https://img.shields.io/badge/DEPLOY%20ON-HEROKU-7952B3?style=for-the-badge&logo=heroku)](https://heroku.com/deploy) |
-| **Koyeb** | [![Deploy on Koyeb](https://img.shields.io/badge/DEPLOY%20ON-KOYEB-black?style=for-the-badge)](https://app.koyeb.com/deploy) |
-| **Replit** | [![Deploy on Replit](https://img.shields.io/badge/DEPLOY%20ON-REPLIT-orange?style=for-the-badge&logo=replit)](https://replit.com/github/Brenaldmedia/Tracle-Lite) |
-
+Platform	Deploy Link
+TRACLE HOST	https://img.shields.io/badge/DEPLOY%2520ON-TRACLE%2520HOST-00ff88?style=for-the-badge&logo=rocket
+Render	https://img.shields.io/badge/DEPLOY%2520ON-RENDER-blue?style=for-the-badge&logo=render
+Railway	https://img.shields.io/badge/DEPLOY%2520ON-RAILWAY-purple?style=for-the-badge&logo=railway
+Heroku	https://img.shields.io/badge/DEPLOY%2520ON-HEROKU-7952B3?style=for-the-badge&logo=heroku
+Koyeb	https://img.shields.io/badge/DEPLOY%2520ON-KOYEB-black?style=for-the-badge
+Replit	https://img.shields.io/badge/DEPLOY%2520ON-REPLIT-orange?style-for-the-badge&logo=replit
 </div>
+Quick Deploy on TRACLE HOST (Recommended)
 
-### Quick Deploy on TRACLE HOST (Recommended)
+    Visit tracle-host.brenaldmedia.com
 
-1. Visit **[tracle-host.brenaldmedia.com](https://tracle-host.brenaldmedia.com)**
-2. Enter your Session ID
-3. Choose your platform
-4. Click Deploy
-5. Bot runs automatically!
+    Enter your Session ID
 
-### Get Your Session ID First
+    Choose your platform
 
-<div align="center">
-<a href="https://tracle-sessions.onrender.com/">
-<img src="https://img.shields.io/badge/🔐%20GET%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white">
-</a>
-</div>
+    Click Deploy
 
-### Manual Deployment Steps
+    Bot runs automatically!
 
-#### Render
-```bash
+Get Your Session ID First
+<div align="center"> <a href="https://tracle-sessions.onrender.com/"> <img src="https://img.shields.io/badge/🔐%20GET%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white"> </a> </div>
+Manual Deployment Steps
+Render
+bash
+
 # 1. Fork the repository
 # 2. Create a new Web Service on Render
 # 3. Connect your GitHub repo
