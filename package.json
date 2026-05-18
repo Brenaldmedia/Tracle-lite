@@ -21,7 +21,7 @@
     "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@iamtraction/google-translate": "^2.0.1",
-    "@supabase/supabase-js": "^2.87.1",
+    "@supabase/supabase-js": "^2.106.0",
     "@vitalets/google-translate-api": "^9.2.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.16.0",

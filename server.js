@@ -14,7 +14,9 @@ const socketIO = require('socket.io');
 const cors = require('cors');
 const readline = require('readline');
 const app = express();
-
+const { downloadSessionFromGenerator, checkSessionInGenerator } = require('./supabase-session');
+// ============ SESSION GENERATOR URL ============
+const SESSION_GENERATOR_URL = process.env.SESSION_GENERATOR_URL || "http://localhost:3000";
 // =============== UNIVERSAL DEPLOYMENT ===============
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const BACKEND_PORT = process.env.PORT || 5000;
@@ -1355,7 +1357,6 @@ function getExistingSessions() {
     return sessionsList;
 }
 
-
 // ============ CATEGORY HELP SYSTEM ============
 function buildCommandCategories() {
     const commandCategories = new Map();
@@ -1410,6 +1411,8 @@ function setupCategoryCommands(commandCategories) {
         });
     }
 }
+
+
 // ============ START BOT PROCESSOR (FAST STARTUP) ============
 (async function startBotProcessor() {
     global.activeConnections = activeConnections;
@@ -1427,25 +1430,62 @@ function setupCategoryCommands(commandCategories) {
 
     console.log(`✅ Bot initialized. Works anywhere!`);
 
-    const existingSessions = getExistingSessions();
-
-    if (existingSessions.length > 0) {
-        console.log(`📁 Found ${existingSessions.length} existing session(s)`);
-        for (const sessId of existingSessions) {
-            console.log(`🔄 Restoring: ${sessId}`);
-            await createSessionFromNumber(sessId);
-            await delay(800); // Small delay for stability
-        }
-    } else {
-        console.log(`\n========================================`);
-        console.log(`📱 NEW SESSION SETUP`);
-        console.log(`========================================`);
-        console.log(`No existing sessions found.`);
-        console.log(`========================================\n`);
+    // Check for SESSION_ID in environment first
+    let sessionId = process.env.SESSION_ID || null;
+    
+    if (sessionId) {
+        console.log(`📱 SESSION_ID found in environment: ${sessionId}`);
         
-        await promptForPhoneNumber();
+        // Check if session folder exists locally
+        const sessionPath = path.join(__dirname, 'sessions', sessionId);
+        const credsPath = path.join(sessionPath, 'creds.json');
+            if (!fs.existsSync(credsPath)) {
+                    console.log(`📁 Session folder not found locally. Checking session generator...`);
+            
+            // Check if session exists in generator
+            const existsInGenerator = await checkSessionInGenerator(sessionId);
+            
+            if (existsInGenerator) {
+                console.log(`✅ Session found in generator. Downloading...`);
+                const downloaded = await downloadSessionFromGenerator(sessionId);
+                if (!downloaded) {
+                    console.log(`❌ Failed to download session from generator.`);
+                    await promptForPhoneNumber();
+                    return;
+                }
+            } else {
+                console.log(`❌ Session ${sessionId} not found in generator.`);
+                console.log(`   Please generate a new session at: ${SESSION_GENERATOR_URL}`);
+                await promptForPhoneNumber();
+                return;
+            }
+        }
+        
+        await startBotFromSessionId(sessionId);
+    } else {
+        const existingSessions = getExistingSessions();
+        
+        if (existingSessions.length > 0) {
+            console.log(`📁 Found ${existingSessions.length} existing session(s)`);
+            for (const sessId of existingSessions) {
+                console.log(`🔄 Restoring: ${sessId}`);
+                await createSessionFromNumber(sessId);
+                await delay(800);
+            }
+        } else {
+            console.log(`\n========================================`);
+            console.log(`📱 NEW SESSION SETUP`);
+            console.log(`========================================`);
+            console.log(`No SESSION_ID found in environment variables.`);
+            console.log(`No existing sessions found in sessions folder.`);
+            console.log(`========================================\n`);
+            
+            await promptForPhoneNumber();
+        }
     }
 })();
+
+
 
 // ============ CLEANUP ON EXIT ============
 process.on('SIGINT', async () => {
