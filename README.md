@@ -208,6 +208,7 @@ SESSION_ID=Tracle_xxxxxxxxxxxx
 PREFIX=.
 BOT_NAME=TRACLE-LITE
 OWNER_NUMBER=234xxxxxxxxxx
+   ```
 4️⃣ START BOT
 npm start
 
@@ -278,4 +279,4 @@ Users are responsible for how they use the bot.
 <div align="center"> <img src="https://capsule-render.vercel.app/api?type=waving&color=00ff88&height=140&section=footer"/>
 ⚡ TRACLE-LITE
 MADE FOR SPEED ⚡ STABILITY 🛡️ POWER 🔥
-</div> ```
+</div>
