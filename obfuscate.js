@@ -5,14 +5,7 @@ const path = require('path');
 // Files to obfuscate (in place - will overwrite originals!)
 const filesToObfuscate = [
   'server.js',
-  'commands/**/*.js',
-  'lib/**/*.js',
-  'utils/**/*.js',
-  'admin.js',
-  'commands.js',
-  'category-commands.js',
-  'supabase-session.js',
-  'youtube.js'
+  'supabase-session.js'
 ];
 
 async function obfuscateFile(filePath) {
