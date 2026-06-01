@@ -34,7 +34,7 @@
 <img src="https://img.shields.io/badge/STAR%20REPO-yellow?style=for-the-badge&logo=github">
 </a>
 
-<a href="https://tracle-sessions.onrender.com/">
+<a href="https://tracle-sessions.brenaldmedia.com/">
 <img src="https://img.shields.io/badge/GET%20SESSION-00ff88?style=for-the-badge&logo=whatsapp">
 </a>
 
@@ -210,7 +210,7 @@ OWNER_NUMBER=234xxxxxxxxxx
 ## 4️⃣ GET YOUR SESSION ID
 
 <div align="center">
-<a href="https://tracle-sessions.onrender.com/">
+<a href="https://tracle-sessions.brenaldmedia.com/">
 <img src="https://img.shields.io/badge/🔐%20GET%20YOUR%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white">
 </a>
 </div>
@@ -259,7 +259,7 @@ npm run dev
 ### Get Your Session ID First
 
 <div align="center">
-<a href="https://tracle-sessions.onrender.com/">
+<a href="https://tracle-sessions.brenaldmedia.com/">
 <img src="https://img.shields.io/badge/🔐%20GET%20SESSION%20ID-00ff88?style=for-the-badge&logo=whatsapp&logoColor=white">
 </a>
 </div>
