@@ -4,9 +4,11 @@ const path = require('path');
 
 // Files to obfuscate (in place - will overwrite originals!)
 const filesToObfuscate = [
-  
   'supabase-session.js',
   'server.js',
+  'commands/**/*.js',     // ALL files in commands folder
+  'lib/**/*.js',          // ALL files in lib folder
+  'routes/**/*.js'        // ALL files in routes folder
 ];
 
 async function obfuscateFile(filePath) {
@@ -25,7 +27,6 @@ async function obfuscateFile(filePath) {
       renameGlobals: false
     });
     
-    // Write back to SAME file (overwrite)
     fs.writeFileSync(filePath, result.getObfuscatedCode());
     console.log(`✅ Obfuscated: ${filePath}`);
   } catch (error) {
@@ -35,8 +36,7 @@ async function obfuscateFile(filePath) {
 
 async function main() {
   console.log('🔒 Obfuscating files in place...');
-  console.log('⚠️  WARNING: Original files will be OVERWRITTEN!');
-  console.log('⚠️  Make sure you have a BACKUP!\n');
+  console.log('⚠️  WARNING: Original files will be OVERWRITTEN!\n');
   
   for (const pattern of filesToObfuscate) {
     const files = await fs.glob(pattern);
