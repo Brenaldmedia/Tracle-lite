@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "afterpack": "^0.0.15",
-    "javascript-obfuscator": "^5.4.2",
+    "javascript-obfuscator": "^5.5.0",
     "nodemon": "^3.0.3"
   }
 }
