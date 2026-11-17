@@ -27,3 +27,6 @@ pids
 *.pid
 *.seed
 *.pid.lock
+# Tracle-Lite launcher
+.env.*
+!.env.example

@@ -1,0 +1,80 @@
+{
+    "_comment": "Tracle-Lite egg for Pterodactyl. Import it in Admin > Nests > Import Egg.",
+    "meta": { "version": "PTDL_v2", "update_url": null },
+    "exported_at": "2026-11-17T18:00:00+00:00",
+    "name": "Tracle-Lite",
+    "author": "support@brenaldmedia.com",
+    "description": "Tracle-Lite WhatsApp bot. On first start the console asks for your WhatsApp number (you get a pairing code) or your session ID.",
+    "features": null,
+    "docker_images": {
+        "Node 20": "ghcr.io/parkervcp/yolks:nodejs_20",
+        "Node 22": "ghcr.io/parkervcp/yolks:nodejs_22"
+    },
+    "file_denylist": [],
+    "startup": "if [ ! -f package.json ]; then git clone --depth 1 {{GIT_REPO}} /tmp/tl && cp -a /tmp/tl/. /home/container/ && rm -rf /tmp/tl; fi; if [ \"{{AUTO_UPDATE}}\" = \"1\" ] && [ -d .git ]; then git pull --ff-only; fi; npm install --omit=dev --no-audit --no-fund; npm start",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": [\"Tracle-Lite setup\", \"Starting the bot\", \"Health check on port\"]\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\napt update\napt install -y git ca-certificates\nmkdir -p /mnt/server\ncd /mnt/server\nif [ ! -f package.json ]; then git clone --depth 1 ${GIT_REPO} . ; fi\necho 'Install done'",
+            "container": "node:20-bookworm-slim",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Session ID",
+            "description": "Optional. Your Tracle-Lite session ID (TRACLE~... or Tracle_...). Leave empty to type your number or session ID in the console.",
+            "env_variable": "SESSION_ID",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Phone number",
+            "description": "Optional. Your WhatsApp number with country code, digits only (example 2345678901234). A pairing code is printed in the console.",
+            "env_variable": "PHONE_NUMBER",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Prefix",
+            "description": "Command prefix.",
+            "env_variable": "PREFIX",
+            "default_value": ".",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:3",
+            "field_type": "text"
+        },
+        {
+            "name": "Git repo",
+            "description": "Repository to install from.",
+            "env_variable": "GIT_REPO",
+            "default_value": "https://github.com/Brenaldmedia/Tracle-lite.git",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Auto update",
+            "description": "1 = pull the latest version on every start.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|boolean",
+            "field_type": "text"
+        }
+    ]
+}
