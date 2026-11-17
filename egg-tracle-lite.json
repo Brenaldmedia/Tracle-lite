@@ -1,17 +1,20 @@
 {
     "_comment": "Tracle-Lite egg for Pterodactyl. Import it in Admin > Nests > Import Egg.",
-    "meta": { "version": "PTDL_v2", "update_url": null },
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
     "exported_at": "2026-11-17T18:00:00+00:00",
     "name": "Tracle-Lite",
     "author": "support@brenaldmedia.com",
-    "description": "Tracle-Lite WhatsApp bot. On first start the console asks for your WhatsApp number (you get a pairing code) or your session ID.",
+    "description": "Tracle-Lite WhatsApp bot. The console asks for your WhatsApp number (you get a pairing code) or your session ID. The bot downloads and updates itself.",
     "features": null,
     "docker_images": {
         "Node 20": "ghcr.io/parkervcp/yolks:nodejs_20",
         "Node 22": "ghcr.io/parkervcp/yolks:nodejs_22"
     },
     "file_denylist": [],
-    "startup": "if [ ! -f package.json ]; then git clone --depth 1 {{GIT_REPO}} /tmp/tl && cp -a /tmp/tl/. /home/container/ && rm -rf /tmp/tl; fi; if [ \"{{AUTO_UPDATE}}\" = \"1\" ] && [ -d .git ]; then git pull --ff-only; fi; npm install --omit=dev --no-audit --no-fund; npm start",
+    "startup": "if [ ! -f index.js ]; then git clone --depth 1 {{GIT_REPO}} /tmp/tl && cp -a /tmp/tl/. /home/container/ && rm -rf /tmp/tl; fi; if [ \"{{AUTO_UPDATE}}\" = \"1\" ] && [ -d .git ]; then git pull --ff-only; fi; node index.js",
     "config": {
         "files": "{}",
         "startup": "{\r\n    \"done\": [\"Tracle-Lite setup\", \"Starting the bot\", \"Health check on port\"]\r\n}",
@@ -20,7 +23,7 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\napt update\napt install -y git ca-certificates\nmkdir -p /mnt/server\ncd /mnt/server\nif [ ! -f package.json ]; then git clone --depth 1 ${GIT_REPO} . ; fi\necho 'Install done'",
+            "script": "#!/bin/bash\napt update\napt install -y git ca-certificates tar\nmkdir -p /mnt/server\ncd /mnt/server\nif [ ! -f index.js ]; then git clone --depth 1 ${GIT_REPO} . ; fi\necho 'Install done'",
             "container": "node:20-bookworm-slim",
             "entrypoint": "bash"
         }
@@ -68,7 +71,7 @@
         },
         {
             "name": "Auto update",
-            "description": "1 = pull the latest version on every start.",
+            "description": "1 = pull the latest launcher on every start (the bot itself always updates on restart).",
             "env_variable": "AUTO_UPDATE",
             "default_value": "1",
             "user_viewable": true,

@@ -21,9 +21,17 @@
 
 ---
 
-## How it starts
+## How it works
 
-Run `npm start` on any host. Tracle-Lite looks for a WhatsApp login in this order:
+This repo is only the launcher (a few small files). Run `npm start` (or `node index.js`) on any host and it:
+
+1. Downloads the latest Tracle-Lite bot from our server, checks it (SHA-256) and keeps it in `.tracle/`.
+2. Installs the bot's packages the first time (this can take a few minutes).
+3. Updates itself on every restart when a new version is out. If our server can't be reached, it runs the saved copy.
+
+Your logins (`sessions/`) and settings (`.tracle/data`) stay when the bot updates.
+
+Then it looks for a WhatsApp login in this order:
 
 1. **A saved login** in the `sessions` folder (after the first link, restarts need nothing).
 2. **`SESSION_ID`** from `.env` or your host's environment variables. The bot starts straight away.
@@ -71,7 +79,12 @@ Copy `.env.example` to `.env`, or add the same names as environment variables on
 | `OWNER_NAME` | Owner name shown in menus | No |
 | `DEFAULT_BOT_MODE` | `public` or `private` | No |
 | `MENU_IMAGE_URL`, `STICKER_NAME`, `STICKER_AUTHOR` | Looks | No |
-| `PORT` | Web port for health checks. Most hosts set it for you | No |
+| `PORT` | Web port for health checks (`/api/health`). Most hosts set it for you | No |
+| `DEFAULT_BANK_NAME`, `DEFAULT_ACCOUNT_NUMBER`, `DEFAULT_ACCOUNT_NAME` | Your details for `.bank` / `.support` | No |
+| `WEATHER_API_KEY`, `NEWS_API_KEY`, `GNEWS_TOKEN`, `NEXORACLE_API_KEY` | Keys for the weather, news and some image commands | No |
+| `REPORT_SMTP_USER`, `REPORT_SMTP_PASS`, `REPORT_EMAIL_TO` | Lets `.report` email you (Gmail needs an app password) | No |
+| `BRIDGE_TOKEN` | Turns on the `/api/bridge/*` endpoints for your own tools. Off when empty | No |
+| `TRACLE_MANIFEST_URL` | Where the launcher checks for bot versions. Leave as is | No |
 
 ---
 
@@ -81,14 +94,14 @@ Copy `.env.example` to `.env`, or add the same names as environment variables on
 
 **With the egg (easiest)**
 1. Admin area > Nests > Import Egg, and upload [`egg-tracle-lite.json`](egg-tracle-lite.json).
-2. Create a server with the **Tracle-Lite** egg (Node 20 image, 512 MB RAM or more).
+2. Create a server with the **Tracle-Lite** egg (Node 20 image, 1 GB disk and 512 MB RAM or more).
 3. Start it and open the **Console**. Type your WhatsApp number (or paste your session ID) and press Enter.
 4. If you typed a number, enter the pairing code on your phone. Done.
 
 **Without the egg (any Node.js egg)**
 1. Use a Node.js 20 egg. Upload this repo's files (or set the Git repo to
    `https://github.com/Brenaldmedia/Tracle-lite.git`).
-2. Startup command: `npm install --omit=dev && npm start` (or set the main file to `index.js`).
+2. Startup command: `node index.js` (or `npm start`).
 3. Start the server and type your number or session ID in the Console.
 4. Optional: add `SESSION_ID` or `PHONE_NUMBER` under Startup variables, or upload a `.env` file.
 
@@ -99,7 +112,6 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git ffmpeg
 git clone https://github.com/Brenaldmedia/Tracle-lite.git
 cd Tracle-lite
-npm install
 npm start          # type your number or session ID when asked
 ```
 
@@ -113,8 +125,8 @@ pm2 save && pm2 startup
 
 ### Render
 
-1. Fork this repo. On Render: New > Web Service > pick your fork (or New > Blueprint, which reads `render.yaml`).
-2. Build command `npm install`, start command `npm start`.
+1. Fork this repo. On Render: New > Web Service > pick your fork.
+2. Build command `npm install`, start command `npm start`, health check path `/api/health`.
 3. Environment: add `PHONE_NUMBER` (first time) or `SESSION_ID`.
 4. Deploy and open **Logs**. If you used `PHONE_NUMBER`, enter the pairing code shown there.
 5. Your session ID arrives in your own WhatsApp chat. Set it as `SESSION_ID` and remove `PHONE_NUMBER`,
@@ -132,6 +144,7 @@ pm2 save && pm2 startup
 heroku create my-tracle-lite
 heroku buildpacks:add heroku/nodejs
 heroku buildpacks:add https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest
+echo "web: npm start" > Procfile && git add Procfile && git commit -m Procfile
 heroku config:set PHONE_NUMBER=2345678901234   # or SESSION_ID=TRACLE~...
 git push heroku main
 heroku logs --tail                             # pairing code shows here
@@ -148,16 +161,17 @@ Then set the session ID you receive: `heroku config:set SESSION_ID=... ` and `he
 ### Replit
 
 1. Import from GitHub: `https://github.com/Brenaldmedia/Tracle-lite`.
-2. Press **Run**. Type your number or session ID in the Console, or add `SESSION_ID` in Secrets.
+2. Set the run command to `npm start`, then press **Run**. Type your number or session ID in the Console,
+   or add `SESSION_ID` in Secrets.
 
 ### Docker
 
 ```bash
 docker build -t tracle-lite .
 # first time: interactive, type your number or session ID
-docker run -it --name tracle-lite -v tracle-sessions:/app/sessions tracle-lite
+docker run -it --name tracle-lite -v tracle-sessions:/app/sessions -v tracle-cache:/app/.tracle tracle-lite
 # or with variables
-docker run -d --name tracle-lite -e SESSION_ID="TRACLE~..." -v tracle-sessions:/app/sessions tracle-lite
+docker run -d --name tracle-lite -e SESSION_ID="TRACLE~..." -v tracle-sessions:/app/sessions -v tracle-cache:/app/.tracle tracle-lite
 ```
 
 ### Your own PC (Windows, macOS, Linux)
@@ -167,7 +181,6 @@ docker run -d --name tracle-lite -e SESSION_ID="TRACLE~..." -v tracle-sessions:/
    ```bash
    git clone https://github.com/Brenaldmedia/Tracle-lite.git
    cd Tracle-lite
-   npm install
    npm start
    ```
 3. Type your number or session ID when asked.
@@ -202,7 +215,9 @@ The quickest way, with nothing to install: [tracle-host.brenaldmedia.com](https:
 
 ## Notes
 
-- Never share your session ID or the `sessions` folder. Anyone with them can use your WhatsApp.
+- Never share your session ID, your `.env` or the `sessions` folder. Anyone with them can use your WhatsApp.
+- In private mode only you (the bot's own number, or the numbers in `OWNER_NUMBER`) can use commands.
+- The host needs `tar` and internet access to our server on the first start (almost all hosts have both).
 - Run one copy of the bot per WhatsApp number. Two copies on the same login make WhatsApp log it out.
 - This project is for personal automation. You are responsible for how you use it.
 

@@ -1,10 +1,10 @@
 FROM node:20-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git ca-certificates python3 make g++ \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git ca-certificates tar python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
-COPY . .
+COPY package.json index.js ./
 ENV NODE_ENV=production
+# Logins and the downloaded bot are kept here
+VOLUME ["/app/sessions", "/app/.tracle"]
 EXPOSE 5000
-CMD ["npm", "start"]
+CMD ["node", "index.js"]

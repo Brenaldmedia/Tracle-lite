@@ -8,6 +8,9 @@
  *   3. PHONE_NUMBER (a pairing code is printed in the logs)
  *   4. The console asks: "Enter your WhatsApp number or session ID"
  * With none of these and no console, it prints the steps and keeps waiting (no crash loop).
+ *
+ * The bot itself is downloaded on start from the Tracle-Lite server (checked with SHA-256),
+ * kept in .tracle/<version>, and updated automatically on restart when a new version is out.
  */
 'use strict';
 
@@ -17,9 +20,24 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const readline = require('readline');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const { createRequire } = require('module');
 
-try { require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true }); } catch (e) {}
+function loadEnvFile(override) {
+    let text = '';
+    try { text = fs.readFileSync(path.join(__dirname, '.env'), 'utf8'); } catch (e) { return; }
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const i = line.indexOf('=');
+        if (i < 1) continue;
+        const key = line.slice(0, i).trim();
+        let val = line.slice(i + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+        if (override || process.env[key] === undefined || process.env[key] === '') process.env[key] = val;
+    }
+}
+loadEnvFile(false);
 
 const ROOT = __dirname;
 const SESS = path.join(ROOT, 'sessions');
@@ -28,6 +46,12 @@ const PAIR_TTL_MS = 3 * 60 * 1000;
 const GEN_URL = (process.env.SESSION_GENERATOR_URL || 'https://tracle-sessions.brenaldmedia.com').replace(/\/$/, '');
 const SID_PREFIX = 'TRACLE~';
 const PORT = process.env.PORT || process.env.SERVER_PORT || '';
+const CACHE = path.join(ROOT, '.tracle');
+const DATA_DIR = path.join(CACHE, 'data');
+const SHARED_DIR = path.join(CACHE, 'shared');
+const MANIFEST_URL = process.env.TRACLE_MANIFEST_URL || 'https://tracle-lite.brenaldmedia.com/dist/manifest.json';
+const IS_WIN = process.platform === 'win32';
+let BUNDLE = null; // folder of the running bot version
 
 const C = { o: '\x1b[38;5;208m', g: '\x1b[32m', y: '\x1b[33m', r: '\x1b[31m', b: '\x1b[1m', x: '\x1b[0m' };
 const log = (...a) => console.log('[Tracle-Lite]', ...a);
@@ -50,10 +74,27 @@ function credsLinked(creds) {
 function linkedSessions() {
     if (!fs.existsSync(SESS)) return [];
     return fs.readdirSync(SESS).filter((name) => {
+        if (!/^\d+$/.test(name)) return false;
         const dir = path.join(SESS, name);
         try { if (!fs.statSync(dir).isDirectory()) return false; } catch (e) { return false; }
         return credsLinked(readJson(path.join(dir, 'creds.json'), null));
     });
+}
+
+// Older versions saved logins as sessions/Tracle_xxxx. The bot now uses sessions/<number>.
+function migrateOldFolders() {
+    if (!fs.existsSync(SESS)) return;
+    for (const name of fs.readdirSync(SESS)) {
+        if (/^\d+$/.test(name) || name.startsWith('.')) continue;
+        const dir = path.join(SESS, name);
+        const creds = readJson(path.join(dir, 'creds.json'), null);
+        if (!credsLinked(creds)) continue;
+        const num = digits(String(creds.me.id).split(':')[0].split('@')[0]);
+        const target = path.join(SESS, num);
+        if (num && !fs.existsSync(target)) {
+            try { fs.renameSync(dir, target); log('Moved saved login ' + name + ' to ' + num); } catch (e) {}
+        }
+    }
 }
 
 function wipe(dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {} }
@@ -105,7 +146,7 @@ async function restoreSessionId(raw) {
     const creds = decodeEmbedded(value);
     if (creds) {
         if (!credsLinked(creds)) { log(C.r + 'This session ID is not linked to WhatsApp yet.' + C.x); return null; }
-        const name = 'Tracle_' + digits(String(creds.me.id).split(':')[0].split('@')[0]);
+        const name = digits(String(creds.me.id).split(':')[0].split('@')[0]);
         const dir = path.join(SESS, name);
         if (!credsLinked(readJson(path.join(dir, 'creds.json'), null))) {
             wipe(dir); ensureDir(dir);
@@ -117,19 +158,21 @@ async function restoreSessionId(raw) {
     }
 
     if (/^Tracle_[A-Za-z0-9]+$/i.test(value)) {
-        const dir = path.join(SESS, value);
-        if (credsLinked(readJson(path.join(dir, 'creds.json'), null))) return value;
         log('Downloading session ' + value + ' ...');
         const res = await httpsGet(`${GEN_URL}/sessions/${encodeURIComponent(value)}/creds.json`);
         if (res.ok) {
             let c = null;
             try { c = JSON.parse(res.body.toString('utf8')); } catch (e) {}
             if (c && credsLinked(c)) {
-                wipe(dir); ensureDir(dir);
-                c.registered = true;
-                fs.writeFileSync(path.join(dir, 'creds.json'), JSON.stringify(c));
+                const name = digits(String(c.me.id).split(':')[0].split('@')[0]);
+                const dir = path.join(SESS, name);
+                if (!credsLinked(readJson(path.join(dir, 'creds.json'), null))) {
+                    wipe(dir); ensureDir(dir);
+                    c.registered = true;
+                    fs.writeFileSync(path.join(dir, 'creds.json'), JSON.stringify(c));
+                }
                 log(C.g + 'Session downloaded.' + C.x);
-                return value;
+                return name;
             }
         }
         log(C.r + 'Session ID not found or not linked (HTTP ' + res.status + ').' + C.x);
@@ -139,6 +182,133 @@ async function restoreSessionId(raw) {
     log(C.r + 'That does not look like a Tracle-Lite session ID.' + C.x);
     return null;
 }
+
+
+// ---------------------------------------------------------------- bot download and updates
+function fetchUrl(url, asFile, redirects = 0) {
+    return new Promise((resolve) => {
+        const mod = url.startsWith('http://') ? http : https;
+        const req = mod.get(url, { timeout: 30000, headers: { 'User-Agent': 'Tracle-Lite-launcher' } }, (res) => {
+            if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && redirects < 5) {
+                res.resume();
+                return resolve(fetchUrl(new URL(res.headers.location, url).toString(), asFile, redirects + 1));
+            }
+            if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return resolve({ ok: false, status: res.statusCode }); }
+            if (asFile) {
+                const out = fs.createWriteStream(asFile);
+                const hash = crypto.createHash('sha256');
+                res.on('data', (c) => hash.update(c));
+                res.pipe(out);
+                out.on('finish', () => resolve({ ok: true, status: 200, sha256: hash.digest('hex') }));
+                out.on('error', () => resolve({ ok: false, status: 0 }));
+            } else {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve({ ok: true, status: 200, body: Buffer.concat(chunks) }));
+            }
+        });
+        req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: 0 }); });
+        req.on('error', () => resolve({ ok: false, status: 0 }));
+    });
+}
+
+function readCurrent() { return readJson(path.join(CACHE, 'current.json'), null); }
+function bundleReady(dir) {
+    return !!dir && fs.existsSync(path.join(dir, 'server.js')) && fs.existsSync(path.join(dir, 'node_modules', '@whiskeysockets', 'baileys'));
+}
+
+function npmInstall(dir) {
+    log('Installing bot packages (first start of a version can take a few minutes)...');
+    const r = spawnSync(IS_WIN ? 'npm.cmd' : 'npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error'],
+        { cwd: dir, stdio: 'inherit', shell: IS_WIN, env: { ...process.env, npm_config_update_notifier: 'false' } });
+    return r.status === 0;
+}
+
+function cleanupOld(keep) {
+    try {
+        for (const name of fs.readdirSync(CACHE)) {
+            if (!/^v[\w.-]+$/.test(name) || keep.includes(name)) continue;
+            wipe(path.join(CACHE, name));
+        }
+    } catch (e) {}
+}
+
+async function installVersion(man) {
+    const ver = 'v' + String(man.version).replace(/[^\w.-]/g, '');
+    const dir = path.join(CACHE, ver);
+    if (bundleReady(dir)) return dir;
+    const tmpFile = path.join(CACHE, 'download.tgz');
+    const tmpDir = dir + '.tmp';
+    log('Downloading Tracle-Lite ' + man.version + ' ...');
+    const dl = await fetchUrl(new URL(man.url, MANIFEST_URL).toString(), tmpFile);
+    if (!dl.ok) { log(C.r + 'Download failed (HTTP ' + dl.status + ').' + C.x); return null; }
+    if (String(man.sha256 || '').toLowerCase() !== dl.sha256) {
+        log(C.r + 'Download check failed (SHA-256 mismatch). Not using it.' + C.x);
+        wipe(tmpFile); return null;
+    }
+    wipe(tmpDir); ensureDir(tmpDir);
+    const t = spawnSync('tar', ['-xzf', tmpFile, '-C', tmpDir], { stdio: 'inherit' });
+    wipe(tmpFile);
+    if (t.status !== 0 || !fs.existsSync(path.join(tmpDir, 'server.js'))) {
+        log(C.r + 'Could not unpack the download (is "tar" installed?).' + C.x);
+        wipe(tmpDir); return null;
+    }
+    if (!npmInstall(tmpDir)) { log(C.r + 'Package install failed.' + C.x); wipe(tmpDir); return null; }
+    wipe(dir);
+    fs.renameSync(tmpDir, dir);
+    log(C.g + 'Tracle-Lite ' + man.version + ' is ready.' + C.x);
+    return dir;
+}
+
+// Returns the folder of the bot to run. Keeps trying until one is available.
+async function ensureBundle() {
+    ensureDir(CACHE);
+    for (;;) {
+        phase = 'downloading';
+        const cur = readCurrent();
+        const curDir = cur && path.join(CACHE, cur.dir);
+        const res = await fetchUrl(MANIFEST_URL);
+        let man = null;
+        if (res.ok) { try { man = JSON.parse(res.body.toString('utf8')); } catch (e) {} }
+        if (man && man.version && man.url && man.sha256) {
+            if (cur && cur.version === man.version && bundleReady(curDir)) return curDir;
+            const dir = await installVersion(man);
+            if (dir) {
+                fs.writeFileSync(path.join(CACHE, 'current.json'), JSON.stringify({ version: man.version, dir: path.basename(dir) }));
+                cleanupOld([path.basename(dir), cur && cur.dir].filter(Boolean));
+                return dir;
+            }
+            if (bundleReady(curDir)) { log(C.y + 'Update failed. Using the saved version ' + cur.version + '.' + C.x); return curDir; }
+        } else if (bundleReady(curDir)) {
+            log(C.y + 'Update server not reachable. Using the saved version ' + cur.version + '.' + C.x);
+            return curDir;
+        }
+        log(C.y + 'Could not get the bot from ' + new URL(MANIFEST_URL).host + '. Check the internet connection. Trying again in 30 seconds...' + C.x);
+        await sleep(30000);
+    }
+}
+
+// Logins and settings live outside the version folder, so updates keep them.
+function linkPersistent(dir) {
+    ensureDir(SESS); ensureDir(DATA_DIR); ensureDir(SHARED_DIR);
+    const pairs = [[path.join(dir, 'sessions'), SESS], [path.join(dir, 'data'), DATA_DIR]];
+    for (const [link, target] of pairs) {
+        let st = null;
+        try { st = fs.lstatSync(link); } catch (e) {}
+        if (st && st.isSymbolicLink()) continue;
+        if (st && st.isDirectory()) {
+            // seed defaults (only files the user does not have yet)
+            for (const f of fs.readdirSync(link)) {
+                const to = path.join(target, f);
+                if (!fs.existsSync(to)) { try { fs.renameSync(path.join(link, f), to); } catch (e) {} }
+            }
+            wipe(link);
+        }
+        fs.symlinkSync(target, link, IS_WIN ? 'junction' : 'dir');
+    }
+}
+
+function botRequire() { return createRequire(path.join(BUNDLE, 'package.json')); }
 
 // ---------------------------------------------------------------- health server (only while setting up)
 let healthServer = null;
@@ -196,12 +366,13 @@ function printCode(code, phone) {
 }
 
 async function pairWithNumber(phone) {
-    const baileys = require('@whiskeysockets/baileys');
+    const req = botRequire();
+    const baileys = req('@whiskeysockets/baileys');
     const makeWASocket = baileys.default || baileys.makeWASocket;
     const { useMultiFileAuthState, Browsers, fetchLatestBaileysVersion, DisconnectReason } = baileys;
-    const pino = require('pino');
+    const pino = req('pino');
 
-    const name = 'Tracle_' + phone;
+    const name = phone;
     const dir = path.join(SESS, name);
     if (!credsLinked(readJson(path.join(dir, 'creds.json'), null))) wipe(dir);
     ensureDir(dir);
@@ -376,7 +547,7 @@ async function acquire() {
         phase = 'waiting-for-setup';
         printHelp();
         await sleep(30000);
-        try { require('dotenv').config({ path: path.join(ROOT, '.env'), override: true, quiet: true }); } catch (e) {}
+        loadEnvFile(true);
     }
 }
 
@@ -390,8 +561,10 @@ async function runBot(names) {
     delete env.SESSION_ID;      // the bot uses the sessions saved in ./sessions
     delete env.PHONE_NUMBER;    // pairing is done by this launcher
     env.PORT = String(PORT || '5000');
+    env.SESSIONS_ROOT = SESS;
+    env.TRACLE_SHARED_DIR = SHARED_DIR;
 
-    child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'inherit', 'inherit'] });
+    child = spawn(process.execPath, [path.join(BUNDLE, 'server.js')], { cwd: BUNDLE, env, stdio: ['ignore', 'inherit', 'inherit'] });
 
     return new Promise((resolve) => {
         let missing = 0;
@@ -418,8 +591,11 @@ process.on('unhandledRejection', (e) => log('Error:', e && e.message ? e.message
 (async () => {
     console.log(C.o + C.b + '\n  Tracle-Lite\n' + C.x);
     ensureDir(SESS);
+    migrateOldFolders();
     for (;;) {
         startHealth();
+        BUNDLE = await ensureBundle();
+        linkPersistent(BUNDLE);
         const names = await acquire();
         const why = await runBot(names);
         log('Bot stopped (' + why + '). Restarting in 5s...');
