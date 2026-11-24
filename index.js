@@ -381,7 +381,9 @@ async function pairWithNumber(phone) {
     try { version = (await fetchLatestBaileysVersion()).version; } catch (e) {}
 
     let lastCodeAt = 0;
+    let expired = false;
     for (let attempt = 1; ; attempt++) {
+        expired = false;
         phase = 'pairing';
         const { state, saveCreds } = await useMultiFileAuthState(dir);
         const sock = makeWASocket({
@@ -392,31 +394,35 @@ async function pairWithNumber(phone) {
             browser: Browsers.macOS('Safari'),
             markOnlineOnConnect: false,
             syncFullHistory: false,
-            qrTimeout: 60000
+            qrTimeout: 60000,
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 20000
         });
         sock.ev.on('creds.update', saveCreds);
 
         const result = await new Promise((resolve) => {
             let requesting = false;
             let expiryTimer = null;
+            let asked = false;
             const requestCode = async () => {
-                if (requesting || credsLinked(state.creds)) return;
-                // Single code at a time: reuse the last one while it is still valid.
-                if (Date.now() - lastCodeAt < PAIR_TTL_MS) return;
+                // One code per connection, asked once the connection is ready (first QR event).
+                if (requesting || asked || credsLinked(state.creds)) return;
                 requesting = true;
                 try {
                     log('Requesting a pairing code for +' + phone + ' ...');
+                    asked = true;
                     const code = await sock.requestPairingCode(phone);
                     lastCodeAt = Date.now();
                     printCode(code, phone);
                     clearTimeout(expiryTimer);
+                    // When the code expires, start over on a brand-new connection (never a second code on the same one).
                     expiryTimer = setTimeout(() => {
-                        if (!credsLinked(state.creds)) { log(C.y + 'Code expired. Getting a new one...' + C.x); requestCode(); }
+                        if (!credsLinked(state.creds)) { log(C.y + 'Code expired. Getting a new one...' + C.x); expired = true; try { sock.end(new Error('pairing code expired')); } catch (e) {} }
                     }, PAIR_TTL_MS + 1000);
                 } catch (e) {
-                    log(C.r + 'Could not get a pairing code: ' + e.message + C.x);
+                    log(C.r + 'Could not get a pairing code: ' + e.message + '. Trying again...' + C.x);
                     lastCodeAt = 0;
-                    setTimeout(() => { requesting = false; requestCode(); }, 15000);
+                    try { sock.end(new Error('pairing request failed')); } catch (e2) {}
                     return;
                 }
                 requesting = false;
@@ -459,10 +465,13 @@ async function pairWithNumber(phone) {
             continue;
         }
         if (!credsLinked(readJson(path.join(dir, 'creds.json'), null))) {
-            log('Connection closed (' + (code || 'unknown') + '), retrying in 5s...');
-            lastCodeAt = 0; // the old code died with that connection
+            // The code died with that connection. Start clean: requestPairingCode() left a placeholder
+            // login in creds, and reconnecting with it makes WhatsApp reject the next code as wrong.
+            if (!expired) log('Connection closed (' + (code || 'unknown') + '), getting a fresh code in 5s...');
+            wipe(dir); ensureDir(dir);
+            lastCodeAt = 0;
         }
-        await sleep(5000);
+        await sleep(expired ? 1000 : 5000);
     }
 }
 
@@ -497,7 +506,7 @@ async function handleInput(input) {
     const s = String(input || '').trim();
     if (!s) return null;
     const asNumber = s.replace(/[\s\-()+]/g, '');
-    if (/^\d{8,15}$/.test(asNumber)) return pairWithNumber(asNumber);
+    if (/^\d{7,15}$/.test(asNumber)) return pairWithNumber(asNumber);
     return restoreSessionId(s);
 }
 
@@ -523,7 +532,7 @@ async function acquire() {
 
         // 3. PHONE_NUMBER from env
         const envPhone = digits(process.env.PHONE_NUMBER || process.env.OWNER_NUMBER || '');
-        if (envPhone.length >= 8) {
+        if (envPhone.length >= 7) {
             const name = await pairWithNumber(envPhone);
             if (name) return [name];
         }

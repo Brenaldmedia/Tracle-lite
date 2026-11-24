@@ -1,6 +1,6 @@
 {
   "name": "tracle-lite",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Tracle-Lite WhatsApp bot launcher. Deploy on Pterodactyl, a VPS, Render, Railway, Heroku, Koyeb, Replit, Docker or your own PC.",
   "main": "index.js",
   "scripts": {
